@@ -26,7 +26,7 @@ func TestGuideManualProcedure(t *testing.T) {
 		`Zeitstempel: 0001_2026-10 Eingangsrechnungen.nachweis\2.tsr (Versuch 2)`,
 		"den höchsten Versuch n, zu dem n.tsr und n.chain.pem vorliegen",
 		"    openssl ts -reply -in n.tsr -text\n",
-		"    openssl ts -verify -digest <Prüfwert-hex> -in n.tsr -CAfile n.chain.pem -untrusted n.chain.pem\n",
+		"    openssl ts -verify -digest <Prüfwert-hex> -in n.tsr -CAfile n.chain.pem -untrusted n.chain.pem -partial_chain\n",
 		"nicht, ob der Dienst ein qualifizierter",
 		`    .\rechnungsarchiv.exe verify '.' --online`,
 		"Stempelzeit (Time stamp) zuzüglich der angegebenen Genauigkeit (Accuracy)",

@@ -66,10 +66,10 @@ Die dritte Zeile liefert 64 Hexzeichen. Der Prüfwert ist `sha256:` plus dieser 
 
 ```text
 openssl ts -reply -in n.tsr -text
-openssl ts -verify -digest <Prüfwert-hex> -in n.tsr -CAfile n.chain.pem -untrusted n.chain.pem
+openssl ts -verify -digest <Prüfwert-hex> -in n.tsr -CAfile n.chain.pem -untrusted n.chain.pem -partial_chain
 ```
 
-`<Prüfwert-hex>` sind die 64 Zeichen ohne das Präfix `sha256:`. Die Anzeige des Abdrucks (`Message imprint`) muss dazu passen. `Verification: OK` heißt: Abdruck und Signatur stimmen, geprüft über die Kette in `n.chain.pem`. Ob der Dienst ein qualifizierter EU-Zeitstempeldienst war, prüft das nicht (siehe unten). Dieselbe Datei steht bei `-untrusted`, weil die Kette auch das Stempelzertifikat und Zwischenzertifikate enthält; `-CAfile` allein vertraut nur Ankerzertifikaten. Ohne `-CAfile` und `-untrusted` meldet openssl `unable to get local issuer certificate`. Fehlt der Vertrauensanker in `n.chain.pem`, setzen Sie ihn extra als `-CAfile`.
+`<Prüfwert-hex>` sind die 64 Zeichen ohne das Präfix `sha256:`. Die Anzeige des Abdrucks (`Message imprint`) muss dazu passen. `Verification: OK` heißt: Abdruck und Signatur stimmen, geprüft über die Kette in `n.chain.pem`. Ob der Dienst ein qualifizierter EU-Zeitstempeldienst war, prüft das nicht (siehe unten). Dieselbe Datei steht bei `-untrusted`, weil die Kette auch das Stempelzertifikat und Zwischenzertifikate enthält; `-CAfile` allein vertraut nur Ankerzertifikaten. Ohne `-CAfile` und `-untrusted` meldet openssl `unable to get local issuer certificate`. `-partial_chain` ist nötig, wenn die Kette bei einem Zwischenzertifikat endet. Das ist etwa der Fall, wenn die Vertrauensliste das Stempelzertifikat selbst als Dienst nennt (so bei Mensatek). Ohne die Option meldet openssl dann `unable to get issuer certificate`.
 
 Der Zeitstempel belegt den Stand spätestens zur Stempelzeit (`Time stamp`) zuzüglich der angegebenen Genauigkeit (`Accuracy`). So rechnen auch das Prüfprogramm und das Archivprotokoll.
 

@@ -149,7 +149,7 @@ func TestExportSubsetWithBridge(t *testing.T) {
 
 	guide, _ := os.ReadFile(filepath.Join(dst, export.GuideName))
 	for _, want := range []string{`.\rechnungsarchiv.exe verify '<Export-Ordner>'`, "sha256sum -c manifest-sha256.txt",
-		"openssl ts -verify -digest <Prüfwert-hex> -in n.tsr -CAfile n.chain.pem -untrusted n.chain.pem", "Ablage 0003"} {
+		"openssl ts -verify -digest <Prüfwert-hex> -in n.tsr -CAfile n.chain.pem -untrusted n.chain.pem -partial_chain", "Ablage 0003"} {
 		if !strings.Contains(string(guide), want) {
 			t.Errorf("PRUEFANLEITUNG.txt lacks %q", want)
 		}
