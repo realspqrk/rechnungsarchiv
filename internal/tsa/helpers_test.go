@@ -3,6 +3,7 @@ package tsa
 import (
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/asn1"
 	"errors"
 	"testing"
 
@@ -47,7 +48,7 @@ func (e *env) token(t testing.TB, edit func(p *tsatest.TokenParams)) []byte {
 }
 
 func (e *env) opts() VerifyOptions {
-	return VerifyOptions{Request: e.req, Policy: tsatest.DefaultPolicy, Anchors: []*x509.Certificate{e.pki.Root.Cert}}
+	return VerifyOptions{Request: e.req, Policies: []asn1.ObjectIdentifier{tsatest.DefaultPolicy}, Anchors: []*x509.Certificate{e.pki.Root.Cert}}
 }
 
 func (e *env) verify(t testing.TB, edit func(p *tsatest.TokenParams)) (*Token, error) {

@@ -13,14 +13,22 @@ import (
 // Provider is one entry of the built-in provider list (spec §7). It holds
 // connection data only; trust comes from the EU trusted lists.
 type Provider struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Country     string `json:"country"` // ISO 3166-1 alpha-2
-	URL         string `json:"url"`
-	Auth        string `json:"auth"`             // AuthBasic or AuthClientCert
-	Policy      string `json:"policy,omitempty"` // expected TSA policy OID, dotted
-	Accuracy    string `json:"accuracy,omitempty"`
-	TrustedList string `json:"trusted_list"` // EU trusted list country code
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Country string `json:"country"` // ISO 3166-1 alpha-2
+	URL     string `json:"url"`
+	Auth    string `json:"auth"` // AuthBasic or AuthClientCert
+	// URLFromContract is true when the endpoint comes with the contract
+	// (e.g. Disig); URL is then empty and the user enters it.
+	URLFromContract bool `json:"url_from_contract,omitempty"`
+	// RequestPolicy is sent as reqPolicy if set. Some providers (Mensatek)
+	// reject any reqPolicy, so it is usually empty.
+	RequestPolicy string `json:"request_policy,omitempty"`
+	// ExpectedPolicies are the token policies accepted at stamping time
+	// (spec §5 item 5); empty means not checked.
+	ExpectedPolicies []string `json:"expected_policies,omitempty"`
+	Accuracy         string   `json:"accuracy,omitempty"`
+	TrustedList      string   `json:"trusted_list"` // EU trusted list country code
 }
 
 //go:embed providers.json
@@ -48,21 +56,38 @@ func ProviderByID(id string) (Provider, bool) {
 	return Provider{}, false
 }
 
-// PolicyOID returns the expected policy, or nil if none is listed.
-func (p Provider) PolicyOID() (asn1.ObjectIdentifier, error) {
-	if p.Policy == "" {
+// RequestPolicyOID returns the reqPolicy to send, or nil if none is set.
+func (p Provider) RequestPolicyOID() (asn1.ObjectIdentifier, error) {
+	if p.RequestPolicy == "" {
 		return nil, nil
 	}
+	return parseOID(p.ID, p.RequestPolicy)
+}
+
+// ExpectedPolicyOIDs returns the accepted token policies; nil accepts any.
+func (p Provider) ExpectedPolicyOIDs() ([]asn1.ObjectIdentifier, error) {
+	var out []asn1.ObjectIdentifier
+	for _, s := range p.ExpectedPolicies {
+		oid, err := parseOID(p.ID, s)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, oid)
+	}
+	return out, nil
+}
+
+func parseOID(id, s string) (asn1.ObjectIdentifier, error) {
 	var oid asn1.ObjectIdentifier
-	for _, part := range strings.Split(p.Policy, ".") {
+	for _, part := range strings.Split(s, ".") {
 		n, err := strconv.Atoi(part)
 		if err != nil || n < 0 {
-			return nil, fmt.Errorf("provider %s: bad policy OID %q", p.ID, p.Policy)
+			return nil, fmt.Errorf("provider %s: bad policy OID %q", id, s)
 		}
 		oid = append(oid, n)
 	}
 	if len(oid) < 2 {
-		return nil, fmt.Errorf("provider %s: bad policy OID %q", p.ID, p.Policy)
+		return nil, fmt.Errorf("provider %s: bad policy OID %q", id, s)
 	}
 	return oid, nil
 }

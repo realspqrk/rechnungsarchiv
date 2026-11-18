@@ -33,7 +33,7 @@ type timeStampReq struct {
 }
 
 // NewRequest builds a TimeStampReq with certReq=TRUE and a fresh nonce.
-// policy is the provider's expected policy OID or nil.
+// policy is the provider's request_policy (reqPolicy) or nil.
 func NewRequest(pruefwert [32]byte, policy asn1.ObjectIdentifier) (*Request, error) {
 	var nonce *big.Int
 	for nonce == nil || nonce.Sign() == 0 {

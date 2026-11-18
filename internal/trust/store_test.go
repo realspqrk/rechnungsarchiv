@@ -122,7 +122,7 @@ func TestOpenWithoutVerifiableLOTL(t *testing.T) {
 	if len(s.Lists()) != 0 {
 		t.Fatalf("lists without a verified LOTL: %d", len(s.Lists()))
 	}
-	if d := s.Qualify(disig198(t), mustTime(t, "2026-01-01T00:00:00Z")); d.Result != Unconfirmed {
+	if d := s.Qualify(disig198(t), mustTime(t, "2026-01-01T00:00:00Z"), ""); d.Result != Unconfirmed {
 		t.Fatalf("got %v", d.Result)
 	}
 }
@@ -146,14 +146,14 @@ func TestRefreshStoresExactBytesAndCountsAsOnline(t *testing.T) {
 
 	// genTime after SK's issue date: only the online fetch makes it decidable.
 	genTime := mustTime(t, "2026-11-10T08:00:00Z")
-	d := s.Qualify(disig198(t), genTime)
+	d := s.Qualify(disig198(t), genTime, "")
 	if d.Result != Qualified || !d.FetchedOnline || d.Territory != "SK" {
 		t.Fatalf("after refresh: %+v", d)
 	}
 
 	// The same lists from the cache are no evidence for that genTime.
 	cached := testStore(t, nil, dir)
-	if d := cached.Qualify(disig198(t), genTime); d.Result != Unconfirmed {
+	if d := cached.Qualify(disig198(t), genTime, ""); d.Result != Unconfirmed {
 		t.Fatalf("from cache: %v, want unbestätigt", d.Result)
 	}
 

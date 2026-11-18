@@ -22,7 +22,8 @@ Local, tamper-evident invoice archive for Austrian SMEs. A folder of invoices be
 ## Commands
 ```sh
 go build ./...                 # toolchain go1.27.4 is fetched automatically (go.mod)
-go test ./...                  # unit + end-to-end (offline; network tests behind -tags online)
+go test ./...                  # unit tests (offline)
+go test -tags testtsa ./...    # + end-to-end tests with the test PKI/TSA (run this before every commit)
 go test -tags online ./...     # also hits real timestamp services
 go vet ./... && gofmt -l .
 ```

@@ -29,14 +29,15 @@ func (r Result) String() string {
 
 // Decision is a qualification result and the list it rests on. For
 // Unconfirmed, the list fields name the newest list that lists the signer but
-// is not fresh enough; they are empty if no list lists the signer.
+// is not fresh enough; they are empty if no list lists the signer. TSPName
+// and Service are empty when the provider's list lists no matching service.
 type Decision struct {
 	Result        Result
 	Territory     string
 	Sequence      int
 	IssueDate     time.Time
 	FetchedOnline bool   // the list was downloaded and verified by this run
-	TSPName       string // set for Qualified and NotQualified
+	TSPName       string // the matching service, if any
 	Service       string
 }
 
@@ -47,21 +48,20 @@ type Decision struct {
 // signed), or if this process fetched and verified it online after genTime.
 // The deciding list then yields Qualified if a matching QTST service was
 // granted at genTime, else NotQualified. With no deciding list: Unconfirmed.
-func qualify(lists []*List, path []*x509.Certificate, genTime time.Time) Decision {
+//
+// territory is the trusted list of the provider that issued the token ("" if
+// unknown). If no list decides otherwise and that list can decide, it shows no
+// QTST service for the path at genTime: NotQualified. The hint can only turn
+// Unconfirmed into NotQualified, never produce Qualified.
+func qualify(lists []*List, path []*x509.Certificate, genTime time.Time, territory string) Decision {
 	best := Decision{Result: Unconfirmed}
 	for _, l := range lists {
 		services := l.matching(path)
 		if len(services) == 0 {
 			continue
 		}
-		d := Decision{
-			Result:        Unconfirmed,
-			Territory:     l.Territory,
-			Sequence:      l.Sequence,
-			IssueDate:     l.IssueDate,
-			FetchedOnline: !l.fetchedOnline.IsZero(),
-		}
-		if l.IssueDate.After(genTime) || l.fetchedOnline.After(genTime) {
+		d := listDecision(l, Unconfirmed)
+		if decides(l, genTime) {
 			d.Result = NotQualified
 			d.TSPName, d.Service = services[0].TSPName, services[0].Name
 			for _, s := range services {
@@ -76,7 +76,30 @@ func qualify(lists []*List, path []*x509.Certificate, genTime time.Time) Decisio
 			best = d
 		}
 	}
+	if best.Result != Unconfirmed || territory == "" {
+		return best
+	}
+	for _, l := range lists {
+		if l.Territory == territory && decides(l, genTime) {
+			return listDecision(l, NotQualified)
+		}
+	}
 	return best
+}
+
+// decides reports whether l may decide about genTime (spec §6 step 6).
+func decides(l *List, genTime time.Time) bool {
+	return l.IssueDate.After(genTime) || l.fetchedOnline.After(genTime)
+}
+
+func listDecision(l *List, r Result) Decision {
+	return Decision{
+		Result:        r,
+		Territory:     l.Territory,
+		Sequence:      l.Sequence,
+		IssueDate:     l.IssueDate,
+		FetchedOnline: !l.fetchedOnline.IsZero(),
+	}
 }
 
 // rank orders decisions when several territories list the signer.

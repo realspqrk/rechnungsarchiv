@@ -34,6 +34,9 @@ type Attempt struct {
 	Request  *Request  // parsed TSQ; nil if unparseable
 	TSR      []byte    // nil if no response stored
 	Material *Material // nil if no chain stored
+	// MaterialErr is set when n.chain.pem exists but cannot be parsed. The
+	// attempt then lacks usable material; other attempts stay readable.
+	MaterialErr error
 }
 
 // NextAttempt returns the number for a new attempt in dir.
@@ -135,7 +138,8 @@ func ReadAttempts(dir string) ([]Attempt, error) {
 			}
 			certs, err := ParsePEM(b)
 			if err != nil {
-				return nil, fmt.Errorf("%s: %w", p, err)
+				a.MaterialErr = fmt.Errorf("%s: %w", e.Name(), err)
+				continue
 			}
 			mat := material(a)
 			mat.Chain = certs

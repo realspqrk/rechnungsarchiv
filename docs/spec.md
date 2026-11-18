@@ -161,7 +161,7 @@ For each Ablage:
 2. The tag files are exactly the mandatory set (§3) and match `tagmanifest-sha256.txt` → **Verändert** if not.
 3. Payload against `manifest-sha256.txt`: report matched, changed, missing and added files (complete vs. valid). Any change, missing or added file → **Verändert**. A CRC mismatch on a payload entry also counts as changed. In an extracted directory, system junk (Thumbs.db, desktop.ini, .DS_Store, `~$*`) that the manifest does not list is reported as *ignored*, not added.
 4. `Payload-Oxum`, `files.json` and the manifest must agree → **Ungültig** if not.
-5. Find the Nachweis by imprint (§1) and take the earliest attempt that is valid per §5.
+5. Find the Nachweis by imprint (§1) and take the earliest attempt that is valid per §5. The provider's `expected_policies` are enforced when a token is accepted at stamping time. At verification the issuing provider may be unknown (archives can switch providers), so the policy is reported but not re-checked. If no verified trusted list is available at all (no anchors), the token is **Unbestimmt**, not Ungültig. A file-name number that differs from `chain.json` is an archive-level finding, not Ungültig (file names are only hints).
    - No valid attempt → **Ausstehend** (with the §5 reason). Attempts whose token passes the cryptographic checks (§5 items 1–7) but lack timely validation material count as discarded, not invalid.
    - **Ungültig** only if no attempt is valid **and** some token fails a cryptographic check (§5 items 1–7).
 6. **Qualification** (§7). The token is **qualifiziert** if all of these hold:
@@ -223,7 +223,7 @@ Qualifiers:
 
 `export --von <Belegjahr> --bis <Belegjahr> <Ziel>` refreshes the trusted lists, if possible, and writes:
 - the selected Ablagen and their Nachweise, unchanged;
-- the **Brückendaten** for every excluded Ablage between the first and last selected one: only `chain.json` and `tagmanifest-sha256.txt` (no file names, no payload);
+- the **Brückendaten** for every excluded Ablage between the first and last selected one, under `brueckendaten/<NNNN>/`: only `chain.json` and `tagmanifest-sha256.txt` (no file names, no payload);
 - the cached `vertrauenslisten/`;
 - `rechnungsarchiv.exe`;
 - `Archivprotokolle/<NNNN>_<Name>.archivprotokoll.pdf`: one per exported Ablage (§10);
@@ -267,7 +267,8 @@ The document is an **objective statement of fact**. It contains no disclaimers, 
 
 **Format:**
 - A4, embedded Unicode fonts, selectable text.
-- SHOULD be PDF/A-2b.
+- SHOULD be PDF/A-2b (v1: not achieved; gopdf cannot produce PDF/A, see followup).
+- Past tense ("war … qualifiziert") wherever a sentence describes the state at genTime.
 - The PDF is derived from the verification result and is not itself evidence; `verify` remains authoritative.
 
 ## 11. CLI

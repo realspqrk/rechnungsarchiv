@@ -29,5 +29,6 @@
 - **ID Austria approval:**
   - the owner signs a generated Archivprotokoll PDF; the app checks prefix, PAdES and A-Trust chain, then timestamps the signed PDF;
   - blockers: free signature is for private persons only, PAdES B-B has no trusted time, certificates expire after 5 years (`docs/research/09-id-austria.md`).
+- **PDF/A-2b for the Archivprotokoll** (spec §10 SHOULD): gopdf cannot produce it; options: post-process with a PDF/A library or switch generator.
 - **RFC 4998 ERS export** (Bouncy Castle / BSI ERVerifyTool interop).
 - **macOS/Linux GUI builds.** The CLI builds everywhere.

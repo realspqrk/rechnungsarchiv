@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"time"
 )
 
@@ -34,8 +35,8 @@ type Token struct {
 type VerifyOptions struct {
 	// Request is the stored request (n.tsq); imprint and nonce must match.
 	Request *Request
-	// Policy is the provider's expected policy OID; nil accepts any.
-	Policy asn1.ObjectIdentifier
+	// Policies are the provider's expected policy OIDs; empty accepts any.
+	Policies []asn1.ObjectIdentifier
 	// Anchors are the certificates the provider's trusted-list service
 	// identity names. The path must end at one of them.
 	Anchors []*x509.Certificate
@@ -220,8 +221,8 @@ func checkToken(der []byte, opts VerifyOptions) (*Token, error) {
 	if info.Nonce == nil || info.Nonce.Cmp(opts.Request.Nonce) != 0 {
 		return nil, invalid(5, "Nonce passt nicht zur Anfrage", nil)
 	}
-	if opts.Policy != nil && !info.Policy.Equal(opts.Policy) {
-		return nil, invalid(5, "Policy passt nicht", fmt.Errorf("got %v, want %v", info.Policy, opts.Policy))
+	if len(opts.Policies) > 0 && !slices.ContainsFunc(opts.Policies, info.Policy.Equal) {
+		return nil, invalid(5, "Policy passt nicht", fmt.Errorf("got %v, want one of %v", info.Policy, opts.Policies))
 	}
 
 	return &Token{

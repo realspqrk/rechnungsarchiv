@@ -31,8 +31,14 @@ func TestProvidersShippedList(t *testing.T) {
 		if p.URL != "" && !strings.HasPrefix(p.URL, "https://") {
 			t.Errorf("%s: URL not HTTPS", p.ID)
 		}
-		if _, err := p.PolicyOID(); err != nil {
+		if _, err := p.RequestPolicyOID(); err != nil {
 			t.Error(err)
+		}
+		if _, err := p.ExpectedPolicyOIDs(); err != nil {
+			t.Error(err)
+		}
+		if p.URLFromContract != (p.URL == "") {
+			t.Errorf("%s: url_from_contract must be set exactly when url is empty", p.ID)
 		}
 		if _, ok := p.DeclaredAccuracy(); p.Accuracy != "" && !ok {
 			t.Errorf("%s: accuracy %q", p.ID, p.Accuracy)
@@ -41,7 +47,15 @@ func TestProvidersShippedList(t *testing.T) {
 	if len(Providers()) != len(ps) {
 		t.Error("test providers leak into a normal build")
 	}
-	if _, ok := ProviderByID("mensatek"); !ok {
-		t.Error("mensatek missing")
+	m, ok := ProviderByID("mensatek")
+	if !ok {
+		t.Fatal("mensatek missing")
+	}
+	// Mensatek rejects any reqPolicy but issues tokens under these policies.
+	if m.RequestPolicy != "" || len(m.ExpectedPolicies) != 2 {
+		t.Errorf("mensatek policies: %q / %q", m.RequestPolicy, m.ExpectedPolicies)
+	}
+	if d, ok := ProviderByID("disig"); !ok || !d.URLFromContract {
+		t.Error("disig must take its URL from the contract")
 	}
 }

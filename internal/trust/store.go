@@ -96,9 +96,10 @@ func open(cfg config) (*Store, error) {
 }
 
 // Qualify applies spec §6 step 6. path is the timestamp signer certificate
-// followed by its validated chain.
-func (s *Store) Qualify(path []*x509.Certificate, genTime time.Time) Decision {
-	return qualify(s.Lists(), path, genTime)
+// followed by its validated chain. territory is the trusted list of the
+// provider that issued the token, or "" if unknown (see qualify).
+func (s *Store) Qualify(path []*x509.Certificate, genTime time.Time, territory string) Decision {
+	return qualify(s.Lists(), path, genTime, territory)
 }
 
 // Lists returns the newest verified national lists, sorted by territory,

@@ -6,6 +6,7 @@ toolchain go1.27.4
 
 require (
 	github.com/beevik/etree v1.8.1
+	github.com/danieljoos/wincred v1.2.3
 	github.com/russellhaering/goxmldsig v1.6.1
 	github.com/signintech/gopdf v0.38.4
 	golang.org/x/crypto v0.59.0

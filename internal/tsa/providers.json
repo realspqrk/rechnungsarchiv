@@ -5,6 +5,7 @@
     "country": "ES",
     "url": "https://api.mensatek.com/tsaMENSATEK",
     "auth": "basic",
+    "expected_policies": ["0.4.0.2023.1.1", "1.3.6.1.4.1.57863.1.1"],
     "accuracy": "1s",
     "trusted_list": "ES"
   },
@@ -14,6 +15,7 @@
     "country": "SK",
     "url": "",
     "auth": "clientcert",
+    "url_from_contract": true,
     "accuracy": "1s",
     "trusted_list": "SK"
   },
@@ -32,7 +34,7 @@
     "country": "IT",
     "url": "https://servizi.arubapec.it/tsa/ngrequest.php",
     "auth": "basic",
-    "policy": "0.4.0.2023.1.1",
+    "expected_policies": ["0.4.0.2023.1.1"],
     "accuracy": "1s",
     "trusted_list": "IT"
   },

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/asn1"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -80,7 +81,7 @@ func TestStampEndToEnd(t *testing.T) {
 		t.Fatalf("attempts %+v", atts)
 	}
 	a := atts[0]
-	off := VerifyOptions{Request: a.Request, Policy: tsatest.DefaultPolicy, Anchors: opts.Anchors, Intermediates: a.Material.Chain}
+	off := VerifyOptions{Request: a.Request, Policies: []asn1.ObjectIdentifier{tsatest.DefaultPolicy}, Anchors: opts.Anchors, Intermediates: a.Material.Chain}
 	tok2 := must(VerifyResponse(a.TSR, off))
 	checks, err := ValidateMaterial(tok2, a.Material)
 	if err != nil {

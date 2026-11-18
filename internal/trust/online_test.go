@@ -55,11 +55,11 @@ func TestOnlineRefresh(t *testing.T) {
 	if cur := mensatek.History[len(mensatek.History)-1]; cur.Status != StatusGranted || cur.Start.Format("2006-01-02") != "2026-11-04" {
 		t.Errorf("Mensatek current status %s since %s, want granted since 2026-11-04", cur.Status, cur.Start)
 	}
-	if d := s.Qualify(mensatek.Certs, now); d.Result != Qualified || d.Territory != "ES" || !d.FetchedOnline {
+	if d := s.Qualify(mensatek.Certs, now, ""); d.Result != Qualified || d.Territory != "ES" || !d.FetchedOnline {
 		t.Errorf("Mensatek: %+v", d)
 	}
 	disig := onlineService(t, s.list("SK"), "(198) CA Disig Qualified TSA 1")
-	if d := s.Qualify(disig.Certs, now); d.Result != Qualified || d.Territory != "SK" {
+	if d := s.Qualify(disig.Certs, now, ""); d.Result != Qualified || d.Territory != "SK" {
 		t.Errorf("Disig: %+v", d)
 	}
 

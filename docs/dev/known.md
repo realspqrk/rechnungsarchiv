@@ -22,6 +22,10 @@
 - `digitorus/timestamp` and `digitorus/pkcs7` have no semver tags: pin pseudo-versions via `go get ...@master` once, then keep go.sum.
 - `gofmt -l .` also walks `.claude/worktrees/` (other agents' checkouts) and reports their files; `go vet ./...` and `go test ./...` skip dot-dirs. Judge only paths outside `.claude/`, or run `gofmt -l internal cmd app`.
 - gopdf output is byte-deterministic only if `PdfInfo.CreationDate` stays zero (it writes `/ID [()()]`, no other timestamp). Two embedded Go font subsets make a one-page invoice ~23 KB.
+- A `"\uFEFF"` escape written into Go source through the Write tool arrived as a literal BOM character, and Go refuses it (`invalid BOM in the middle of the file`). Spell the CSV BOM as `"\xef\xbb\xbf"` (`internal/export`).
+- gopdf: `AddPage` and our page footer change the current font, so text drawn after an automatic page break continued in the 7.5 pt footer font. `internal/report` remembers the caller's font and restores it after the footer.
+- A sample Archivprotokoll is easiest to review by writing it to the scratchpad from a throw-away test and opening it with the Read tool (it renders pages and extracts the text; gopdf embeds ToUnicode maps).
+- The end-to-end tests of `verify`, `stamp` and `export` are `//go:build testtsa` (they register a test provider). Plain `go test ./...` shows `[no test files]` for those packages; run `go test -tags testtsa ./...` as well.
 
 ## Research hygiene
 - Prices: always confirm on the provider's *current product/order page*, not dated blog/news articles. GLOBALTRUST's EUR 20/100-stamp tier exists only in 2022/23 articles; the product page starts at EUR 185/1,000 (checked 2026-11-18).
@@ -43,6 +47,7 @@
 - The LOTL lists both PDF and XML pointers. Select the one with `MimeType=application/vnd.etsi.tsl+xml`.
 - Signed XML must stay byte-exact: `internal/trust/` and `testdata/trust/` have their own `.gitattributes` (`-text`/binary) overriding the root `eol=lf`.
 - Worktree guard: Bash commands containing the substring "git" (e.g. `github.com`, `.gitattributes`) are refused inside agent worktrees. Use PowerShell or script files instead.
+- Tests outside `internal/trust` use real XML-signed synthetic lists (`internal/trust/trusttest`) through `trust.OpenTest` (testtsa only). `OpenTest` replaces the package-level LOTL pins for the whole test binary; tests inside package `trust` must restore them with `t.Cleanup`.
 
 ## Bag, ZIP and archive folder (internal/bag, internal/archive)
 - `archive/zip` cannot write the Ablage profile: `CreateHeader` always sets flag 0x8 (data descriptor) and a non-zero `FileHeader.Modified` adds an 0x5455 extra field. `internal/bag/zipwrite.go` is a minimal Stored writer that patches CRC into the local header after streaming. `CreateRaw` writes headers exactly as given (it ignores `Modified`), which makes it the tool for crafting malicious test ZIPs.
@@ -61,6 +66,7 @@
 - Read-only before commit: `(*os.File).Chmod(0o444)` works on Windows on the open write handle, `MoveFileEx` renames a read-only file, and `os.Remove` clears `READONLY` by itself on Windows.
 - Crafting bad ZIPs: `zip.Writer.SetOffset(n)` after writing n junk bytes gives data in front of the first entry with consistent offsets. For an archive comment, append bytes and patch the last 2 bytes of the EOCD. To swap the central order but not the physical order, rewrite the CD records by hand (`swapCentral` in `internal/bag/hardening_test.go`).
 - `tsa.writeNew` names its temp files `.tmp-*` (a prefix). Archive recovery deletes only `*.tmp` (a suffix), so stale evidence temp files are never cleaned up (they are harmless: `ReadAttempts` ignores them).
+- `internal/archive` exports no writer lock and no provider setter yet. `stamp.Options.Lock` takes the lock function from the caller; `internal/testenv` rewrites `rechnungsarchiv.json` as canonical JSON and reopens the archive.
 
 ## RFC 3161 / ASN.1 (internal/tsa)
 - `encoding/asn1` Unmarshal: a RawValue tagged `explicit,tag:0` comes back still wrapped; unwrap it by hand.
@@ -74,3 +80,5 @@
   - Aruba: returns JSON error bodies.
   - GLOBALTRUST: the full chain only on ports 10080 and 13080.
   - FreeTSA: now ECDSA with no OCSP/CRL, so use DigiCert for RSA interop tests.
+- `tsatest` tokens carry no accuracy unless `TokenParams.Accuracy` is set; `internal/testenv` sets 1 s by default. Without a token accuracy and without a known provider (single ZIP or export: no `rechnungsarchiv.json`), verify asserts no "spätestens" time.
+- The test TSA runs over HTTPS (`httptest.NewTLSServer` plus `tsa.Client.RootCAs`), so `AllowHTTP` is not needed. "Offline" is simulated by hijacking and closing the connection in `TSA.SetReply`; the client maps that to reason `offline`.

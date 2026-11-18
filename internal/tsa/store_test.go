@@ -72,6 +72,12 @@ func TestReadAttemptsPairsByImprint(t *testing.T) {
 	if len(got) != 2 || got[0].N != 1 || got[1].N != 7 || !bytes.Equal(got[1].TSQ, r3.DER) {
 		t.Fatalf("matched %+v", got)
 	}
+	// A corrupt chain of one attempt must not hide the others.
+	os.WriteFile(filepath.Join(dir, "7.chain.pem"), []byte("-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"), 0o644)
+	atts = must(ReadAttempts(dir))
+	if len(atts) != 3 || atts[2].MaterialErr == nil || atts[2].Material != nil || atts[0].MaterialErr != nil {
+		t.Fatalf("corrupt chain: %+v", atts)
+	}
 	if n := must(NextAttempt(dir)); n != 8 {
 		t.Fatalf("next %d", n)
 	}
