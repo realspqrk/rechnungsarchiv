@@ -451,9 +451,37 @@ func parse(args []string) (*invocation, error) {
 	}
 	if words[0] == "help" {
 		inv.help = true
-		inv.cmd = find(strings.Join(rest, " "))
-		if len(rest) > 0 && inv.cmd == nil {
-			inv.cmd = find(rest[0])
+		// Global flags (--json …) may stand anywhere; the remaining words
+		// name the command.
+		var topic []string
+		for j := 0; j < len(rest); j++ {
+			s := rest[j]
+			if !strings.HasPrefix(s, "-") || s == "-" {
+				topic = append(topic, s)
+				continue
+			}
+			if s == "-h" || s == "--help" {
+				continue
+			}
+			name, val, hasVal := splitFlag(s)
+			spec := lookup(globalFlags, name)
+			if spec == nil {
+				return nil, unknownFlag(name)
+			}
+			if spec.Kind != boolFlag && !hasVal {
+				if j+1 >= len(rest) {
+					return nil, usageErr("--"+name+" braucht einen Wert", "")
+				}
+				j++
+				val = rest[j]
+			}
+			if err := inv.set(spec, val, hasVal || spec.Kind != boolFlag); err != nil {
+				return nil, err
+			}
+		}
+		inv.cmd = find(strings.Join(topic, " "))
+		if len(topic) > 0 && inv.cmd == nil {
+			inv.cmd = find(topic[0])
 		}
 		return inv, nil
 	}

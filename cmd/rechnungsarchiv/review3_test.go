@@ -74,6 +74,33 @@ func TestProtocolNeverIntoArchive(t *testing.T) {
 		t.Fatalf("protocol wrote into the archive:\n%s", tree(t, dir))
 	}
 
+	// The destination is checked on its own: an input outside any archive
+	// (a copy of the zip) or inside another archive must not let the PDF
+	// into an archive.
+	dir2 := pendingArchive(t, w)
+	before2 := tree(t, dir2)
+	data, err := os.ReadFile(zip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ext := filepath.Join(t.TempDir(), filepath.Base(zip))
+	if err := os.WriteFile(ext, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"protocol", ext, "--out", filepath.Join(dir, "inside.pdf")},
+		{"protocol", ext, "--out", filepath.Join(alias, "inside.pdf")},
+		{"protocol", ext, "--out", filepath.Join(dir, "sub", "inside.pdf")},
+		{"protocol", zip, "--out", filepath.Join(dir2, "inside.pdf")},
+	} {
+		r := w.run("", args...)
+		r.want(t, 2)
+		r.errObj(t, "USAGE")
+	}
+	if tree(t, dir) != before || tree(t, dir2) != before2 {
+		t.Fatalf("protocol wrote into an archive:\n%s\n%s", tree(t, dir), tree(t, dir2))
+	}
+
 	// The documented inputs still work.
 	out := filepath.Join(t.TempDir(), "p.pdf")
 	if pr := w.run("", "protocol", zip, "--out", out).want(t, 0); pr["file"] != out {
@@ -193,6 +220,33 @@ func TestJSONBooleanSyntax(t *testing.T) {
 		if code == 0 || out != "" || isJSON(e) != c.json {
 			t.Fatalf("%v (tty %v): exit %d\n%s%s", c.args, c.tty, code, out, e)
 		}
+	}
+}
+
+// The help alias honours --json like every command, and the flag does not
+// disturb the command lookup.
+func TestHelpAliasJSONFlag(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		cmd  string
+	}{
+		{[]string{"help", "status", "--json"}, "status"},
+		{[]string{"help", "provider", "set", "--json=true"}, "provider set"},
+		{[]string{"help", "--json", "provider", "set"}, "provider set"},
+	} {
+		code, out, e := inProcess(t, true, c.args...)
+		var got map[string]string
+		if code != 0 || json.Unmarshal([]byte(out), &got) != nil {
+			t.Fatalf("%v: exit %d\n%s%s", c.args, code, out, e)
+		}
+		if want := helpText(find(c.cmd)); got["help"] != want {
+			t.Fatalf("%v: wrong help:\n%s", c.args, got["help"])
+		}
+	}
+	// --json=false stays human in a terminal.
+	code, out, _ := inProcess(t, true, "help", "status", "--json=false")
+	if code != 0 || json.Valid([]byte(strings.TrimSpace(out))) {
+		t.Fatalf("exit %d\n%s", code, out)
 	}
 }
 

@@ -946,10 +946,17 @@ func enclosingArchive(p string) (string, error) {
 // written and where the paths physically lead, so a junction or link to
 // the archive cannot smuggle the file in. archiveDir "" allows any target.
 func outsideArchive(target, archiveDir string) error {
+	refuse := usageErr("das Archivprotokoll wird nie in den Archivordner geschrieben", "--out <datei.pdf> außerhalb des Archivs angeben")
+	// The destination is judged on its own, whatever the input was: no
+	// physical ancestor of target may be an archive.
+	if enc, err := enclosingArchive(target); err != nil {
+		return err
+	} else if enc != "" {
+		return refuse
+	}
 	if archiveDir == "" {
 		return nil
 	}
-	refuse := usageErr("das Archivprotokoll wird nie in den Archivordner geschrieben", "--out <datei.pdf> außerhalb des Archivs angeben")
 	if within(target, archiveDir) {
 		return refuse
 	}
