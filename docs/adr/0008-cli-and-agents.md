@@ -20,6 +20,7 @@ The owner's projects ship a CLI next to the GUI so that scripts and AI agents ca
   | `providers` | List supported providers (no prices) |
   | `provider set <id> [--user <name>] [--p12 <datei>]` | Set the timestamp provider for this archive. Password / PKCS#12 password is read from **stdin only** and stored in the OS credential store (never as an argument) |
   | `provider show` | Show the configured provider and whether credentials exist on this PC (never the secret) |
+  | `protocol <nummer\|ablage.zip> [--out <datei\|ordner>]` | Save the Archivprotokoll PDF of one Ablage (spec §10), never into the archive folder |
   | `schema --json` | Machine-readable definition of all commands |
 
 - **Output rules:**
@@ -27,8 +28,12 @@ The owner's projects ship a CLI next to the GUI so that scripts and AI agents ca
   - Errors go to stderr as `{"error":{"code","message","hint","details"}}`.
   - Warnings go to stderr as `{"warning":"…"}` lines.
   - JSON keys are English; human-readable text is German.
+- **Archive resolution:** `--archiv`, else the current folder, else the archive last created with `init` (remembered in `%APPDATA%\Rechnungsarchiv\settings.json`).
+- **`archive` stamps right away**: it commits the Ablage and then runs `stamp`. If stamping fails (exit 3/6/7), the Ablage stays committed (`"committed": true`) and the hint says to run `stamp` later, not to archive again.
+- **Lock takeover:** `--take-over` (on `archive`/`stamp`) only together with `--yes`; a live writer's OS lock is never taken over.
 - **Consent:**
-  - `archive` and `export` in non-interactive mode require `--yes`. Both are irreversible or cost a stamp.
+  - `archive` and `export` in non-interactive mode require `--yes`. Both are irreversible or cost a stamp. In a terminal without `--json` they ask `[j/N]`; with `--json` the CLI never prompts.
+  - Secret-looking flags (`--password`, `--pin`, …) are refused (exit 2); error messages never echo argument values.
   - The agent rules (printed at the end of `--help`) say: run `--dry-run` first, and pass `--yes` only after the user has agreed to exactly that action.
 - **Agent rules in `--help`:**
   - start with `status --json`;
@@ -44,7 +49,7 @@ The owner's projects ship a CLI next to the GUI so that scripts and AI agents ca
   | 2 | usage error |
   | 3 | configuration error / no provider set |
   | 4 | archive locked by another PC |
-  | 5 | verification found Verändert / Ungültig |
+  | 5 | verification found Verändert / Ungültig, or any chain finding (Lücke, Nummer doppelt vergeben, …) |
   | 6 | something is Ausstehend or Unbestimmt |
   | 7 | provider error (access, credit, network) |
   | 8 | consent missing (`--yes`) |

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/realspqrk/rechnungsarchiv/internal/bag"
+	"github.com/realspqrk/rechnungsarchiv/internal/tsa"
 )
 
 // Status is the verification status of an Ablage (spec §6). The JSON values
@@ -81,8 +82,9 @@ type Report struct {
 	Online    bool      `json:"online"`
 	ArchiveID string    `json:"archive_id,omitempty"`
 	Company   string    `json:"company,omitempty"`
-	// Provider is the provider id used as a hint for declared accuracy and
-	// the trusted-list territory ("" if unknown).
+	// Provider is the provider configured for the archive ("" if unknown).
+	// It only selects which trusted lists are refreshed; facts about the
+	// issuer of a token come from the provider recorded with its attempt.
 	Provider string    `json:"provider,omitempty"`
 	Status   Status    `json:"status"` // worst Ablage status; Zeitgestempelt if there is none
 	Deposits []Deposit `json:"deposits"`
@@ -155,7 +157,8 @@ type Deposit struct {
 	Attempts []Attempt `json:"attempts,omitempty"`
 	Proven   *Proven   `json:"proven,omitempty"`
 
-	fileSeq int // number in the file name, 0 if none
+	fileSeq   int  // number in the file name, 0 if none
+	evaluated bool // the attempts were evaluated (the bag has a Prüfwert)
 }
 
 // Counts summarises the payload check (spec §6 step 3).
@@ -209,18 +212,26 @@ const (
 
 // Attempt is one stored attempt n of the Nachweis.
 type Attempt struct {
-	N       int     `json:"n"`
-	Outcome Outcome `json:"outcome"`
-	Detail  string  `json:"detail,omitempty"`
+	N int `json:"n"`
+	// Nachweis is the folder the attempt is stored in. Attempts pair with an
+	// Ablage by imprint, so it need not match the ZIP's name (spec §1).
+	Nachweis string  `json:"nachweis"`
+	Outcome  Outcome `json:"outcome"`
+	Detail   string  `json:"detail,omitempty"`
 	// Material reports that n.chain.pem was stored and readable.
 	Material bool `json:"material"`
 
-	token *tokenInfo
+	token   *tokenInfo
+	pending *tsa.Token // path incomplete: see IncompleteToken
 }
 
 // Token describes the token an Ablage's status rests on.
 type Token struct {
-	Attempt        int           `json:"attempt"`
+	Attempt int `json:"attempt"`
+	// Provider is the provider id recorded with the attempt (n.provider)
+	// when it matches the trusted-list service of the token's path; "" if
+	// unknown. Only then are its declared accuracy and its trusted list used.
+	Provider       string        `json:"provider,omitempty"`
 	GenTime        time.Time     `json:"gen_time"`
 	AccuracyMS     *int64        `json:"accuracy_ms,omitempty"`
 	AccuracySource string        `json:"accuracy_source,omitempty"` // "token", "provider" or ""

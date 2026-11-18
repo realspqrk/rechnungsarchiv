@@ -52,6 +52,39 @@ func TimeFull(t time.Time) string {
 	return Time(t) + " (" + off + ")"
 }
 
+// Exact is Time with the fraction of a second exactly as signed (trailing
+// zeros never appear in a DER genTime): "05.11.2026, 13:00:00,9 Uhr MEZ".
+// Use it for a raw genTime; belegt_spätestens is whole seconds (spec §6
+// step 8).
+func Exact(t time.Time) string {
+	z, _ := Zone(t)
+	return t.In(Vienna).Format("02.01.2006, 15:04:05,999999999") + " Uhr " + z
+}
+
+// ExactFull is Exact with the UTC offset.
+func ExactFull(t time.Time) string {
+	_, off := Zone(t)
+	return Exact(t) + " (" + off + ")"
+}
+
+// PSQuote returns s as a single-quoted PowerShell string literal, in which
+// nothing is expanded ($(…), $var, backticks). PowerShell also treats the
+// typographic quotes ‘ ’ ‚ ‛ as single quotes, so every one of them is
+// doubled like the apostrophe.
+func PSQuote(s string) string {
+	var b strings.Builder
+	b.WriteByte('\'')
+	for _, r := range s {
+		b.WriteRune(r)
+		switch r {
+		case '\'', '‘', '’', '‚', '‛':
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('\'')
+	return b.String()
+}
+
 // Date is "05.11.2026" in Vienna.
 func Date(t time.Time) string { return t.In(Vienna).Format("02.01.2006") }
 
@@ -150,7 +183,7 @@ func Proven(p *verify.Proven) string {
 	if p.At != nil {
 		s = "spätestens " + Time(*p.At)
 	} else {
-		s = "Zeitstempel vom " + Time(p.GenTime) + " (Genauigkeit nicht angegeben)"
+		s = "Zeitstempel vom " + Exact(p.GenTime) + " (Genauigkeit nicht angegeben)"
 	}
 	if p.Via != 0 {
 		s += " (über Ablage " + Number(p.Via) + ")"

@@ -11,7 +11,7 @@ MUST/SHOULD/MAY are used per RFC 2119. Rationale for decisions is in `adr/`. Cha
 ├── vertrauenslisten/             cached, signature-verified EU trusted lists (§7)
 ├── 0001_<Name>.zip               Ablage (immutable after commit)
 ├── 0001_<Name>.nachweis/         evidence for that Ablage (append-only)
-│   ├── 1.tsq  1.tsr  1.chain.pem  1.rev/…           attempt 1 (immutable files)
+│   ├── 1.tsq  1.provider  1.tsr  1.chain.pem  1.rev/…   attempt 1 (immutable files)
 │   └── 2.tsq  …                                      further attempts, if any
 └── …
 ```
@@ -26,7 +26,8 @@ MUST/SHOULD/MAY are used per RFC 2119. Rationale for decisions is in `adr/`. Cha
 - **Credentials** are kept per PC in the OS credential store (Windows Credential Manager), never in the archive:
   - HTTP Basic: user and password; or
   - a client certificate: the path to a PKCS#12 file, with its password in the credential store.
-- **Pairing:** a Nachweis belongs to an Ablage when `tsq.messageImprint == Prüfwert` of that bag. File names are only a hint.
+- **Pairing:** a Nachweis belongs to an Ablage when `tsq.messageImprint == Prüfwert` of that bag. All `*.nachweis` folders in scope (archive, export, or the folder next to a single ZIP) are indexed by imprint; file names are only a hint. Stamping keeps writing into the folder already in use.
+- **`n.provider`** holds the provider id used for attempt n. It is written after `n.tsq` and before sending, and is immutable.
 - **One writer.**
   - `.lock` holds `{host, user, pid, since}` as JSON.
   - A lock left by a dead pid on the same host MAY be taken over silently.
@@ -93,8 +94,9 @@ Value formats:
 3. Re-open it and verify it fully (§6 steps 1–4).
 4. Rename it to `.zip` with no-replace semantics and set the read-only attribute. *This is the commit.*
 5. Create `.nachweis/`. Each attempt writes new files with no-replace semantics:
-   - `n.tsq` before sending;
-   - then `n.tsr`, `n.chain.pem` and `n.rev/*`.
+   - `n.tsq` and `n.provider` before sending;
+   - `n.tsr`, then immediately `n.chain.pem` (the validated path, including AIA-fetched certificates);
+   - then `n.rev/*`, piece by piece.
 
    Existing files are never overwritten.
 6. Release `.lock`.
@@ -136,7 +138,7 @@ Value formats:
 - **Accept the evidence only if:**
   - it is signed by the issuing CA, or by an OCSP responder that CA authorized (`id-kp-OCSPSigning`);
   - the certID or issuer matches;
-  - **it covers genTime**: either its validity interval contains genTime (`thisUpdate ≤ genTime ≤ nextUpdate`, RFC 6960 semantics), or it was produced within 24 h after genTime while the certificate was still valid. If no such evidence can be obtained within 24 h, the attempt is discarded and a new timestamp is requested (new attempt, new genTime);
+  - **it covers genTime**: either its validity interval contains genTime (`thisUpdate ≤ genTime ≤ nextUpdate`, RFC 6960 semantics), or it was produced within 24 h after genTime while the certificate was still valid. Within 24 h only the missing pieces of the same attempt are fetched; no new timestamp is requested while the attempt can still be completed. If no such evidence can be obtained within 24 h, the attempt is discarded and a new timestamp is requested (new attempt, new genTime);
   - *Residual risk (documented):* a `certificateHold` set before genTime and lifted before the evidence was produced cannot be detected by any after-the-fact evidence (RFC 5280 `removeFromCRL`). This matches the limits of ETSI EN 319 102-1 validation.
   - the status is `good`, or the certificate is not listed.
 - `certificateHold` or any revoked status is not good.
@@ -163,16 +165,17 @@ For each Ablage:
 4. `Payload-Oxum`, `files.json` and the manifest must agree → **Ungültig** if not.
 5. Find the Nachweis by imprint (§1) and take the earliest attempt that is valid per §5. The provider's `expected_policies` are enforced when a token is accepted at stamping time. At verification the issuing provider may be unknown (archives can switch providers), so the policy is reported but not re-checked. If no verified trusted list is available at all (no anchors), the token is **Unbestimmt**, not Ungültig. A file-name number that differs from `chain.json` is an archive-level finding, not Ungültig (file names are only hints).
    - No valid attempt → **Ausstehend** (with the §5 reason). Attempts whose token passes the cryptographic checks (§5 items 1–7) but lack timely validation material count as discarded, not invalid.
-   - **Ungültig** only if no attempt is valid **and** some token fails a cryptographic check (§5 items 1–7).
+   - **Ungültig** only if no attempt is valid **and** some token fails a cryptographic check (§5 items 1–7). If a path cannot be built only because a stored issuer certificate is missing (top certificate not self-issued), the attempt is discarded (Ausstehend·prüfdaten), never green.
 6. **Qualification** (§7). The token is **qualifiziert** if all of these hold:
    - the signer certificate, or a CA in its path, is a `ServiceDigitalIdentity` of a service of type `…/Svctype/TSA/QTST`;
    - that service's status history shows `granted` over an interval containing genTime;
    - this is read from a signature-verified trusted list that is either **issued after genTime** (the issue date is covered by the list's signature), or that **this verifier run itself** retrieved online and verified after genTime. Cached retrieval metadata is never evidence. `NextUpdate` alone never establishes freshness (ETSI TS 119 612 §5.3.15).
 
    Otherwise the token is **unbestätigt**. This is normal for an offline check of a recent stamp; it resolves once a newer list is cached or the check runs online. If the conditions hold but the status is not `granted` at genTime, the token is **nicht qualifiziert**.
-7. **Key compromise.** If any valid revocation evidence (stored, or fetched online when available) shows the signer or a CA in its path revoked with reason `keyCompromise`, `cACompromise` or unspecified, the token is **Unbestimmt**, whatever the dates (RFC 3161 §4).
+7. **Key compromise.** Decided per certificate across the whole verified set (all attempts of all Ablagen, plus online evidence). If any valid revocation evidence shows the signer or a CA in its path revoked with reason `keyCompromise`, `cACompromise` or unspecified, the token is **Unbestimmt**, whatever the dates (RFC 3161 §4).
 8. **Proven time.** `belegt_spätestens` is genTime + accuracy, rounded **up to the full second** for display (e.g. 09:14:22 ± 1 s → "spätestens 09:14:23 Uhr MEZ"). The raw genTime and the accuracy are shown separately in the details.
-   - Accuracy comes from the token; if the token has none, from the provider's declared accuracy in `providers.json`.
+   - Accuracy comes from the token; if the token has none, from the declared accuracy of the provider recorded in `n.provider`, used only if that provider's trusted-list territory is consistent with the token's path. The configured provider never supplies facts for historical tokens.
+   - Details show the raw signed genTime exactly, including its fraction (e.g. "13:00:00,9 Uhr MEZ").
    - If neither exists, show genTime with the note "Genauigkeit nicht angegeben" and assert no exact latest time.
    - If the Ablage has no valid own token, it MAY instead inherit the earliest `belegt_spätestens` of a valid successor in the verified set, because every successor commits to it through the chain.
    - An inherited time is labelled "über Ablage N" and carries **that** token's qualification.
@@ -262,7 +265,7 @@ The document is an **objective statement of fact**. It contains no disclaimers, 
    - all times with time zone (local time + UTC offset);
    - trusted-list version used.
 4. **Dateiverzeichnis** (file list), **complete**: running number, path, size, original modification date, **full SHA-256**. Sorted by path. Continues over as many pages as needed.
-5. **Unabhängige Kontrolle** (independent verification), described factually: the exact command for the bundled verifier with quoted paths (`.\rechnungsarchiv.exe verify "<datei>.zip"`, run in the export folder), and a reference to the complete manual procedure in `PRUEFANLEITUNG.txt` / `VERIFY.txt`.
+5. **Unabhängige Kontrolle** (independent verification), described factually: the exact command for the bundled verifier with quoted paths (`.\rechnungsarchiv.exe verify '<datei>.zip'` (PowerShell single-quoted literal; `'` doubled), run in the export folder), and a reference to the complete manual procedure in `PRUEFANLEITUNG.txt` / `VERIFY.txt`.
 6. **Footer:** "Archivprotokoll Ablage NNNN · erstellt am … mit Rechnungsarchiv <version> · Seite x von y".
 
 **Format:**

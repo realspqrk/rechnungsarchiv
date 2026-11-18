@@ -149,7 +149,7 @@ func TestPDFCompleteAndDeterministic(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"Feststellung", "Angaben", "Dateiverzeichnis", "Unabhängige Kontrolle",
-		`.\rechnungsarchiv.exe verify "0011_2026-10 Eingangsrechnungen.zip"`, "Gewählte Frist: 7 Jahre, gewöhnliches Datum 31.12.2033",
+		`.\rechnungsarchiv.exe verify '0011_2026-10 Eingangsrechnungen.zip'`, "Gewählte Frist: 7 Jahre, gewöhnliches Datum 31.12.2033",
 		"PRUEFANLEITUNG.txt", "(UTC+01:00)", "nicht gesperrt"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("missing %q", want)
@@ -165,5 +165,51 @@ func TestPDFCompleteAndDeterministic(t *testing.T) {
 	}
 	if FileName(d) != "0011_2026-10 Eingangsrechnungen.archivprotokoll.pdf" {
 		t.Fatal(FileName(d))
+	}
+}
+
+// Finding 2: the command names the file as a single-quoted PowerShell
+// literal, so "$(…)" in a name is never evaluated.
+func TestCommandQuotesFileName(t *testing.T) {
+	for _, tc := range []struct{ file, want string }{
+		{"0011_$(Start-Process calc).zip", `.\rechnungsarchiv.exe verify '0011_$(Start-Process calc).zip'`},
+		{"0012_O'Brien.zip", `.\rechnungsarchiv.exe verify '0012_O''Brien.zip'`},
+		{"0013_Müller’s `x`.zip", `.\rechnungsarchiv.exe verify '0013_Müller’’s ` + "`x`" + `.zip'`},
+	} {
+		rep, d := sample(1)
+		d.File = tc.file
+		lines, err := Text(rep, d, Options{Version: "1.0.0"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, l := range lines {
+			found = found || l == tc.want
+		}
+		if !found {
+			t.Errorf("no line %q in %q", tc.want, lines)
+		}
+	}
+}
+
+// Finding 9: the details show the signed genTime with its fraction; only
+// belegt_spätestens is rounded up to the second.
+func TestGenTimeFractionInDetails(t *testing.T) {
+	rep, d := sample(1)
+	gen := time.Date(2026, 11, 5, 12, 0, 0, 900_000_000, time.UTC)
+	at := time.Date(2026, 11, 5, 12, 0, 2, 0, time.UTC)
+	d.Token.GenTime, d.Proven.GenTime, d.Proven.At = gen, gen, &at
+	lines, err := Text(rep, d, Options{Version: "1.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := strings.Join(lines, " ")
+	for _, want := range []string{"05.11.2026, 13:00:00,9 Uhr MEZ (UTC+01:00)", "spätestens 05.11.2026, 13:00:02 Uhr MEZ"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if s := Statement(rep, d); !strings.Contains(s, "vom 05.11.2026, 13:00:00,9 Uhr MEZ (± 1 s)") {
+		t.Errorf("statement: %s", s)
 	}
 }

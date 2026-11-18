@@ -29,7 +29,16 @@ var (
 	ErrNoArchive = errors.New("kein Archiv: rechnungsarchiv.json fehlt")
 	ErrExists    = errors.New("hier besteht bereits ein Archiv")
 	ErrReadOnly  = errors.New("Archiv ist nur zum Kontrollieren geöffnet")
+	// ErrBadConfig matches (errors.Is) every error about an unreadable,
+	// incomplete or unsupported rechnungsarchiv.json.
+	ErrBadConfig = errors.New("rechnungsarchiv.json ist ungültig")
 )
+
+// badConfig keeps its own message and matches ErrBadConfig.
+type badConfig string
+
+func (e badConfig) Error() string        { return string(e) }
+func (e badConfig) Is(target error) bool { return target == ErrBadConfig }
 
 // Config is rechnungsarchiv.json (spec §1).
 type Config struct {
@@ -72,9 +81,9 @@ type Deposit struct {
 
 // Init creates a new archive in dir (created if missing).
 func Init(dir, company string) (*Archive, error) {
-	company = strings.TrimSpace(company)
-	if company == "" || strings.ContainsAny(company, "\r\n\t") {
-		return nil, errors.New("Firmenname fehlt oder enthält Zeilenumbrüche")
+	company, err := checkCompany(company)
+	if err != nil {
+		return nil, err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -122,28 +131,38 @@ func OpenReadOnly(dir string) (*Archive, error) { return open(dir, true) }
 func (a *Archive) ReadOnly() bool { return a.readOnly }
 
 func open(dir string, readOnly bool) (*Archive, error) {
-	data, err := os.ReadFile(filepath.Join(dir, configFile))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, ErrNoArchive
-	}
+	cfg, err := readConfig(dir)
 	if err != nil {
 		return nil, err
 	}
-	a := &Archive{Dir: dir, readOnly: readOnly, now: time.Now, pid: os.Getpid(), nonce: randomHex16,
+	a := &Archive{Dir: dir, Config: cfg, readOnly: readOnly, now: time.Now, pid: os.Getpid(), nonce: randomHex16,
 		rename: renameNoReplace}
-	d := json.NewDecoder(strings.NewReader(string(data)))
-	d.DisallowUnknownFields()
-	if err := d.Decode(&a.Config); err != nil {
-		return nil, fmt.Errorf("rechnungsarchiv.json ist beschädigt: %v", err)
-	}
-	if a.Config.Format != bag.FormatVersion {
-		return nil, fmt.Errorf("rechnungsarchiv.json: Format %d wird nicht unterstützt", a.Config.Format)
-	}
-	if a.Config.ArchiveID == "" || !validRetention(a.Config.RetentionDefault) {
-		return nil, errors.New("rechnungsarchiv.json ist unvollständig")
-	}
 	a.user, a.host = identity()
 	return a, nil
+}
+
+// readConfig reads and checks rechnungsarchiv.json.
+func readConfig(dir string) (Config, error) {
+	var c Config
+	data, err := os.ReadFile(filepath.Join(dir, configFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return c, ErrNoArchive
+	}
+	if err != nil {
+		return c, err
+	}
+	d := json.NewDecoder(strings.NewReader(string(data)))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&c); err != nil {
+		return c, badConfig(fmt.Sprintf("rechnungsarchiv.json ist beschädigt: %v", err))
+	}
+	if c.Format != bag.FormatVersion {
+		return c, badConfig(fmt.Sprintf("rechnungsarchiv.json: Format %d wird nicht unterstützt", c.Format))
+	}
+	if c.ArchiveID == "" || !validRetention(c.RetentionDefault) {
+		return c, badConfig("rechnungsarchiv.json ist unvollständig")
+	}
+	return c, nil
 }
 
 // recover runs crash recovery (spec §4) while holding the lock: it deletes

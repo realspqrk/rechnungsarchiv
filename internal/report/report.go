@@ -117,7 +117,7 @@ func build(rep *verify.Report, d *verify.Deposit) []block {
 	if t := d.Token; t != nil {
 		own := "Zeitstempel"
 		kv(own+": Anbieter", strings.TrimSpace(t.TSP+" "+paren(t.Service)))
-		kv(own+": Zeitpunkt", present.TimeFull(t.GenTime))
+		kv(own+": Zeitpunkt", present.ExactFull(t.GenTime)) // as signed, with its fraction
 		acc := present.Accuracy(t.AccuracyMS)
 		switch t.AccuracySource {
 		case "token":
@@ -173,7 +173,8 @@ func build(rep *verify.Report, d *verify.Deposit) []block {
 	bs = append(bs,
 		block{kind: kHeading, text: "Unabhängige Kontrolle"},
 		block{kind: kPara, text: "Das Prüfprogramm liegt dem Export für die Betriebsprüfung bei. Im Exportordner in PowerShell:"},
-		block{kind: kMono, text: `.\rechnungsarchiv.exe verify "` + d.File + `"`},
+		// A single-quoted literal: a name like "0011_$(…).zip" is never run.
+		block{kind: kMono, text: `.\rechnungsarchiv.exe verify ` + present.PSQuote(d.File)},
 		block{kind: kPara, text: "Die Kontrolle ohne dieses Programm (mit sha256sum und openssl) beschreiben PRUEFANLEITUNG.txt im Exportordner und VERIFY.txt in der Ablage vollständig. Maßgeblich ist das Ergebnis der Prüfung; dieses Protokoll gibt es wieder."},
 	)
 	return bs

@@ -15,16 +15,13 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/realspqrk/rechnungsarchiv/internal/archive"
-	"github.com/realspqrk/rechnungsarchiv/internal/bag"
 	"github.com/realspqrk/rechnungsarchiv/internal/creds"
 	"github.com/realspqrk/rechnungsarchiv/internal/stamp"
 	"github.com/realspqrk/rechnungsarchiv/internal/trust"
@@ -117,24 +114,14 @@ func (e *Env) PublishLists(issue time.Time) {
 	})
 }
 
-// SetProvider writes the provider id into rechnungsarchiv.json ("" = none)
-// and reopens the archive. (internal/archive has no setter yet.)
+// SetProvider sets the provider id in rechnungsarchiv.json ("" = none).
 func (e *Env) SetProvider(id string) {
 	e.T.Helper()
-	cfg := e.Archive.Config
-	cfg.TSA = nil
+	var p *string
 	if id != "" {
-		cfg.TSA = &id
+		p = &id
 	}
-	data, err := bag.CanonicalJSON(bag.Obj{"archive_id": cfg.ArchiveID, "company": cfg.Company, "format": cfg.Format,
-		"retention_default": cfg.RetentionDefault, "tsa": cfg.TSA})
-	if err != nil {
-		e.T.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(e.Dir, "rechnungsarchiv.json"), data, 0o644); err != nil {
-		e.T.Fatal(err)
-	}
-	if e.Archive, err = archive.Open(e.Dir); err != nil {
+	if err := e.Archive.SetProvider(p); err != nil {
 		e.T.Fatal(err)
 	}
 }
@@ -228,16 +215,7 @@ func (e *Env) RootCAs() *x509.CertPool {
 
 // StampOptions returns ready stamping options.
 func (e *Env) StampOptions(s *trust.Store) stamp.Options {
-	return stamp.Options{Trust: s, Creds: e.Creds, Lock: NoLock, RootCAs: e.RootCAs()}
-}
-
-var lockMu sync.Mutex
-
-// NoLock stands in for the archive writer lock, which internal/archive does
-// not export yet.
-func NoLock() (func(), error) {
-	lockMu.Lock()
-	return lockMu.Unlock, nil
+	return stamp.Options{Trust: s, Creds: e.Creds, Lock: e.Archive.Lock, RootCAs: e.RootCAs()}
 }
 
 // Stamp runs stamp.Run with a fresh normal-mode trust store.

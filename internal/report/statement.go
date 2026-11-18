@@ -53,7 +53,7 @@ func nonEmpty(s, alt string) string {
 
 // tokenSentence states the token and its qualification (spec §6 step 6).
 func tokenSentence(t *verify.Token, subject string) string {
-	s := fmt.Sprintf("Für %s besteht ein Zeitstempel %s vom %s (%s); ", subject, issuer(t), present.Time(t.GenTime), present.Accuracy(t.AccuracyMS))
+	s := fmt.Sprintf("Für %s besteht ein Zeitstempel %s vom %s (%s); ", subject, issuer(t), present.Exact(t.GenTime), present.Accuracy(t.AccuracyMS))
 	switch t.Qualification {
 	case verify.Qualified:
 		s += "der Dienst war laut EU-Vertrauensliste zu diesem Zeitpunkt ein qualifizierter Zeitstempeldienst nach der eIDAS-Verordnung."
@@ -71,7 +71,7 @@ func matchedSentence(rep *verify.Report, d *verify.Deposit, p *verify.Proven, wh
 	if p.At != nil {
 		return s + fmt.Sprintf("den %s spätestens für den %s belegt.", which, present.Time(*p.At))
 	}
-	return s + fmt.Sprintf("für den %s den %s angibt; eine Genauigkeit ist nicht angegeben, ein spätester Zeitpunkt wird daher nicht genannt.", which, present.Time(p.GenTime))
+	return s + fmt.Sprintf("für den %s den %s angibt; eine Genauigkeit ist nicht angegeben, ein spätester Zeitpunkt wird daher nicht genannt.", which, present.Exact(p.GenTime))
 }
 
 // Statement is the Feststellung (spec §10): a factual paragraph that says
@@ -114,7 +114,7 @@ func Statement(rep *verify.Report, d *verify.Deposit) string {
 
 	case verify.StatusIndeterminate:
 		if t := d.Token; t != nil && t.Compromised {
-			b = append(b, fmt.Sprintf("Für diesen Prüfwert besteht ein Zeitstempel %s vom %s.", issuer(t), present.Time(t.GenTime)))
+			b = append(b, fmt.Sprintf("Für diesen Prüfwert besteht ein Zeitstempel %s vom %s.", issuer(t), present.Exact(t.GenTime)))
 			b = append(b, fmt.Sprintf("Laut Sperrinformation ist das Zertifikat des Dienstes oder einer übergeordneten Zertifizierungsstelle widerrufen (Grund: %s). Damit ist nicht ausgeschlossen, dass der Zeitstempel nachträglich erstellt wurde; sein Zeitpunkt ist nicht belegt.", revocationReason(t)))
 		} else {
 			b = append(b, "Für diesen Prüfwert liegt ein Zeitstempel vor, der mangels geprüfter EU-Vertrauensliste nicht geprüft werden konnte; sein Zeitpunkt ist nicht belegt.")

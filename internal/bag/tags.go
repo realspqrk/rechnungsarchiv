@@ -140,6 +140,11 @@ func (c *Chain) render() ([]byte, error) {
 	return CanonicalJSON(Obj{"archive_id": c.ArchiveID, "format": c.Format, "previous": c.Previous, "sequence": c.Sequence})
 }
 
+// ParseChain parses chain.json bytes and checks them as the bag check does
+// (spec §3): canonical JCS, known format, a valid previous Prüfwert that is
+// null exactly for sequence 1. Verification of Brückendaten uses it.
+func ParseChain(data []byte) (*Chain, error) { return parseChain(data) }
+
 func parseChain(data []byte) (*Chain, error) {
 	var c Chain
 	if err := decodeCanonical(data, &c, func() ([]byte, error) { return c.render() }); err != nil {

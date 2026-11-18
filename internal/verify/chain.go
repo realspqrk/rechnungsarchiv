@@ -1,10 +1,10 @@
 package verify
 
 import (
-	"bytes"
+	"cmp"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -61,7 +61,7 @@ func readBridges(dir string) ([]Bridge, error) {
 		}
 		out = append(out, b)
 	}
-	slices.SortFunc(out, func(a, b Bridge) int { return a.Sequence - b.Sequence })
+	slices.SortFunc(out, func(a, b Bridge) int { return cmp.Compare(a.Sequence, b.Sequence) })
 	return out, nil
 }
 
@@ -79,20 +79,14 @@ func checkBridge(seq int, tm, cj []byte) (*bag.Chain, error) {
 	if !found {
 		return nil, errors.New("chain.json passt nicht zu tagmanifest-sha256.txt")
 	}
-	var c bag.Chain
-	dec := json.NewDecoder(bytes.NewReader(cj))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&c); err != nil {
-		return nil, fmt.Errorf("chain.json nicht lesbar: %v", err)
+	c, err := bag.ParseChain(cj)
+	if err != nil {
+		return nil, err
 	}
-	canon, err := bag.CanonicalJSON(bag.Obj{"archive_id": c.ArchiveID, "format": c.Format, "previous": c.Previous, "sequence": c.Sequence})
-	if err != nil || !bytes.Equal(canon, cj) {
-		return nil, errors.New("chain.json ist nicht kanonisch")
+	if c.Sequence != seq {
+		return nil, fmt.Errorf("chain.json nennt Nummer %d", c.Sequence)
 	}
-	if c.Format != bag.FormatVersion || c.Sequence != seq || c.ArchiveID == "" || (c.Previous == nil) != (c.Sequence == 1) {
-		return nil, errors.New("chain.json enthält ungültige Werte")
-	}
-	return &c, nil
+	return c, nil
 }
 
 // node is one sequence entry of the verified set: an Ablage or a bridge.
@@ -105,10 +99,13 @@ type node struct {
 	dep       *Deposit // nil for a bridge
 }
 
-// chain applies spec §6 step 9 and the inheritance of step 8.
-func chain(rep *Report) {
+// chain applies spec §6 step 9 and the inheritance of step 8. It works on
+// the sequence numbers present only: gaps are computed arithmetically, so
+// a number like 10^12 costs nothing (sequences are ≥ 1, so differences
+// cannot overflow).
+func chain(ctx context.Context, rep *Report) error {
 	if rep.Mode == ModeDeposit {
-		return
+		return nil
 	}
 	var nodes []node
 	for i := range rep.Deposits {
@@ -117,21 +114,21 @@ func chain(rep *Report) {
 			rep.Findings = append(rep.Findings, Finding{Code: FindingFileNameMismatch, Sequence: d.Sequence,
 				Detail: fmt.Sprintf("%s: chain.json nennt Nummer %d", d.File, d.Sequence)})
 		}
-		if d.ArchiveID == "" {
+		if d.ArchiveID == "" || d.Sequence < 1 {
 			continue // chain.json unreadable: reported as Ungültig/Verändert
 		}
 		nodes = append(nodes, node{seq: d.Sequence, root: d.Root, archiveID: d.ArchiveID, previous: d.Previous,
 			intact: tagsIntact(d), dep: d})
 	}
 	for _, b := range rep.Bridged {
-		if !b.Valid {
+		if !b.Valid || b.chain == nil || b.Sequence < 1 {
 			rep.Findings = append(rep.Findings, Finding{Code: FindingBridgeInvalid, Sequence: b.Sequence, Detail: b.Detail})
 			continue
 		}
 		nodes = append(nodes, node{seq: b.Sequence, root: b.Root, archiveID: b.chain.ArchiveID, previous: b.chain.Previous, intact: true})
 	}
 	if len(nodes) == 0 {
-		return
+		return ctx.Err()
 	}
 
 	// archive_id is the same everywhere.
@@ -162,43 +159,47 @@ func chain(rep *Report) {
 	} else if lo > 1 {
 		rep.Findings = append(rep.Findings, Finding{Code: FindingPredecessorNotInExport, Sequence: lo})
 	}
+	var seqs []int // the numbers present in lo..hi, ascending
 	for _, s := range slices.Sorted(maps.Keys(bySeq)) {
 		if len(bySeq[s]) > 1 {
 			rep.Findings = append(rep.Findings, Finding{Code: FindingDuplicateNumber, Sequence: s})
 		}
-	}
-	for s := lo; s <= hi; s++ {
-		if len(bySeq[s]) > 0 {
-			continue
+		if s >= lo && s <= hi {
+			seqs = append(seqs, s)
 		}
-		to := s
-		for to+1 <= hi && len(bySeq[to+1]) == 0 {
-			to++
-		}
-		rep.Findings = append(rep.Findings, Finding{Code: FindingGap, Sequence: s, To: to})
-		s = to
 	}
 
-	// previous equals the predecessor's Prüfwert.
+	// Sequence numbers are contiguous; previous equals the predecessor's
+	// Prüfwert. Only adjacent numbers present are compared.
 	linked := map[int]bool{} // seq s commits to seq s-1
-	for s := lo + 1; s <= hi; s++ {
-		cur, prev := bySeq[s], bySeq[s-1]
-		if len(cur) != 1 || len(prev) != 1 || !cur[0].intact || prev[0].root == "" {
-			continue
+	prev := lo - 1           // lo ≥ 1 in archive mode; 0 or more otherwise
+	for _, s := range seqs {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		if cur[0].previous == nil || *cur[0].previous != prev[0].root {
-			rep.Findings = append(rep.Findings, Finding{Code: FindingPreviousMismatch, Sequence: s})
-			continue
+		if s-prev > 1 {
+			rep.Findings = append(rep.Findings, Finding{Code: FindingGap, Sequence: prev + 1, To: s - 1})
+		} else if s-prev == 1 && s > lo {
+			cur, before := bySeq[s], bySeq[prev]
+			if len(cur) == 1 && len(before) == 1 && cur[0].intact && before[0].root != "" {
+				if cur[0].previous == nil || *cur[0].previous != before[0].root {
+					rep.Findings = append(rep.Findings, Finding{Code: FindingPreviousMismatch, Sequence: s})
+				} else {
+					linked[s] = before[0].intact
+				}
+			}
 		}
-		linked[s] = prev[0].intact
+		prev = s
 	}
 
 	inherit(rep, bySeq, linked, hi)
-	slices.SortStableFunc(rep.Findings, func(a, b Finding) int { return a.Sequence - b.Sequence })
+	slices.SortStableFunc(rep.Findings, func(a, b Finding) int { return cmp.Compare(a.Sequence, b.Sequence) })
+	return ctx.Err()
 }
 
 // inherit gives an Ablage without a valid own token the earliest
 // belegt_spätestens of a valid successor it is linked to (spec §6 step 8).
+// The walk follows linked numbers only, so it is bounded by their count.
 func inherit(rep *Report, bySeq map[int][]node, linked map[int]bool, hi int) {
 	for i := range rep.Deposits {
 		d := &rep.Deposits[i]
@@ -207,15 +208,15 @@ func inherit(rep *Report, bySeq map[int][]node, linked map[int]bool, hi int) {
 			continue
 		}
 		var best *Proven
-		for s := d.Sequence + 1; s <= hi && linked[s]; s++ {
-			n := bySeq[s][0]
+		for s := d.Sequence; s < hi && linked[s+1]; s++ {
+			n := bySeq[s+1][0]
 			if n.dep == nil || n.dep.Status != StatusTimestamped || n.dep.Proven == nil || n.dep.Proven.Via != 0 {
 				continue
 			}
 			p := n.dep.Proven
 			if best == nil || earlier(p, best) {
 				c := *p
-				c.Via = s
+				c.Via = s + 1
 				best = &c
 			}
 		}

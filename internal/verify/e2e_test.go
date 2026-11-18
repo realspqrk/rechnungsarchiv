@@ -294,8 +294,14 @@ func TestDeclaredAccuracyNeedsKnownProvider(t *testing.T) {
 	if d.Token.AccuracySource != "provider" || d.Proven.At == nil {
 		t.Fatalf("%s", testenv.JSON(d.Token))
 	}
-	// A single ZIP names no provider: no exact latest time is asserted.
-	r, err := verify.Path(context.Background(), zipPath(e, 1, "A"), verify.Options{Trust: e.Trust()})
+	// A single ZIP copied without its Nachweis' provider record names no
+	// provider: no exact latest time is asserted.
+	dir := t.TempDir()
+	b, _ := os.ReadFile(zipPath(e, 1, "A"))
+	os.WriteFile(filepath.Join(dir, "0001_A.zip"), b, 0o444)
+	copyDir(t, filepath.Join(e.Dir, "0001_A.nachweis"), filepath.Join(dir, "0001_A.nachweis"))
+	os.Remove(filepath.Join(dir, "0001_A.nachweis", "1.provider"))
+	r, err := verify.Path(context.Background(), filepath.Join(dir, "0001_A.zip"), verify.Options{Trust: e.Trust()})
 	if err != nil {
 		t.Fatal(err)
 	}

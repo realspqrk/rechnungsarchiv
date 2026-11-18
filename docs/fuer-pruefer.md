@@ -28,10 +28,10 @@ Nicht belegt sind die Echtheit der Rechnungen, die Richtigkeit ihres Inhalts, di
 
 ## Kontrolle in zwei Minuten
 
-In PowerShell, im Exportordner. Pfade in Anführungszeichen:
+In PowerShell, im Exportordner. Pfade in einfachen Anführungszeichen; so wertet PowerShell Zeichen wie `$` im Namen nicht aus:
 
 ```powershell
-.\rechnungsarchiv.exe verify "<Export-Ordner>"
+.\rechnungsarchiv.exe verify '<Export-Ordner>'
 echo $LASTEXITCODE
 ```
 

@@ -107,7 +107,7 @@ So prüfen Sie selbst: `rechnungsarchiv.exe` auf das exportierte Archiv oder ein
 
 ## Kommandozeile & KI-Agenten
 
-Ein Programm: `rechnungsarchiv`. Die grafische Oberfläche und die Kommandozeile verwenden dieselbe Prüfung. Die Befehlsbeschreibung steht in [docs/cli.md](docs/cli.md) (in Arbeit).
+Ein Programm: `rechnungsarchiv`. Die grafische Oberfläche und die Kommandozeile verwenden dieselbe Prüfung. Die Befehlsbeschreibung steht in [docs/cli.md](docs/cli.md).
 
 Beispiel, ein neues Archiv und die erste Ablage. Das Passwort liest das Programm von der Standardeingabe, nie als Argument:
 
@@ -142,7 +142,7 @@ rechnungsarchiv export --von <jahr> --bis <jahr> <ziel> --yes
 | 7 | Fehler beim Anbieter (Zugang, Guthaben, Netz) |
 | 8 | Zustimmung fehlt (`--yes`) |
 
-Weitere Befehle: `init`, `stamp`, `providers` (ohne Preise), `schema --json`.
+Weitere Befehle: `init`, `stamp`, `providers` (ohne Preise), `provider show` (nie das Passwort), `protocol <nummer>` (Archivprotokoll einer Ablage als PDF), `schema --json`. Nach `init` verwenden die Befehle dieses Archiv, solange weder `--archiv` angegeben ist noch der aktuelle Ordner ein Archiv ist.
 
 ## Rechtlicher Rahmen
 

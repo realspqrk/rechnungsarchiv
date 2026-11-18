@@ -31,9 +31,10 @@ type Options struct {
 	// status (spec §6 step 7, §7).
 	Online  bool
 	Fetcher *tsa.Fetcher
-	// Provider is a provider id used as a hint for the declared accuracy and
-	// the trusted-list territory. In archive mode it defaults to the
-	// provider in rechnungsarchiv.json.
+	// Provider is the configured provider id; it only selects the national
+	// trusted list to refresh. In archive mode it defaults to the provider
+	// in rechnungsarchiv.json. Declared accuracy and the trusted-list hint
+	// come only from the provider recorded with each attempt (n.provider).
 	Provider string
 	// Reasons are Ausstehend reasons known from the last stamping run, keyed
 	// by Prüfwert. They take precedence over what the evidence shows.
@@ -72,7 +73,7 @@ func Archive(ctx context.Context, dir string, opts Options) (*Report, error) {
 	if opts.Provider == "" && a.Config.TSA != nil {
 		opts.Provider = *a.Config.TSA
 	}
-	e, rep, err := start(ctx, ModeArchive, dir, opts)
+	e, rep, err := start(ctx, ModeArchive, dir, dir, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -82,23 +83,30 @@ func Archive(ctx context.Context, dir string, opts Options) (*Report, error) {
 		return nil, err
 	}
 	for _, d := range deps {
-		dep, err := e.deposit(d.Path, d.EvidenceDir, d.Sequence, d.Name)
+		dep, err := e.deposit(d.Path, filepath.Base(d.EvidenceDir), d.Sequence, d.Name)
 		if err != nil {
 			return nil, err
 		}
+		rep.Deposits = append(rep.Deposits, *dep)
+	}
+	e.settle(rep.Deposits)
+	for i := range rep.Deposits {
+		dep := &rep.Deposits[i]
+		dep.evidence(e)
 		if dep.Status == StatusPending && dep.Reason == "" && a.Config.TSA == nil {
 			dep.Reason = ReasonNoProvider
 		}
-		rep.Deposits = append(rep.Deposits, *dep)
 	}
-	finish(e, rep, opts, nil)
+	if err := finish(ctx, rep, opts, nil); err != nil {
+		return nil, err
+	}
 	return rep, nil
 }
 
 // Export verifies an export folder (spec §8): only the evidence inside it
 // counts, excluded Ablagen are bridged by Brückendaten.
 func Export(ctx context.Context, dir string, opts Options) (*Report, error) {
-	e, rep, err := start(ctx, ModeExport, dir, opts)
+	e, rep, err := start(ctx, ModeExport, dir, dir, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -107,24 +115,30 @@ func Export(ctx context.Context, dir string, opts Options) (*Report, error) {
 		return nil, err
 	}
 	for _, z := range zips {
-		dep, err := e.deposit(filepath.Join(dir, z.file), filepath.Join(dir, strings.TrimSuffix(z.file, ".zip")+".nachweis"), z.seq, z.name)
+		dep, err := e.deposit(filepath.Join(dir, z.file), strings.TrimSuffix(z.file, ".zip")+".nachweis", z.seq, z.name)
 		if err != nil {
 			return nil, err
 		}
 		rep.Deposits = append(rep.Deposits, *dep)
 	}
+	e.settle(rep.Deposits)
+	for i := range rep.Deposits {
+		rep.Deposits[i].evidence(e)
+	}
 	bridges, err := readBridges(filepath.Join(dir, BridgeDir))
 	if err != nil {
 		return nil, err
 	}
-	finish(e, rep, opts, bridges)
+	if err := finish(ctx, rep, opts, bridges); err != nil {
+		return nil, err
+	}
 	return rep, nil
 }
 
 // Single verifies a single Ablage ZIP or extracted bag directory. Its
-// Nachweis is looked up next to it.
+// Nachweis is found by imprint among the *.nachweis folders next to it.
 func Single(ctx context.Context, path string, opts Options) (*Report, error) {
-	e, rep, err := start(ctx, ModeDeposit, path, opts)
+	e, rep, err := start(ctx, ModeDeposit, path, filepath.Dir(filepath.Clean(path)), opts)
 	if err != nil {
 		return nil, err
 	}
@@ -135,32 +149,62 @@ func Single(ctx context.Context, path string, opts Options) (*Report, error) {
 		seq, _ = strconv.Atoi(m[1])
 		name = m[2]
 	}
-	evDir := filepath.Join(filepath.Dir(path), stem+".nachweis")
-	dep, err := e.deposit(path, evDir, seq, name)
+	dep, err := e.deposit(path, stem+".nachweis", seq, name)
 	if err != nil {
 		return nil, err
 	}
 	rep.Deposits = append(rep.Deposits, *dep)
-	finish(e, rep, opts, nil)
+	e.settle(rep.Deposits)
+	rep.Deposits[0].evidence(e)
+	if err := finish(ctx, rep, opts, nil); err != nil {
+		return nil, err
+	}
 	return rep, nil
 }
 
-// Attempts evaluates the stored attempts for one Prüfwert, as verification
-// does (spec §6 step 5). Stamping uses it to find Ablagen without a valid
-// attempt.
-func Attempts(ctx context.Context, evidenceDir, root string, opts Options) ([]Attempt, error) {
-	e, _, err := start(ctx, ModeDeposit, evidenceDir, opts)
+// Evidence evaluates the stored attempts of each Prüfwert in roots as
+// verification does (spec §6 steps 5 and 7), without checking the bags:
+// attempts pair by imprint across every *.nachweis folder of dir, and
+// key-compromise evidence stored with any of them counts for all. hints
+// maps a Prüfwert to its file-name folder, which is listed first. Stamping
+// uses it to find Ablagen without a valid attempt.
+func Evidence(ctx context.Context, dir string, roots []string, hints map[string]string, opts Options) (map[string][]Attempt, error) {
+	e, _, err := start(ctx, ModeArchive, dir, dir, opts)
 	if err != nil {
 		return nil, err
 	}
-	r, err := parseRoot(root)
-	if err != nil {
-		return nil, err
+	deps := make([]Deposit, len(roots))
+	for i, root := range roots {
+		r, err := parseRoot(root)
+		if err != nil {
+			return nil, err
+		}
+		if deps[i].Attempts, err = e.evaluate(r, hints[root]); err != nil {
+			return nil, err
+		}
+		deps[i].Root = root
 	}
-	return e.evaluate(evidenceDir, r)
+	e.settle(deps)
+	out := map[string][]Attempt{}
+	for _, d := range deps {
+		out[d.Root] = d.Attempts
+	}
+	return out, nil
 }
 
-func start(ctx context.Context, mode Mode, path string, opts Options) (*env, *Report, error) {
+// Attempts is Evidence for the single Prüfwert root, with evidenceDir as
+// its file-name folder and the folder around it as the scope.
+func Attempts(ctx context.Context, evidenceDir, root string, opts Options) ([]Attempt, error) {
+	m, err := Evidence(ctx, filepath.Dir(evidenceDir), []string{root}, map[string]string{root: filepath.Base(evidenceDir)}, opts)
+	if err != nil {
+		return nil, err
+	}
+	return m[root], nil
+}
+
+// start prepares a run over the verified set whose Nachweise are the
+// *.nachweis folders of scope.
+func start(ctx context.Context, mode Mode, path, scope string, opts Options) (*env, *Report, error) {
 	if opts.Trust == nil {
 		return nil, nil, ErrNoTrust
 	}
@@ -175,10 +219,8 @@ func start(ctx context.Context, mode Mode, path string, opts Options) (*env, *Re
 		}
 	}
 	e := &env{ctx: ctx, trust: opts.Trust, anchors: opts.Trust.Anchors(), online: opts.Online, fetcher: opts.Fetcher, now: now()}
-	if opts.Provider != "" {
-		if p, ok := tsa.ProviderByID(opts.Provider); ok {
-			e.provider = &p
-		}
+	if err := e.init(scope); err != nil {
+		return nil, nil, err
 	}
 	return e, rep, nil
 }
@@ -199,7 +241,7 @@ func Territories(s *trust.Store, provider string) []string {
 	return slices.Compact(out)
 }
 
-func finish(e *env, rep *Report, opts Options, bridges []Bridge) {
+func finish(ctx context.Context, rep *Report, opts Options, bridges []Bridge) error {
 	for _, l := range opts.Trust.Lists() {
 		_, online := l.FetchedOnline()
 		rep.TrustLists = append(rep.TrustLists, TrustList{Territory: l.Territory, Sequence: l.Sequence, IssueDate: l.IssueDate.UTC(), FetchedOnline: online})
@@ -221,7 +263,9 @@ func finish(e *env, rep *Report, opts Options, bridges []Bridge) {
 			rep.Company = d.Company // Source-Organization, without rechnungsarchiv.json
 		}
 	}
-	chain(rep)
+	if err := chain(ctx, rep); err != nil {
+		return err
+	}
 	rep.Status = StatusTimestamped
 	for _, d := range rep.Deposits {
 		rep.Status = Worse(rep.Status, d.Status)
@@ -232,10 +276,16 @@ func finish(e *env, rep *Report, opts Options, bridges []Bridge) {
 	if rep.TrustLists == nil {
 		rep.TrustLists = []TrustList{}
 	}
+	return nil
 }
 
-// deposit runs spec §6 steps 1–8 (without inheritance) for one Ablage.
-func (e *env) deposit(path, evDir string, seq int, name string) (*Deposit, error) {
+// deposit runs spec §6 steps 1–4 for one Ablage and evaluates its attempts;
+// hint is the Nachweis folder its file name suggests. settle and evidence
+// complete steps 5–8 once the whole set is evaluated.
+func (e *env) deposit(path, hint string, seq int, name string) (*Deposit, error) {
+	if err := e.ctx.Err(); err != nil {
+		return nil, err
+	}
 	res, err := bag.Check(path)
 	if err != nil {
 		return nil, err
@@ -285,10 +335,10 @@ func (e *env) deposit(path, evDir string, seq int, name string) (*Deposit, error
 	if err != nil {
 		return nil, err
 	}
-	if d.Attempts, err = e.evaluate(evDir, root); err != nil {
+	if d.Attempts, err = e.evaluate(root, hint); err != nil {
 		return nil, err
 	}
-	d.evidence(e)
+	d.evaluated = true
 	return d, nil
 }
 
@@ -325,8 +375,13 @@ func (d *Deposit) files(res *bag.Result) {
 	d.Counts.Added, d.Counts.Ignored = len(res.Added), len(res.Ignored)
 }
 
-// evidence applies spec §6 steps 5–8 to the evaluated attempts.
+// evidence applies spec §6 steps 5–8 to the attempts, after settle has
+// applied key compromise across the set: the earliest valid attempt that
+// no compromise affects decides.
 func (d *Deposit) evidence(e *env) {
+	if !d.evaluated {
+		return
+	}
 	var valid, compromisedAt *Attempt
 	invalid, noTrust, discarded, rejected := false, false, false, false
 	for i := range d.Attempts {

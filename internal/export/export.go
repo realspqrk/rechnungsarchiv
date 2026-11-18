@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -67,7 +69,8 @@ func Run(ctx context.Context, src, dst string, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := checkTarget(src, dst); err != nil {
+	g, err := checkTarget(src, dst)
+	if err != nil {
 		return nil, err
 	}
 	deps, err := a.Deposits()
@@ -88,22 +91,41 @@ func Run(ctx context.Context, src, dst string, opts Options) (*Result, error) {
 	if len(selected) == 0 {
 		return nil, fmt.Errorf("keine Ablage mit Belegjahr %d bis %d", opts.From, opts.To)
 	}
+	// Nachweise pair with Ablagen by imprint, whatever their names (spec §1).
+	nachweise, err := verify.Nachweise(src)
+	if err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return nil, err
+	}
+	if err := g.check(); err != nil { // again, now that dst exists
 		return nil, err
 	}
 
 	// The Ablagen and their Nachweise, unchanged.
+	copied := map[string]bool{}
 	for _, d := range selected {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if err := copyFile(d.Path, filepath.Join(dst, filepath.Base(d.Path)), 0o444); err != nil {
 			return nil, err
 		}
-		if err := copyTree(d.EvidenceDir, filepath.Join(dst, filepath.Base(d.EvidenceDir))); err != nil {
-			return nil, err
+		for _, n := range nachweise[d.Bag.Root] {
+			if copied[n] {
+				continue
+			}
+			copied[n] = true
+			if err := copyTree(filepath.Join(src, n), filepath.Join(dst, n)); err != nil {
+				return nil, err
+			}
 		}
 		res.Exported = append(res.Exported, d.Sequence)
 	}
 
-	// Brückendaten for excluded Ablagen between the first and last one.
+	// Brückendaten for excluded Ablagen between the first and last one. Only
+	// the numbers present are visited, however far apart they are.
 	first, last := selected[0].Sequence, selected[len(selected)-1].Sequence
 	inSel := map[string]bool{}
 	for _, d := range selected {
@@ -115,17 +137,24 @@ func Run(ctx context.Context, src, dst string, opts Options) (*Result, error) {
 			bySeq[d.Sequence] = append(bySeq[d.Sequence], d)
 		}
 	}
-	for seq := first + 1; seq < last; seq++ {
+	bridged := false
+	for _, seq := range slices.Sorted(maps.Keys(bySeq)) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		ds := bySeq[seq]
-		switch {
-		case len(ds) == 0:
-			continue // selected, or missing in the source (a gap the report shows)
-		case len(ds) > 1 || ds[0].Err != nil:
+		if len(ds) > 1 || ds[0].Err != nil {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("Für Ablage %s können keine Brückendaten geschrieben werden (nicht lesbar oder Nummer doppelt vergeben).", present.Number(seq)))
 			continue
 		}
+		if !bridged {
+			if err := mkNew(filepath.Join(dst, verify.BridgeDir)); err != nil {
+				return nil, err
+			}
+			bridged = true
+		}
 		dir := filepath.Join(dst, verify.BridgeDir, present.Number(seq))
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := mkNew(dir); err != nil {
 			return nil, err
 		}
 		if err := writeNew(filepath.Join(dir, verify.ChainFile), ds[0].Bag.ChainJSON); err != nil {
@@ -164,7 +193,10 @@ func Run(ctx context.Context, src, dst string, opts Options) (*Result, error) {
 	}
 	res.Report = rep
 
-	if err := os.MkdirAll(filepath.Join(dst, ProtocolsDir), 0o755); err != nil {
+	if err := g.check(); err != nil { // right before writing the generated files
+		return nil, err
+	}
+	if err := mkNew(filepath.Join(dst, ProtocolsDir)); err != nil {
 		return nil, err
 	}
 	for i := range rep.Deposits {
@@ -205,42 +237,13 @@ func setDefaults(o *Options) {
 	}
 }
 
-// checkTarget refuses a target inside the source archive (or the other way
-// round) and a target that already has content.
-func checkTarget(src, dst string) error {
-	as, err1 := filepath.Abs(src)
-	ad, err2 := filepath.Abs(dst)
-	if err := errors.Join(err1, err2); err != nil {
-		return err
-	}
-	if within(ad, as) || within(as, ad) {
-		return errors.New("Der Exportordner darf nicht im Archiv liegen (und das Archiv nicht im Exportordner)")
-	}
-	des, err := os.ReadDir(dst)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if len(des) > 0 {
-		return errors.New("Der Exportordner ist nicht leer")
-	}
-	return nil
-}
-
-func within(p, dir string) bool {
-	rel, err := filepath.Rel(dir, p)
-	return err == nil && (rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))))
-}
-
 var reList = regexp.MustCompile(`^[A-Z]{2}-[0-9]{1,9}(-[0-9]{1,3})?\.xml$`)
 
 // copyLists refreshes the source's trusted lists (never into the archive)
 // and writes every cached and every loaded list into the export.
 func copyLists(ctx context.Context, src, dst, provider string, opts Options, res *Result) error {
 	out := filepath.Join(dst, trust.DirName)
-	if err := os.MkdirAll(out, 0o755); err != nil {
+	if err := mkNew(out); err != nil {
 		return err
 	}
 	s, err := opts.SourceTrust(src)
@@ -355,7 +358,7 @@ func copyTree(src, dst string) error {
 		target := filepath.Join(dst, rel)
 		switch {
 		case de.IsDir():
-			return os.MkdirAll(target, 0o755)
+			return mkNew(target)
 		case strings.HasPrefix(de.Name(), ".tmp-") || strings.HasSuffix(de.Name(), ".tmp"):
 			return nil
 		case !de.Type().IsRegular():

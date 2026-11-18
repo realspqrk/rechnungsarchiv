@@ -47,38 +47,11 @@ func (a *Archive) Archive(folder string, opts Options) (*Deposit, error) {
 	if a.readOnly {
 		return nil, ErrReadOnly
 	}
-	name := opts.Name
-	if name == "" {
-		name = filepath.Base(filepath.Clean(folder))
-	}
-	// Check the name and the longest file name derived from it.
-	why := bag.ValidateComponent(name)
-	if why == "" {
-		why = bag.ValidateComponent("0000_" + name + ".nachweis")
-	}
-	if why != "" {
-		return nil, fmt.Errorf("Name der Ablage ungültig: %q (%s)", name, why)
-	}
-	year := opts.Belegjahr
-	if year == 0 {
-		year = BelegjahrFromName(name)
-	}
-	if year == 0 {
-		return nil, ErrNeedBelegjahr
-	}
-	if year < 1900 || year > 2999 {
-		return nil, fmt.Errorf("Belegjahr %d ist ungültig", year)
-	}
-	years := opts.RetentionYears
-	if years == 0 {
-		years = a.Config.RetentionDefault
-	}
-	if !validRetention(years) {
-		return nil, errors.New("Aufbewahrungsfrist muss 7, 10, 12 oder 22 Jahre betragen")
-	}
-	if err := a.notInside(folder); err != nil {
+	r, err := a.Resolve(folder, opts)
+	if err != nil {
 		return nil, err
 	}
+	name, year, years := r.Name, r.Belegjahr, r.RetentionYears
 	in, err := bag.Scan(folder)
 	if err != nil {
 		return nil, err

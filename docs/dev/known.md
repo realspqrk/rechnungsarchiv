@@ -6,15 +6,19 @@
 3. [Research hygiene](#research-hygiene)
 4. [Review loop / harness-subagent](#review-loop--harness-subagent)
 5. [EU trusted lists (internal/trust)](#eu-trusted-lists-internaltrust)
-6. [RFC 3161 / ASN.1 (internal/tsa)](#rfc-3161--asn1-internaltsa)
 6. [Bag, ZIP and archive folder (internal/bag, internal/archive)](#bag-zip-and-archive-folder-internalbag-internalarchive)
-7. [GUI (Wails v3)](#gui-wails-v3)
+7. [RFC 3161 / ASN.1 (internal/tsa)](#rfc-3161--asn1-internaltsa)
+8. [GUI (Wails v3)](#gui-wails-v3)
+9. [CLI (cmd/rechnungsarchiv)](#cli-cmdrechnungsarchiv)
+10. [Verification, stamping, export (internal/verify, internal/stamp, internal/export)](#verification-stamping-export-internalverify-internalstamp-internalexport)
 
 ## Environment (Windows / Git Bash)
 - `gh api /path` in Git Bash: MSYS rewrites the leading `/` into `C:/Program Files/Git/...`. Use `MSYS_NO_PATHCONV=1 gh api licenses/apache-2.0` (no leading slash).
 - Long multi-file heredocs in one Bash call can fail with `unexpected EOF while looking for matching '` (quote chars in Markdown). Write docs with the Write tool, one file per call.
 - The Bash tool collapses `\\` to `\` even inside a quoted heredoc (`<<'EOF'`), so inline Python patches that contain backslashes silently write the wrong bytes. Write patch scripts with the Write tool and build backslashes with `chr(92)`.
 - WSL Ubuntu has no Go. To run the Unix code paths (flock, link, symlinks), cross-compile the test binary (`GOOS=linux go test -c -o <scratch>/x.test ./internal/archive`) and run it in WSL from the package directory under `/mnt/d/...` (relative `testdata` paths).
+- Python `open(p, 'w')` on Windows writes CRLF. Patched Go files then show up in `gofmt -l`; open with `newline=''` or run `gofmt -w` afterwards.
+- PowerShell treats the typographic quotes `‘ ’ ‚ ‛` (U+2018–U+201B) as single quotes: `'a’b'` ends at `’`. A single-quoted literal must double each of them like `'` (`present.PSQuote`). Double quotes expand `$(…)`, `$var` and backticks, so a file name like `0011_$(Start-Process calc).zip` runs code. A script piped to `powershell -Command -` is read in the OEM code page; tests pass Unicode with `-EncodedCommand` (UTF-16LE, base64).
 
 ## Go / toolchain / libraries
 - System Go is 1.25.6; Wails v3 needs Go >= 1.26. go.mod pins `toolchain go1.27.4` so `go` auto-downloads it (GOTOOLCHAIN=auto). Do not upgrade system Go. Verified 2026-11-18: download works.
@@ -28,6 +32,8 @@
 - A sample Archivprotokoll is easiest to review by writing it to the scratchpad from a throw-away test and opening it with the Read tool (it renders pages and extracts the text; gopdf embeds ToUnicode maps).
 - The end-to-end tests of `verify`, `stamp` and `export` are `//go:build testtsa` (they register a test provider). Plain `go test ./...` shows `[no test files]` for those packages; run `go test -tags testtsa ./...` as well.
 - `go test -race` fails here (`-race requires cgo`; there is no C toolchain). Concurrency tests must be deterministic without it: gate the fake HTTP transport on channels (`gatedWeb` in `internal/trust/store_synth_test.go`), or repeat a barrier-started race many times.
+- `golang.org/x/sys/windows` has `GetFinalPathNameByHandle` but no `VOLUME_NAME_DOS` constant (it is 0). The result carries a `\\?\` or `\\?\UNC\` prefix; strip it before comparing paths (`internal/export/target_windows.go`).
+- `x509.UnknownAuthorityError.Cert` is the topmost certificate path building reached, not necessarily the leaf: for signer → intermediate with the root missing it is the intermediate; for a foreign PKI with its self-signed root in the bag it is that root. `internal/verify` uses it to tell missing path material (Ausstehend·prüfdaten) from a demonstrated failure (Ungültig).
 
 ## Research hygiene
 - Prices: always confirm on the provider's *current product/order page*, not dated blog/news articles. GLOBALTRUST's EUR 20/100-stamp tier exists only in 2022/23 articles; the product page starts at EUR 185/1,000 (checked 2026-11-18).
@@ -75,7 +81,7 @@
 - Read-only before commit: `(*os.File).Chmod(0o444)` works on Windows on the open write handle, `MoveFileEx` renames a read-only file, and `os.Remove` clears `READONLY` by itself on Windows.
 - Crafting bad ZIPs: `zip.Writer.SetOffset(n)` after writing n junk bytes gives data in front of the first entry with consistent offsets. For an archive comment, append bytes and patch the last 2 bytes of the EOCD. To swap the central order but not the physical order, rewrite the CD records by hand (`swapCentral` in `internal/bag/hardening_test.go`).
 - Archive recovery deletes only `*.tmp` (a suffix). Every temp file inside the archive must therefore end in `.tmp`. `tsa.WriteNew` names them `.<name>.<random>.tmp`; until 2026-11-18 it used `.tmp-*`, and recovery never cleaned those up.
-- `internal/archive` exports no writer lock and no provider setter yet. `stamp.Options.Lock` takes the lock function from the caller; `internal/testenv` rewrites `rechnungsarchiv.json` as canonical JSON and reopens the archive.
+- `Archive.Lock` is the real OS-level writer lock; pass it as `stamp.Options.Lock` (the CLI and `internal/testenv` do). Settings go through `SetProvider`, `SetCompany` and `SetRetentionDefault`: they re-read `rechnungsarchiv.json` under the lock and replace it canonically. Never write the file by hand.
 
 ## RFC 3161 / ASN.1 (internal/tsa)
 - `encoding/asn1` Unmarshal: a RawValue tagged `explicit,tag:0` comes back still wrapped; unwrap it by hand.
@@ -102,3 +108,23 @@
 - Screenshots: `go build -tags server` serves the app over HTTP (`WAILS_SERVER_PORT`), so Playwright can shoot it (installed Edge, no download). Use viewport shots for modal dialogs. Native capture of WebView2 needs `PrintWindow(h, hdc, 2)`.
 - A worktree without its own go.mod silently uses the parent repo's module.
 - Markdown files written by tools may get CRLF. Embedded text parsers must normalize, and tests must not double-convert.
+
+## CLI (cmd/rechnungsarchiv)
+- The tests build the real binary in `TestMain` with `runtime.GOROOT()/bin/go` (the auto-downloaded toolchain) and run it as a child process. Under `-tags testtsa`, `e2e_test.go` sets `testTags`, so the binary is built with the tag too.
+- A testtsa binary reads `RECHNUNGSARCHIV_TESTENV` (`testhook_testtsa.go`): it registers the test provider, trusts the synthetic LOTL signer and the test TSA's TLS certificate, and keeps credentials in a JSON file instead of the Credential Manager. `trusttest.Web` is an in-process `RoundTripper`, so the test serves it through an `httptest` proxy (`GET <proxy>?u=<url>`). Release builds do not contain the hook.
+- The `rechnungsarchiv.exe` inside a test export is that testtsa binary, so the auditor run needs the same environment variable.
+- The default archive lives in `%APPDATA%\Rechnungsarchiv\settings.json`. Every CLI test sets `APPDATA` and `XDG_CONFIG_HOME` to a temp folder; without that, tests read and overwrite the developer's real default archive.
+- Child processes have no console: stdin from a `strings.Reader` and stdout into a buffer are pipes, so output is JSON and the run is not interactive. Human output is tested in-process through `run()` with `stdoutTTY: true`. A test that calls `loadTestEnv` in-process changes the global `sys`; restore it with `t.Cleanup`.
+- JSON output escapes every non-ASCII character (`ü` → `ü`) for PowerShell 5.1. Decode it before comparing German text.
+- Windows PowerShell 5.1 pipes text to native programs in ASCII (`$OutputEncoding`), so umlauts in a piped password arrive as `?`, and it appends CRLF. The CLI strips CR/LF and a BOM; the docs tell users to type non-ASCII passwords at the prompt.
+- Error messages must never repeat an unknown flag's value or an unexpected argument: it may be a password. `safeWord` repeats only `[a-z0-9-]{1,24}`, and `--password`, `--pin` and similar get a fixed hint.
+- Trusted lists carry second precision. `PublishLists(time.Now())` right after a stamp can be issued in the same second as genTime, so an offline check still says `unbestätigt`. Assert `qualified` only after `verify --online` in the same run.
+- Several agents share the main working tree. `gofmt -l internal` then lists other agents' half-done files, and `go test ./...` fails in their packages; format only your own files and judge only your packages.
+
+## Verification, stamping, export (internal/verify, internal/stamp, internal/export)
+- Nachweise pair with Ablagen by the imprint of `n.tsq`, not by folder name (spec §1). `verify.Nachweise` indexes every `*.nachweis` folder of the scope; `verify.Evidence` (stamping) and `export` use it. A deposit's `archive.Deposit.EvidenceDir` is only the file-name hint.
+- Key compromise is decided per certificate across the whole verified set (`env.settle`): stored evidence of every attempt of every Ablage is pooled by CertKey and authenticated against each path's issuer. Evaluate all deposits first, then settle, then `Deposit.evidence`; calling `evidence` per deposit misses evidence stored with later Ablagen.
+- `tsatest` truncates `TokenParams.GenTime` to whole seconds, so fractional genTimes cannot be produced end to end. Test the display (`present.Exact`, Archivprotokoll) with a synthetic `verify.Report`.
+- `tsa.ReadAttempts` keeps one evidence file per CertKey (directory order: `.ocsp` wins over `.crl`), and evidence files are never replaced. A stored but unacceptable `.ocsp` therefore shadows a later good `.crl` for the same certificate, and a fresh OCSP answer cannot replace a stale one; stamping then reports `prüfdaten` for that piece until the 24 h window ends.
+- Stamping completes one certificate's evidence at a time by calling `Fetcher.Collect` on a synthetic token whose `Chain` is just `[cert, issuer]`: `Collect` returns no raw evidence at all when any piece fails, so a whole-token call would lose the pieces fetched in time.
+- Export target checks: `filepath.EvalSymlinks`/`os.Stat` are not enough on Windows (junctions). `internal/export` resolves the deepest existing ancestor with `GetFinalPathNameByHandle`, refuses any reparse point in the target path, creates every folder inside the export with `os.Mkdir` (never `MkdirAll`, which follows a planted junction) and re-checks before writing.

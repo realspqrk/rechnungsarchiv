@@ -56,7 +56,7 @@ chain.json: each Ablage names its predecessor → gaps/forks detectable; proven 
 | `internal/verify` | **The only** verification engine → `Report` |
 | `internal/export` | Export for the tax audit (spec §8) |
 | `internal/report` | Archivprotokoll PDF per Ablage: factual statement and complete file list, rendered from `verify.Report` (spec §10) |
-| `cmd/rechnungsarchiv` | CLI for scripts and AI agents (ADR-0008): `status`, `init`, `archive`, `stamp`, `verify`, `export`, `providers`, `schema`; JSON + fixed exit codes |
+| `cmd/rechnungsarchiv` | CLI for scripts and AI agents (ADR-0008): `status`, `init`, `archive`, `stamp`, `verify`, `export`, `providers`, `provider set/show`, `protocol`, `schema`; JSON + fixed exit codes |
 | `app/` | Wails v3 GUI, thin shell; credentials in Windows Credential Manager |
 
 ## Status (one source of truth: `verify.Report`, spec §6)
