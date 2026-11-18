@@ -5,7 +5,12 @@
 package trust
 
 import (
+	"bytes"
+	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/xml"
 	"errors"
@@ -39,7 +44,7 @@ type List struct {
 	Sequence   int       // TSLSequenceNumber
 	IssueDate  time.Time // ListIssueDateTime, covered by the list's signature
 	NextUpdate time.Time // zero if the list is closed
-	Services   []Service // QTST services only (national lists)
+	Services   []Service // services that were QTST at some time (national lists)
 	Raw        []byte    // the exact signed bytes
 
 	pointers []pointer // LOTL only
@@ -55,34 +60,130 @@ func (l *List) FetchedOnline() (time.Time, bool) {
 	return l.fetchedOnline, !l.fetchedOnline.IsZero()
 }
 
-// Service is a QTST service entry of a national trusted list.
+// Service is a service entry of a national trusted list whose current
+// information or history names the type QTST at least once.
 type Service struct {
 	TSPName string
 	Name    string
-	Certs   []*x509.Certificate // X509Certificate values of the ServiceDigitalIdentity
+	Certs   []*x509.Certificate // X509Certificate values of the current ServiceDigitalIdentity
 	History []StatusInterval    // ascending, contiguous; the last one is open-ended
 }
 
-// StatusInterval is a status that held from Start (inclusive) to End
-// (exclusive). A zero End means the status is still current.
+// StatusInterval is what the list states about a service from Start
+// (inclusive) to End (exclusive): its status, its service type and its
+// ServiceDigitalIdentity. A zero End means the entry is still current.
+// ServiceHistoryInstance entries carry their own type and identity: a service
+// that is QTST now may have been an ordinary TSA, or have had other
+// certificates, before.
 type StatusInterval struct {
 	Status string
+	Type   string // ServiceTypeIdentifier
 	Start  time.Time
 	End    time.Time
+	// The identity: parsed X509Certificate values or, if the entry has none
+	// (history instances usually carry only X509SKI), the X509SKI values.
+	Certs []*x509.Certificate
+	SKIs  [][]byte
+
+	byCert bool // the entry has X509Certificate elements (parseable or not)
 }
 
 func (iv StatusInterval) contains(t time.Time) bool {
 	return !t.Before(iv.Start) && (iv.End.IsZero() || t.Before(iv.End))
 }
 
-// statusAt returns the status URI that held at t, or "" if none did.
-func (s Service) statusAt(t time.Time) string {
+// at returns the entry that held at t.
+func (s Service) at(t time.Time) (StatusInterval, bool) {
 	for _, iv := range s.History {
 		if iv.contains(t) {
-			return iv.Status
+			return iv, true
 		}
 	}
-	return ""
+	return StatusInterval{}, false
+}
+
+// statusAt returns the status URI that held at t, or "" if none did.
+func (s Service) statusAt(t time.Time) string {
+	iv, _ := s.at(t)
+	return iv.Status
+}
+
+// qualificationAt applies spec §6 step 6 to the history entry for t: Qualified
+// if it has the type QTST, the status granted and an identity in path. All
+// three come from the same entry. An otherwise qualifying entry that states
+// no identity at all (an empty ServiceDigitalIdentity, seen in the FR list)
+// cannot decide: Unconfirmed. Else NotQualified.
+func (s Service) qualificationAt(path []*x509.Certificate, t time.Time) Result {
+	iv, ok := s.at(t)
+	switch {
+	case !ok || iv.Type != ServiceTypeQTST || iv.Status != StatusGranted:
+		return NotQualified
+	case !iv.byCert && len(iv.SKIs) == 0:
+		return Unconfirmed
+	case iv.identifies(path):
+		return Qualified
+	}
+	return NotQualified
+}
+
+// lists reports whether any entry of the service has an identity in path.
+func (s Service) lists(path []*x509.Certificate) bool {
+	for _, iv := range s.History {
+		if iv.identifies(path) {
+			return true
+		}
+	}
+	return false
+}
+
+// identifies reports whether a certificate of path has the entry's identity.
+//
+// With certificates, identity is subject plus public key, so a re-issued CA
+// certificate with the same key still matches (ETSI TS 119 615). Without
+// certificates, an X509SKI matches a certificate whose subjectKeyIdentifier
+// extension, or whose key hashed per RFC 5280 / RFC 7093 method 1, equals it.
+// An entry whose certificates Go cannot parse never matches (fail closed).
+func (iv StatusInterval) identifies(path []*x509.Certificate) bool {
+	for _, c := range path {
+		if iv.byCert {
+			for _, sdi := range iv.Certs {
+				if bytes.Equal(c.RawSubject, sdi.RawSubject) &&
+					bytes.Equal(c.RawSubjectPublicKeyInfo, sdi.RawSubjectPublicKeyInfo) {
+					return true
+				}
+			}
+			continue
+		}
+		ids := keyIDs(c)
+		for _, ski := range iv.SKIs {
+			for _, id := range ids {
+				if bytes.Equal(id, ski) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// keyIDs returns the key identifiers a certificate may be listed under: its
+// subjectKeyIdentifier extension and the SHA-1 (RFC 5280 §4.2.1.2) and the
+// truncated SHA-256 (RFC 7093 §2 method 1) of its subjectPublicKey.
+func keyIDs(c *x509.Certificate) [][]byte {
+	var ids [][]byte
+	if len(c.SubjectKeyId) > 0 {
+		ids = append(ids, c.SubjectKeyId)
+	}
+	var spki struct {
+		Algorithm pkix.AlgorithmIdentifier
+		PublicKey asn1.BitString
+	}
+	if rest, err := asn1.Unmarshal(c.RawSubjectPublicKeyInfo, &spki); err == nil && len(rest) == 0 {
+		h1 := sha1.Sum(spki.PublicKey.Bytes)
+		h256 := sha256.Sum256(spki.PublicKey.Bytes)
+		ids = append(ids, h1[:], h256[:20])
+	}
+	return ids
 }
 
 // pointer is an OtherTSLPointer of the LOTL to a machine-readable list.
@@ -131,6 +232,7 @@ type xmlServiceInfo struct {
 	Type   string    `xml:"ServiceTypeIdentifier"`
 	Names  []xmlName `xml:"ServiceName>Name"`
 	Certs  []string  `xml:"ServiceDigitalIdentity>DigitalId>X509Certificate"`
+	SKIs   []string  `xml:"ServiceDigitalIdentity>DigitalId>X509SKI"`
 	Status string    `xml:"ServiceStatus"`
 	Start  string    `xml:"StatusStartingTime"`
 }
@@ -225,7 +327,8 @@ func decodeServices(x *xmlTSL) ([]Service, error) {
 	var out []Service
 	for _, tsp := range x.TSPs {
 		for _, xs := range tsp.Services {
-			if strings.TrimSpace(xs.Info.Type) != ServiceTypeQTST {
+			entries := append([]xmlServiceInfo{xs.Info}, xs.History...)
+			if !slices.ContainsFunc(entries, func(e xmlServiceInfo) bool { return strings.TrimSpace(e.Type) == ServiceTypeQTST }) {
 				continue
 			}
 			s := Service{TSPName: pickName(tsp.Names), Name: pickName(xs.Info.Names)}
@@ -233,7 +336,7 @@ func decodeServices(x *xmlTSL) ([]Service, error) {
 			if s.Certs, err = parseCerts(xs.Info.Certs); err != nil {
 				return nil, fmt.Errorf("service %q: %w", s.Name, err)
 			}
-			s.History, err = buildHistory(append([]xmlServiceInfo{xs.Info}, xs.History...))
+			s.History, err = buildHistory(entries)
 			if errors.Is(err, errAmbiguousHistory) {
 				continue
 			}
@@ -246,8 +349,9 @@ func decodeServices(x *xmlTSL) ([]Service, error) {
 	return out, nil
 }
 
-// buildHistory turns the current status and the ServiceHistory instances into
-// contiguous intervals: each status holds until the next StatusStartingTime.
+// buildHistory turns the current information (entries[0]) and the
+// ServiceHistory instances into contiguous intervals: each entry, with its
+// status, type and identity, holds until the next StatusStartingTime.
 func buildHistory(entries []xmlServiceInfo) ([]StatusInterval, error) {
 	ivs := make([]StatusInterval, 0, len(entries))
 	for _, e := range entries {
@@ -255,14 +359,18 @@ func buildHistory(entries []xmlServiceInfo) ([]StatusInterval, error) {
 		if err != nil {
 			return nil, fmt.Errorf("StatusStartingTime: %w", err)
 		}
-		ivs = append(ivs, StatusInterval{Status: strings.TrimSpace(e.Status), Start: start})
+		iv := StatusInterval{Status: strings.TrimSpace(e.Status), Type: strings.TrimSpace(e.Type), Start: start}
+		iv.Certs, iv.SKIs, iv.byCert = parseIdentity(e)
+		ivs = append(ivs, iv)
 	}
+	// Stable: on equal starting times the current information stays first.
 	slices.SortStableFunc(ivs, func(a, b StatusInterval) int { return a.Start.Compare(b.Start) })
 	out := ivs[:0]
 	for _, iv := range ivs {
 		if n := len(out); n > 0 && out[n-1].Start.Equal(iv.Start) {
-			// Real lists repeat an entry when only the name changed.
-			if out[n-1].Status != iv.Status {
+			// Real lists repeat an entry when only the name changed. The
+			// first one is kept: the current information if it is among them.
+			if out[n-1].Status != iv.Status || out[n-1].Type != iv.Type {
 				return nil, errAmbiguousHistory
 			}
 			continue
@@ -275,9 +383,29 @@ func buildHistory(entries []xmlServiceInfo) ([]StatusInterval, error) {
 	return out, nil
 }
 
-// errAmbiguousHistory marks a service with two different statuses starting at
-// the same time. Such a service is skipped, so it can never decide.
-var errAmbiguousHistory = errors.New("two different statuses with the same starting time")
+// errAmbiguousHistory marks a service with two different statuses or types
+// starting at the same time. Such a service is skipped, so it can never
+// decide.
+var errAmbiguousHistory = errors.New("two different statuses or types with the same starting time")
+
+// parseIdentity decodes the ServiceDigitalIdentity of one entry. Unlike the
+// current certificates (parseCerts), bad values never reject the list here:
+// they just cannot match.
+func parseIdentity(e xmlServiceInfo) (certs []*x509.Certificate, skis [][]byte, byCert bool) {
+	if len(e.Certs) > 0 {
+		certs, _ = parseCerts(e.Certs)
+		return certs, nil, true
+	}
+	for i, v := range e.SKIs {
+		if i == maxCertsPerEntity {
+			break
+		}
+		if b, err := base64.StdEncoding.DecodeString(strings.Join(strings.Fields(v), "")); err == nil && len(b) > 0 {
+			skis = append(skis, b)
+		}
+	}
+	return nil, skis, false
+}
 
 func pickName(names []xmlName) string {
 	for _, n := range names {

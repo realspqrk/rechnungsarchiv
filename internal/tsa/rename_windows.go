@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path/filepath"
+	"strings"
 
 	"golang.org/x/sys/windows"
 )
@@ -12,11 +14,11 @@ import (
 // Windows replaces (MOVEFILE_REPLACE_EXISTING); MoveFileEx without that
 // flag does not.
 func renameNoReplace(from, to string) error {
-	f, err := windows.UTF16PtrFromString(from)
+	f, err := windows.UTF16PtrFromString(longPath(from))
 	if err != nil {
 		return err
 	}
-	t, err := windows.UTF16PtrFromString(to)
+	t, err := windows.UTF16PtrFromString(longPath(to))
 	if err != nil {
 		return err
 	}
@@ -25,4 +27,14 @@ func renameNoReplace(from, to string) error {
 		return fmt.Errorf("%s: %w", to, fs.ErrExist)
 	}
 	return err
+}
+
+// longPath adds the \\?\ prefix to long absolute paths. Raw Windows calls,
+// unlike os.*, get no automatic long-path handling.
+func longPath(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil || len(abs) < 240 || strings.HasPrefix(abs, `\`) {
+		return p
+	}
+	return `\\?\` + abs
 }

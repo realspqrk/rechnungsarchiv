@@ -261,6 +261,14 @@ func TestBuildHistoryDuplicates(t *testing.T) {
 	if err != errAmbiguousHistory {
 		t.Fatalf("err = %v", err)
 	}
+	// Same status, but QTST and an ordinary TSA at one instant: ambiguous too.
+	_, err = buildHistory([]xmlServiceInfo{
+		{Type: ServiceTypeQTST, Status: StatusGranted, Start: "2020-01-01T00:00:00Z"},
+		{Type: "http://uri.etsi.org/TrstSvc/Svctype/TSA", Status: StatusGranted, Start: "2020-01-01T00:00:00Z"},
+	})
+	if err != errAmbiguousHistory {
+		t.Fatalf("type conflict: err = %v", err)
+	}
 }
 
 // certsOf returns the SDI certificates of the named service.

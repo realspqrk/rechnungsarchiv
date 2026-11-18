@@ -8,6 +8,7 @@
 5. [EU trusted lists (internal/trust)](#eu-trusted-lists-internaltrust)
 6. [RFC 3161 / ASN.1 (internal/tsa)](#rfc-3161--asn1-internaltsa)
 6. [Bag, ZIP and archive folder (internal/bag, internal/archive)](#bag-zip-and-archive-folder-internalbag-internalarchive)
+7. [GUI (Wails v3)](#gui-wails-v3)
 
 ## Environment (Windows / Git Bash)
 - `gh api /path` in Git Bash: MSYS rewrites the leading `/` into `C:/Program Files/Git/...`. Use `MSYS_NO_PATHCONV=1 gh api licenses/apache-2.0` (no leading slash).
@@ -26,6 +27,7 @@
 - gopdf: `AddPage` and our page footer change the current font, so text drawn after an automatic page break continued in the 7.5 pt footer font. `internal/report` remembers the caller's font and restores it after the footer.
 - A sample Archivprotokoll is easiest to review by writing it to the scratchpad from a throw-away test and opening it with the Read tool (it renders pages and extracts the text; gopdf embeds ToUnicode maps).
 - The end-to-end tests of `verify`, `stamp` and `export` are `//go:build testtsa` (they register a test provider). Plain `go test ./...` shows `[no test files]` for those packages; run `go test -tags testtsa ./...` as well.
+- `go test -race` fails here (`-race requires cgo`; there is no C toolchain). Concurrency tests must be deterministic without it: gate the fake HTTP transport on channels (`gatedWeb` in `internal/trust/store_synth_test.go`), or repeat a barrier-started race many times.
 
 ## Research hygiene
 - Prices: always confirm on the provider's *current product/order page*, not dated blog/news articles. GLOBALTRUST's EUR 20/100-stamp tier exists only in 2022/23 articles; the product page starts at EUR 185/1,000 (checked 2026-11-18).
@@ -48,6 +50,13 @@
 - Signed XML must stay byte-exact: `internal/trust/` and `testdata/trust/` have their own `.gitattributes` (`-text`/binary) overriding the root `eol=lf`.
 - Worktree guard: Bash commands containing the substring "git" (e.g. `github.com`, `.gitattributes`) are refused inside agent worktrees. Use PowerShell or script files instead.
 - Tests outside `internal/trust` use real XML-signed synthetic lists (`internal/trust/trusttest`) through `trust.OpenTest` (testtsa only). `OpenTest` replaces the package-level LOTL pins for the whole test binary; tests inside package `trust` must restore them with `t.Cleanup`.
+- Each `ServiceHistoryInstance` has its own `ServiceTypeIdentifier` and `ServiceDigitalIdentity`. Take type, identity and status from the same entry. Pairing the current QTST type and certificates with an old status made earlier ordinary-TSA periods look qualified.
+- History SDIs in real lists carry no certificates, only `X509SubjectName` and `X509SKI`, and some (SK) carry only `X509SKI`. Match them by key identifier: the certificate's SKI extension, or the SHA-1 or truncated SHA-256 of its key. Subject-name strings are unreliable.
+- FR (Universign, granted 2019–2022) has a history entry with an empty `<ServiceDigitalIdentity/>`. Strict matching would wrongly say "nicht qualifiziert". `qualify` returns unbestätigt for such an entry and skips the provider hint.
+- The sequence number in a cache file name is unsigned. Renaming an older signed list to `CC-999999999.xml` once made it win. `load` accepts a file only if its name sequence equals the signed `TSLSequenceNumber`, so it can stop below the best signed sequence without verifying every old version. Different lists with the same sequence: the later signed `ListIssueDateTime` wins, and the conflict is reported in `Problems`.
+- Refresh rollback check: compare against the list in use under the store mutex at install time, not against a copy taken before the fetch. Two concurrent refreshes otherwise let a delayed older list replace a newer one.
+- The cache publishes with `tsa.WriteNew` (no-replace rename), never `os.Rename`. Concurrent saves of different lists with the same sequence then go to `-2`, `-3`, … instead of replacing each other. On Windows a concurrent `os.Rename` onto the same target also fails with "Access is denied".
+- Windows: `os.ReadFile(name)` while another goroutine `MoveFileEx`es a file onto `name` can fail with "being used by another process" (a sharing violation, not `ErrNotExist`). An existence pre-check must not treat that as fatal. `trust.save` then leaves the decision to `WriteNew`.
 
 ## Bag, ZIP and archive folder (internal/bag, internal/archive)
 - `archive/zip` cannot write the Ablage profile: `CreateHeader` always sets flag 0x8 (data descriptor) and a non-zero `FileHeader.Modified` adds an 0x5455 extra field. `internal/bag/zipwrite.go` is a minimal Stored writer that patches CRC into the local header after streaming. `CreateRaw` writes headers exactly as given (it ignores `Modified`), which makes it the tool for crafting malicious test ZIPs.
@@ -65,7 +74,7 @@
 - Raw `windows.*` calls (`MoveFileEx`, `CreateFile`) get no automatic long-path handling. Go's `os.*` adds it, so a broken prefix only shows up beyond 240 characters. The prefix is `\\?\`; `internal/archive` once had `\?\`.
 - Read-only before commit: `(*os.File).Chmod(0o444)` works on Windows on the open write handle, `MoveFileEx` renames a read-only file, and `os.Remove` clears `READONLY` by itself on Windows.
 - Crafting bad ZIPs: `zip.Writer.SetOffset(n)` after writing n junk bytes gives data in front of the first entry with consistent offsets. For an archive comment, append bytes and patch the last 2 bytes of the EOCD. To swap the central order but not the physical order, rewrite the CD records by hand (`swapCentral` in `internal/bag/hardening_test.go`).
-- `tsa.writeNew` names its temp files `.tmp-*` (a prefix). Archive recovery deletes only `*.tmp` (a suffix), so stale evidence temp files are never cleaned up (they are harmless: `ReadAttempts` ignores them).
+- Archive recovery deletes only `*.tmp` (a suffix). Every temp file inside the archive must therefore end in `.tmp`. `tsa.WriteNew` names them `.<name>.<random>.tmp`; until 2026-11-18 it used `.tmp-*`, and recovery never cleaned those up.
 - `internal/archive` exports no writer lock and no provider setter yet. `stamp.Options.Lock` takes the lock function from the caller; `internal/testenv` rewrites `rechnungsarchiv.json` as canonical JSON and reopens the archive.
 
 ## RFC 3161 / ASN.1 (internal/tsa)
@@ -82,3 +91,14 @@
   - FreeTSA: now ECDSA with no OCSP/CRL, so use DigiCert for RSA interop tests.
 - `tsatest` tokens carry no accuracy unless `TokenParams.Accuracy` is set; `internal/testenv` sets 1 s by default. Without a token accuracy and without a known provider (single ZIP or export: no `rechnungsarchiv.json`), verify asserts no "spätestens" time.
 - The test TSA runs over HTTPS (`httptest.NewTLSServer` plus `tsa.Client.RootCAs`), so `AllowHTTP` is not needed. "Offline" is simulated by hijacking and closing the connection in `TSA.SetReply`; the client maps that to reason `offline`.
+
+## GUI (Wails v3)
+- Install the CLI with the module toolchain: `GOTOOLCHAIN=go1.27.4 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0`. Otherwise the binding generator warns "requires newer Go" on every file.
+- `go:embed all:frontend/dist` fails if the dir is missing. Keep `app/frontend/dist/.gitkeep` and ignore with `dist/*` + `!.gitkeep`.
+- The "nicht gebaut" fallback must respect `FRONTEND_DEVSERVER_URL`, or it shadows `wails3 dev`.
+- No navigation hook on Windows. "No remote navigation" = CSP meta (prod only) + link click guard + `window.open` disabled + external URLs only from fixed Go lists.
+- The CSP needs `style-src 'self'`: no inline style attributes, use classes.
+- File drop: only elements with `data-file-drop-target` fire `WindowFilesDropped`. A cancelled dialog returns the error "cancelled by user" (map it to "").
+- Screenshots: `go build -tags server` serves the app over HTTP (`WAILS_SERVER_PORT`), so Playwright can shoot it (installed Edge, no download). Use viewport shots for modal dialogs. Native capture of WebView2 needs `PrintWindow(h, hdc, 2)`.
+- A worktree without its own go.mod silently uses the parent repo's module.
+- Markdown files written by tools may get CRLF. Embedded text parsers must normalize, and tests must not double-convert.

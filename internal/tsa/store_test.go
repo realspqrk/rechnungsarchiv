@@ -42,12 +42,58 @@ func TestWriteNeverOverwrites(t *testing.T) {
 	}
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".tmp-") {
+		if strings.HasSuffix(e.Name(), ".tmp") {
 			t.Errorf("temp file left: %s", e.Name())
 		}
 	}
 	if err := WriteMaterial(dir, 1, &Material{Evidence: map[string]Evidence{"../x": {Kind: KindCRL}}}); err == nil {
 		t.Fatal("path traversal in evidence key accepted")
+	}
+}
+
+// TestTempFilesEndInTmp: a crash between creating and publishing leaves the
+// temp file behind. Archive recovery deletes *.tmp in a .nachweis folder
+// (under the writer lock), so temp names must end in .tmp, and ReadAttempts
+// must ignore them.
+func TestTempFilesEndInTmp(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"1.tsq", "1.chain.pem", filepath.Join("1.rev", strings.Repeat("a", 64)+".ocsp")} {
+		p := filepath.Join(dir, name)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		f, err := os.CreateTemp(filepath.Dir(p), tempPattern(p))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.Write([]byte("partial"))
+		f.Close() // the crash: never published
+		base := filepath.Base(f.Name())
+		if !strings.HasSuffix(base, ".tmp") || !strings.HasPrefix(base, ".") {
+			t.Errorf("%s: temp file %q does not end in .tmp", name, base)
+		}
+	}
+	// Only the (empty) 1.rev folder counts; no temp file is read as evidence.
+	atts := must(ReadAttempts(dir))
+	if len(atts) != 1 || atts[0].TSQ != nil || atts[0].Material == nil || len(atts[0].Material.Evidence) != 0 || atts[0].Material.Chain != nil {
+		t.Fatalf("temp files read as evidence: %+v", atts)
+	}
+}
+
+// TestWriteNewLongPath: evidence paths beyond MAX_PATH must publish (the raw
+// MoveFileEx call needs the \\?\ prefix on Windows).
+func TestWriteNewLongPath(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), strings.Repeat("d", 100), strings.Repeat("e", 100), "0001_Test.nachweis", "1.rev")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, strings.Repeat("a", 64)+".ocsp")
+	if err := WriteNew(p, []byte("o")); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteNew(p, []byte("x")); !errors.Is(err, ErrExists) {
+		t.Fatalf("overwrite: %v", err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "o" {
+		t.Fatalf("content %q", b)
 	}
 }
 

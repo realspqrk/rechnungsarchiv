@@ -1,7 +1,6 @@
 package trust
 
 import (
-	"bytes"
 	"crypto/x509"
 	"time"
 )
@@ -29,8 +28,9 @@ func (r Result) String() string {
 
 // Decision is a qualification result and the list it rests on. For
 // Unconfirmed, the list fields name the newest list that lists the signer but
-// is not fresh enough; they are empty if no list lists the signer. TSPName
-// and Service are empty when the provider's list lists no matching service.
+// is not fresh enough, or whose entry for genTime states no identity; they
+// are empty if no list lists the signer. TSPName and Service are empty when
+// the provider's list lists no matching service.
 type Decision struct {
 	Result        Result
 	Territory     string
@@ -46,8 +46,11 @@ type Decision struct {
 //
 // A list may decide only if it was issued after genTime (the issue date is
 // signed), or if this process fetched and verified it online after genTime.
-// The deciding list then yields Qualified if a matching QTST service was
-// granted at genTime, else NotQualified. With no deciding list: Unconfirmed.
+// The deciding list then yields Qualified if a matching service had, in the
+// history entry for genTime, the type QTST, the status granted and an
+// identity in path; else NotQualified. With no deciding list: Unconfirmed.
+// A deciding list whose otherwise qualifying entry for genTime states no
+// identity yields Unconfirmed, unless another list yields Qualified.
 //
 // territory is the trusted list of the provider that issued the token ("" if
 // unknown). If no list decides otherwise and that list can decide, it shows no
@@ -55,6 +58,7 @@ type Decision struct {
 // Unconfirmed into NotQualified, never produce Qualified.
 func qualify(lists []*List, path []*x509.Certificate, genTime time.Time, territory string) Decision {
 	best := Decision{Result: Unconfirmed}
+	var indeterminate *Decision // a deciding list that cannot tell
 	for _, l := range lists {
 		services := l.matching(path)
 		if len(services) == 0 {
@@ -64,17 +68,30 @@ func qualify(lists []*List, path []*x509.Certificate, genTime time.Time, territo
 		if decides(l, genTime) {
 			d.Result = NotQualified
 			d.TSPName, d.Service = services[0].TSPName, services[0].Name
-			for _, s := range services {
-				if s.statusAt(genTime) == StatusGranted {
+			var unknown *Service
+			for i, s := range services {
+				r := s.qualificationAt(path, genTime)
+				if r == Qualified {
 					d.Result = Qualified
 					d.TSPName, d.Service = s.TSPName, s.Name
 					break
 				}
+				if r == Unconfirmed && unknown == nil {
+					unknown = &services[i]
+				}
+			}
+			if d.Result != Qualified && unknown != nil && indeterminate == nil {
+				u := listDecision(l, Unconfirmed)
+				u.TSPName, u.Service = unknown.TSPName, unknown.Name
+				indeterminate = &u
 			}
 		}
 		if rank(d) > rank(best) {
 			best = d
 		}
+	}
+	if best.Result != Qualified && indeterminate != nil {
+		return *indeterminate
 	}
 	if best.Result != Unconfirmed || territory == "" {
 		return best
@@ -116,29 +133,14 @@ func rank(d Decision) int {
 	}
 }
 
-// matching returns the QTST services whose ServiceDigitalIdentity is the
-// signer or a CA in its path.
+// matching returns the services that, in some history entry, name the
+// signer or a CA in its path as their ServiceDigitalIdentity.
 func (l *List) matching(path []*x509.Certificate) []Service {
 	var out []Service
 	for _, s := range l.Services {
-		if anchors(s, path) {
+		if s.lists(path) {
 			out = append(out, s)
 		}
 	}
 	return out
-}
-
-// anchors reports whether a certificate of path has the identity of one of
-// the service's SDI certificates. Identity is subject plus public key, so a
-// re-issued CA certificate with the same key still matches (ETSI TS 119 615).
-func anchors(s Service, path []*x509.Certificate) bool {
-	for _, c := range path {
-		for _, sdi := range s.Certs {
-			if bytes.Equal(c.RawSubject, sdi.RawSubject) &&
-				bytes.Equal(c.RawSubjectPublicKeyInfo, sdi.RawSubjectPublicKeyInfo) {
-				return true
-			}
-		}
-	}
-	return false
 }

@@ -228,12 +228,21 @@ func ParsePEM(b []byte) ([]*x509.Certificate, error) {
 	return certs, nil
 }
 
-// writeNew creates path with data: temp file, fsync, then a rename that
-// fails if path exists. An existing file with identical content counts as
-// written (idempotent retry); different content yields ErrExists.
+// WriteNew creates path with data: temp file, fsync, then a rename that
+// fails if path exists (MoveFileEx without REPLACE_EXISTING on Windows,
+// link + unlink + directory fsync elsewhere). An existing file with
+// identical content counts as written (idempotent retry); different content
+// yields ErrExists. internal/trust stores its list cache with it.
+func WriteNew(path string, data []byte) error { return writeNew(path, data) }
+
+// tempPattern names the temp file of path ".<name>.<random>.tmp": hidden,
+// never matched by the evidence file names, and removed by archive recovery,
+// which deletes *.tmp.
+func tempPattern(path string) string { return "." + filepath.Base(path) + ".*.tmp" }
+
 func writeNew(path string, data []byte) error {
 	dir := filepath.Dir(path)
-	f, err := os.CreateTemp(dir, ".tmp-*")
+	f, err := os.CreateTemp(dir, tempPattern(path))
 	if err != nil {
 		return err
 	}

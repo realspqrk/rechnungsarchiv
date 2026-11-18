@@ -8,8 +8,10 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -34,20 +36,29 @@ const (
 	LOTLURL    = "https://ec.europa.eu/tools/lotl/eu-lotl.xml"
 	lotlType   = "http://uri.etsi.org/TrstSvc/TrustedList/TSLType/EUlistofthelists"
 	genericTyp = "http://uri.etsi.org/TrstSvc/TrustedList/TSLType/EUgeneric"
+	// TSA is the type of a timestamp service that is not qualified.
+	TSA = "http://uri.etsi.org/TrstSvc/Svctype/TSA"
 )
 
-// Service is a QTST entry of the national list.
+// Service is a service entry of the national list.
 type Service struct {
 	TSP     string
 	Name    string
-	Certs   []*x509.Certificate // ServiceDigitalIdentity
+	Certs   []*x509.Certificate // ServiceDigitalIdentity (default of every Status)
 	History []Status            // any order; the newest is the current status
 }
 
-// Status is one status of a service, valid from Start.
+// Status is one status of a service, valid from Start. Type and Certs
+// override the service type (default QTST) and the ServiceDigitalIdentity
+// (default Service.Certs) for this entry; a non-nil empty Certs writes an
+// empty ServiceDigitalIdentity, as some real lists do. The current entry carries the
+// identity as X509Certificate, history instances as X509SubjectName and
+// X509SKI, as real lists do.
 type Status struct {
 	URI   string
 	Start time.Time
+	Type  string
+	Certs []*x509.Certificate
 }
 
 // Fixture is a LOTL signer, a national list signer and the web serving both.
@@ -108,12 +119,19 @@ func (f *Fixture) Publish(tb testing.TB, issue time.Time, services ...Service) i
 	f.seq++
 	seq := f.seq
 	f.mu.Unlock()
+	f.PublishSequence(tb, seq, issue, services...)
+	return seq
+}
+
+// PublishSequence is Publish with a given sequence number for both lists, for
+// tests of a reused or replayed sequence number.
+func (f *Fixture) PublishSequence(tb testing.TB, seq int, issue time.Time, services ...Service) {
+	tb.Helper()
 	next := issue.AddDate(0, 1, 0)
 	nat := f.national(seq, issue, next, services)
 	lotl := f.lotl(seq, issue, next)
 	f.Web.Set(f.NationalURL, sign(tb, nat, f.natKey, f.natCert))
 	f.Web.Set(LOTLURL, sign(tb, lotl, f.lotlKey, f.LOTLSigner))
-	return seq
 }
 
 // Client returns an HTTP client that is served by the fixture's web.
@@ -122,6 +140,23 @@ func (f *Fixture) Client() *http.Client { return &http.Client{Transport: f.Web} 
 func ts(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
 func b64(c *x509.Certificate) string { return base64.StdEncoding.EncodeToString(c.Raw) }
+
+// ski returns the certificate's subjectKeyIdentifier, or the SHA-1 of its
+// subjectPublicKey (RFC 5280 §4.2.1.2) if it has none.
+func ski(c *x509.Certificate) []byte {
+	if len(c.SubjectKeyId) > 0 {
+		return c.SubjectKeyId
+	}
+	var spki struct {
+		Algorithm pkix.AlgorithmIdentifier
+		PublicKey asn1.BitString
+	}
+	if _, err := asn1.Unmarshal(c.RawSubjectPublicKeyInfo, &spki); err != nil {
+		panic(err)
+	}
+	h := sha1.Sum(spki.PublicKey.Bytes)
+	return h[:]
+}
 
 func header(seq int, typ, territory string, issue, next time.Time) string {
 	return fmt.Sprintf(`<TSLVersionIdentifier>6</TSLVersionIdentifier>`+
@@ -157,11 +192,23 @@ func (f *Fixture) national(seq int, issue, next time.Time, services []Service) s
 			}
 		}
 		info := func(tag string, st Status) string {
-			var certs string
-			for _, c := range s.Certs {
-				certs += `<DigitalId><X509Certificate>` + b64(c) + `</X509Certificate></DigitalId>`
+			typ, sdi := QTST, s.Certs
+			if st.Type != "" {
+				typ = st.Type
 			}
-			return `<` + tag + `><ServiceTypeIdentifier>` + QTST + `</ServiceTypeIdentifier>` +
+			if st.Certs != nil {
+				sdi = st.Certs
+			}
+			var certs string
+			for _, c := range sdi {
+				if tag == "ServiceInformation" {
+					certs += `<DigitalId><X509Certificate>` + b64(c) + `</X509Certificate></DigitalId>`
+					continue
+				}
+				certs += `<DigitalId><X509SubjectName>` + html.EscapeString(c.Subject.String()) + `</X509SubjectName></DigitalId>` +
+					`<DigitalId><X509SKI>` + base64.StdEncoding.EncodeToString(ski(c)) + `</X509SKI></DigitalId>`
+			}
+			return `<` + tag + `><ServiceTypeIdentifier>` + typ + `</ServiceTypeIdentifier>` +
 				`<ServiceName><Name xml:lang="en">` + html.EscapeString(s.Name) + `</Name></ServiceName>` +
 				`<ServiceDigitalIdentity>` + certs + `</ServiceDigitalIdentity>` +
 				`<ServiceStatus>` + st.URI + `</ServiceStatus><StatusStartingTime>` + ts(st.Start) + `</StatusStartingTime></` + tag + `>`
@@ -226,6 +273,13 @@ func (w *Web) Set(url string, data []byte) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.files[url] = data
+}
+
+// Get returns what is served at url, or nil.
+func (w *Web) Get(url string) []byte {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.files[url]
 }
 
 // SetOffline switches the simulated network off or on.

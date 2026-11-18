@@ -22,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/realspqrk/rechnungsarchiv/internal/tsa"
 )
 
 const (
@@ -117,7 +119,9 @@ func (s *Store) Lists() []*List {
 	return out
 }
 
-// Problems lists cached files that failed verification and were skipped.
+// Problems lists cached files that failed verification, or whose name does
+// not match their signed sequence, and were skipped, plus different signed
+// lists that share a sequence number.
 func (s *Store) Problems() []error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -156,15 +160,12 @@ func (s *Store) refreshLOTL(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	cur := s.lotl
-	s.mu.Unlock()
-	return s.accept(l, cur, func() { s.lotl = l })
+	return s.accept(l, func() *List { return s.lotl }, func() { s.lotl = l })
 }
 
 func (s *Store) refreshNational(ctx context.Context, cc string) error {
 	s.mu.Lock()
-	lotl, cur := s.lotl, s.lists[cc]
+	lotl := s.lotl
 	s.mu.Unlock()
 	if lotl == nil {
 		return fmt.Errorf("%s: no verified LOTL", cc)
@@ -181,15 +182,22 @@ func (s *Store) refreshNational(ctx context.Context, cc string) error {
 	if err != nil {
 		return err
 	}
-	return s.accept(l, cur, func() { s.lists[cc] = l })
+	return s.accept(l, func() *List { return s.lists[cc] }, func() { s.lists[cc] = l })
 }
 
 // accept stores a list fetched and verified online and puts it in use. It
 // counts as online evidence only if it is not older than the list in use
 // (rollback) and not past its NextUpdate (stale or replayed).
-func (s *Store) accept(l, cur *List, use func()) error {
-	if cur != nil && l.Sequence < cur.Sequence {
-		return fmt.Errorf("%s: server sent list %d, older than known list %d", l.Territory, l.Sequence, cur.Sequence)
+//
+// current returns the list in use and is called with s.mu held. The rollback
+// check is repeated under the same lock as use: a concurrent Refresh may have
+// installed a newer list while this one was being fetched or saved.
+func (s *Store) accept(l *List, current func() *List, use func()) error {
+	s.mu.Lock()
+	err := rollback(l, current())
+	s.mu.Unlock()
+	if err != nil {
+		return err
 	}
 	if err := s.save(l); err != nil {
 		return err
@@ -202,9 +210,27 @@ func (s *Store) accept(l, cur *List, use func()) error {
 		l.fetchedOnline = now
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := rollback(l, current()); err != nil {
+		return err
+	}
 	use()
-	s.mu.Unlock()
 	return stale
+}
+
+// rollback reports an error if l is older than cur: a lower signed sequence,
+// or the same sequence with an earlier signed issue date (the order load uses).
+func rollback(l, cur *List) error {
+	switch {
+	case cur == nil:
+		return nil
+	case l.Sequence < cur.Sequence:
+		return fmt.Errorf("%s: server sent list %d, older than known list %d", l.Territory, l.Sequence, cur.Sequence)
+	case l.Sequence == cur.Sequence && l.IssueDate.Before(cur.IssueDate):
+		return fmt.Errorf("%s: server sent list %d issued %s, older than the known list %d issued %s", l.Territory,
+			l.Sequence, l.IssueDate.Format(time.RFC3339), cur.Sequence, cur.IssueDate.Format(time.RFC3339))
+	}
+	return nil
 }
 
 func (s *Store) fetch(ctx context.Context, url string) ([]byte, error) {
@@ -238,9 +264,10 @@ func readLimited(r io.Reader) ([]byte, error) {
 	return b, nil
 }
 
-// save writes the exact signed bytes as <CC>-<sequence>.xml (temp file, fsync,
-// rename). Existing files are never overwritten: identical bytes are kept, a
-// different list with the same sequence gets a -2, -3, … suffix.
+// save writes the exact signed bytes as <CC>-<sequence>.xml with
+// tsa.WriteNew (temp file, fsync, no-replace rename). Existing files are never
+// overwritten, also not by a concurrent save: identical bytes are kept, a
+// different list with the same sequence gets the next free -2, -3, … suffix.
 func (s *Store) save(l *List) error {
 	dir := s.cfg.writeDir
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -252,47 +279,29 @@ func (s *Store) save(l *List) error {
 			name = fmt.Sprintf("%s-%d-%d.xml", l.Territory, l.Sequence, n)
 		}
 		target := filepath.Join(dir, name)
-		existing, err := os.ReadFile(target)
-		switch {
-		case err == nil && bytes.Equal(existing, l.Raw):
-			return nil
-		case err == nil:
+		// Fast path for the usual refresh of an unchanged list. Any read
+		// error (missing, or on Windows a sharing violation while a
+		// concurrent save publishes this name) leaves the decision to
+		// WriteNew, which never replaces.
+		if existing, err := os.ReadFile(target); err == nil {
+			if bytes.Equal(existing, l.Raw) {
+				return nil
+			}
 			continue
-		case !errors.Is(err, fs.ErrNotExist):
-			return err
 		}
-		return writeNew(target, l.Raw)
+		err := tsa.WriteNew(target, l.Raw)
+		if !errors.Is(err, tsa.ErrExists) {
+			return err // nil: written now, or the same bytes got there first
+		}
 	}
 	return fmt.Errorf("%s-%d: too many versions", l.Territory, l.Sequence)
-}
-
-func writeNew(target string, data []byte) error {
-	f, err := os.CreateTemp(filepath.Dir(target), ".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	_, err = f.Write(data)
-	if err == nil {
-		err = f.Sync()
-	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Rename(tmp, target)
-	}
-	if err != nil {
-		os.Remove(tmp)
-	}
-	return err
 }
 
 // candidate is a list file found in the bootstrap or a cache directory.
 type candidate struct {
 	origin    string // for error messages
 	territory string // from the file name; the verified content decides
-	sequence  int
+	sequence  int    // from the file name; must equal the signed sequence
 	read      func() ([]byte, error)
 }
 
@@ -344,37 +353,69 @@ func parseName(name string) (candidate, bool) {
 	return candidate{territory: m[1], sequence: seq}, true
 }
 
-// load verifies candidates newest first per territory and keeps the first
-// that verifies. National lists are checked against the newest verified LOTL.
+// load selects, per territory, the verified list with the highest signed
+// sequence and, among different lists with that sequence, the latest signed
+// issue date. National lists are checked against the selected LOTL.
 func (s *Store) load(cands []candidate) {
-	slices.SortStableFunc(cands, func(a, b candidate) int { return cmp.Compare(b.sequence, a.sequence) })
-	try := func(c candidate, verify func([]byte) (*List, error)) *List {
-		raw, err := c.read()
-		if err == nil {
-			var l *List
-			if l, err = verify(raw); err == nil {
-				return l
-			}
-		}
-		s.problems = append(s.problems, fmt.Errorf("%s: %w", c.origin, err))
-		return nil
-	}
+	byTerritory := map[string][]candidate{}
 	for _, c := range cands {
-		if c.territory == territoryLOTL && s.lotl == nil {
-			s.lotl = try(c, func(raw []byte) (*List, error) { return verifyLOTL(raw, lotlPins) })
-		}
+		byTerritory[c.territory] = append(byTerritory[c.territory], c)
 	}
+	s.lotl = s.pick(byTerritory[territoryLOTL], func(raw []byte) (*List, error) { return verifyLOTL(raw, lotlPins) })
 	if s.lotl == nil {
 		return
 	}
-	for _, c := range cands {
-		if c.territory == territoryLOTL || s.lists[c.territory] != nil {
+	for _, cc := range slices.Sorted(maps.Keys(byTerritory)) {
+		if cc == territoryLOTL {
 			continue
 		}
-		if l := try(c, func(raw []byte) (*List, error) { return verifyNational(raw, s.lotl, c.territory) }); l != nil {
-			s.lists[c.territory] = l
+		if l := s.pick(byTerritory[cc], func(raw []byte) (*List, error) { return verifyNational(raw, s.lotl, cc) }); l != nil {
+			s.lists[cc] = l
 		}
 	}
+}
+
+// pick verifies the candidates of one territory and returns the newest list.
+//
+// File names are unsigned: a candidate counts only if the sequence in its
+// name equals the signed TSLSequenceNumber, else it is a problem. That makes
+// the name a safe upper bound, so candidates are tried by descending name
+// sequence and the search stops below the best signed sequence found. Every
+// candidate with that sequence is verified: of different lists, the later
+// signed ListIssueDateTime wins and the conflict is a problem.
+func (s *Store) pick(cands []candidate, verify func([]byte) (*List, error)) *List {
+	cands = slices.Clone(cands)
+	slices.SortStableFunc(cands, func(a, b candidate) int { return cmp.Compare(b.sequence, a.sequence) })
+	var best *List
+	var bestOrigin string
+	for _, c := range cands {
+		if best != nil && c.sequence < best.Sequence {
+			break
+		}
+		raw, err := c.read()
+		var l *List
+		if err == nil {
+			l, err = verify(raw)
+		}
+		if err == nil && l.Sequence != c.sequence {
+			err = fmt.Errorf("file name says sequence %d, the signed list has %d", c.sequence, l.Sequence)
+		}
+		switch {
+		case err != nil:
+			s.problems = append(s.problems, fmt.Errorf("%s: %w", c.origin, err))
+		case best == nil:
+			best, bestOrigin = l, c.origin
+		case !bytes.Equal(l.Raw, best.Raw):
+			older, newer := c.origin, bestOrigin
+			if l.IssueDate.After(best.IssueDate) {
+				older, newer = bestOrigin, c.origin
+				best, bestOrigin = l, c.origin
+			}
+			s.problems = append(s.problems, fmt.Errorf("%s and %s: different signed lists with sequence %d; using %s (issued %s)",
+				older, newer, l.Sequence, newer, best.IssueDate.Format(time.RFC3339)))
+		}
+	}
+	return best
 }
 
 func readFile(p string) ([]byte, error) {
