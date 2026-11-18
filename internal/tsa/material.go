@@ -198,21 +198,7 @@ func (f *Fetcher) completeChain(ctx context.Context, c *x509.Certificate, pool, 
 			c = iss
 			continue
 		}
-		var iss *x509.Certificate
-		for _, url := range c.IssuingCertificateURL {
-			b, err := f.do(ctx, http.MethodGet, url, "", nil)
-			if err != nil {
-				continue
-			}
-			for _, cand := range parseCertsLoose(b) {
-				if bytes.Equal(cand.RawSubject, c.RawIssuer) && c.CheckSignatureFrom(cand) == nil {
-					iss = cand
-				}
-			}
-			if iss != nil {
-				break
-			}
-		}
+		iss := f.FetchIssuer(ctx, c)
 		if iss == nil {
 			return pool
 		}
@@ -220,6 +206,24 @@ func (f *Fetcher) completeChain(ctx context.Context, c *x509.Certificate, pool, 
 		c = iss
 	}
 	return pool
+}
+
+// FetchIssuer downloads c's issuer from its AIA caIssuers URLs. Only a
+// certificate whose subject matches c's issuer and whose key verifies c's
+// signature is returned; nil if none does.
+func (f *Fetcher) FetchIssuer(ctx context.Context, c *x509.Certificate) *x509.Certificate {
+	for _, url := range c.IssuingCertificateURL {
+		b, err := f.do(ctx, http.MethodGet, url, "", nil)
+		if err != nil {
+			continue
+		}
+		for _, cand := range parseCertsLoose(b) {
+			if bytes.Equal(cand.RawSubject, c.RawIssuer) && c.CheckSignatureFrom(cand) == nil {
+				return cand
+			}
+		}
+	}
+	return nil
 }
 
 // parseCertsLoose reads a caIssuers payload: DER, PEM or a certs-only
@@ -247,7 +251,16 @@ func parseCertsLoose(b []byte) []*x509.Certificate {
 // its CDP. The result has passed ValidateMaterial; on error the returned
 // checks explain each certificate.
 func (f *Fetcher) Collect(ctx context.Context, tok *Token) (*Material, []CertCheck, error) {
-	certs, issuers, err := needsEvidence(tok, tok.Certs)
+	// The path may end at the signer itself (the trusted list names the TSU
+	// as the service identity) while the token carries no issuer: its
+	// revocation evidence still needs the issuer, so fetch it via AIA.
+	pool := append([]*x509.Certificate{}, tok.Certs...)
+	if top := tok.Chain[len(tok.Chain)-1]; len(tok.Chain) == 1 && findIssuer(top, pool) == nil {
+		if iss := f.FetchIssuer(ctx, top); iss != nil {
+			pool = append(pool, iss)
+		}
+	}
+	certs, issuers, err := needsEvidence(tok, pool)
 	if err != nil {
 		return nil, nil, err
 	}

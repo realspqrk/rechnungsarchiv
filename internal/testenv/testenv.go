@@ -107,9 +107,13 @@ func WithAccuracy(p *tsatest.TokenParams) { p.Accuracy = &tsatest.Accuracy{Secon
 
 // PublishLists publishes a new trusted list issued at issue that names the
 // test root as a QTST service granted for the last year.
-func (e *Env) PublishLists(issue time.Time) {
+func (e *Env) PublishLists(issue time.Time) { e.PublishListsNaming(issue, e.PKI.Root.Cert) }
+
+// PublishListsNaming is PublishLists with other service identities, e.g. the
+// TSU certificate itself (as the Spanish list names Mensatek's TSU).
+func (e *Env) PublishListsNaming(issue time.Time, ids ...*x509.Certificate) {
 	e.Lists.Publish(e.T, issue, trusttest.Service{
-		TSP: "Test Trust Services", Name: "Test QTST", Certs: []*x509.Certificate{e.PKI.Root.Cert},
+		TSP: "Test Trust Services", Name: "Test QTST", Certs: ids,
 		History: []trusttest.Status{{URI: trusttest.Granted, Start: time.Now().AddDate(-1, 0, 0)}},
 	})
 }

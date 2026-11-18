@@ -21,7 +21,8 @@ import (
 //	n.chain.pem    chain certificates
 //	n.rev/<CertKey>.ocsp|.crl
 //
-// Every file is created once and never replaced.
+// Every file is created once and never replaced. The one exception is
+// n.chain.pem, which may be extended append-only (see WriteMaterial).
 
 // ErrExists is returned when an evidence file already exists with
 // different content.
@@ -67,7 +68,11 @@ func WriteResponse(dir string, n int, tsr []byte) error {
 	return writeNew(filepath.Join(dir, fmt.Sprintf("%d.tsr", n)), tsr)
 }
 
-// WriteMaterial stores n.rev/ and then n.chain.pem.
+// WriteMaterial stores n.rev/ and then n.chain.pem. An existing
+// n.chain.pem may only be extended (spec §5): m.Chain must start with
+// exactly the stored certificates (same DER, same order); the longer chain
+// then replaces the file atomically. Any other difference yields ErrExists
+// and leaves the file unchanged.
 func WriteMaterial(dir string, n int, m *Material) error {
 	rev := filepath.Join(dir, fmt.Sprintf("%d.rev", n))
 	if err := os.MkdirAll(rev, 0o755); err != nil {
@@ -87,7 +92,58 @@ func WriteMaterial(dir string, n int, m *Material) error {
 			return err
 		}
 	}
-	return writeNew(filepath.Join(dir, fmt.Sprintf("%d.chain.pem", n)), EncodePEM(m.Chain))
+	return writeChain(filepath.Join(dir, fmt.Sprintf("%d.chain.pem", n)), m.Chain)
+}
+
+// writeChain creates path with certs, or extends the stored chain at path
+// append-only.
+func writeChain(path string, certs []*x509.Certificate) error {
+	data := EncodePEM(certs)
+	err := writeNew(path, data)
+	if !errors.Is(err, ErrExists) {
+		return err
+	}
+	old, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	stored, err := ParsePEM(old)
+	if err != nil || len(certs) < len(stored) {
+		return fmt.Errorf("%w: %s", ErrExists, path)
+	}
+	for i, c := range stored {
+		if !bytes.Equal(c.Raw, certs[i].Raw) {
+			return fmt.Errorf("%w: %s (gespeicherte Zertifikate dürfen nicht geändert werden)", ErrExists, path)
+		}
+	}
+	if len(certs) == len(stored) {
+		return nil // the same certificates, stored in another encoding
+	}
+	return replaceFile(path, data)
+}
+
+// replaceFile replaces path with data atomically: temp file, fsync, then a
+// rename over the old file.
+func replaceFile(path string, data []byte) error {
+	f, err := os.CreateTemp(filepath.Dir(path), tempPattern(path))
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = renameReplace(tmp, path)
+	}
+	if err != nil {
+		os.Remove(tmp)
+	}
+	return err
 }
 
 var (

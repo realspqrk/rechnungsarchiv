@@ -3,11 +3,14 @@ package tsa
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/x509"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/realspqrk/rechnungsarchiv/internal/tsa/tsatest"
 )
 
 func TestWriteNeverOverwrites(t *testing.T) {
@@ -150,5 +153,67 @@ func TestRequestRoundTrip(t *testing.T) {
 	var raw timeStampReq
 	if err := unmarshalAll(r2.DER, &raw, ""); err != nil || !raw.CertReq || raw.ReqPolicy != nil {
 		t.Fatalf("certReq/policy: %+v %v", raw, err)
+	}
+}
+
+// TestChainExtendsAppendOnly: n.chain.pem may only grow by appending
+// certificates (an issuer obtained later, spec §5); the stored certificates
+// must stay the same DER in the same order. Any other change is refused and
+// leaves the file as it was.
+func TestChainExtendsAppendOnly(t *testing.T) {
+	pki := tsatest.NewPKI(t, tsatest.PKIOptions{})
+	tsu, inter, root := pki.TSU.Cert, pki.Inter.Cert, pki.Root.Cert
+	other := pki.NewTSU(t, nil).Cert
+	dir := t.TempDir()
+	path := filepath.Join(dir, "1.chain.pem")
+	write := func(certs ...*x509.Certificate) error {
+		return WriteMaterial(dir, 1, &Material{Chain: certs, Evidence: map[string]Evidence{}})
+	}
+	stored := func() []byte { b, _ := os.ReadFile(path); return b }
+
+	if err := write(tsu); err != nil { // written by an older version
+		t.Fatal(err)
+	}
+	if err := write(tsu, inter); err != nil {
+		t.Fatalf("append the issuer: %v", err)
+	}
+	if !bytes.Equal(stored(), EncodePEM([]*x509.Certificate{tsu, inter})) {
+		t.Fatal("chain not extended")
+	}
+	if err := write(tsu, inter); err != nil {
+		t.Fatalf("identical retry: %v", err)
+	}
+	for name, certs := range map[string][]*x509.Certificate{
+		"shorter":        {tsu},
+		"prefix altered": {other, inter, root},
+		"reordered":      {inter, tsu, root},
+		"inserted":       {tsu, root, inter},
+		"empty":          {},
+	} {
+		if err := write(certs...); !errors.Is(err, ErrExists) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if !bytes.Equal(stored(), EncodePEM([]*x509.Certificate{tsu, inter})) {
+		t.Fatal("a refused write changed the file")
+	}
+	if err := write(tsu, inter, root); err != nil {
+		t.Fatalf("append again: %v", err)
+	}
+
+	// A malformed stored chain is never replaced.
+	bad := []byte("-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n")
+	os.WriteFile(filepath.Join(dir, "2.chain.pem"), bad, 0o644)
+	if err := WriteMaterial(dir, 2, &Material{Chain: []*x509.Certificate{tsu, inter}}); !errors.Is(err, ErrExists) {
+		t.Fatalf("malformed chain replaced: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "2.chain.pem")); !bytes.Equal(b, bad) {
+		t.Fatal("malformed chain changed")
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".tmp") {
+			t.Errorf("temp file left: %s", e.Name())
+		}
 	}
 }

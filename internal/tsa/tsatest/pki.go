@@ -166,6 +166,15 @@ type PKI struct {
 	CRLHook func(name string) []byte
 	// Hits counts requests per path.
 	Hits map[string]int
+	down bool
+}
+
+// SetDown makes the AIA/OCSP/CRL server answer 503 (down=true) or serve
+// normally again. Requests are still counted.
+func (p *PKI) SetDown(down bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.down = down
 }
 
 // PKIOptions tweaks NewPKI.
@@ -230,8 +239,12 @@ func (p *PKI) Revoke(c *x509.Certificate, reason int) {
 func (p *PKI) serve(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.Hits[r.URL.Path]++
-	ocspHook, crlHook := p.OCSPHook, p.CRLHook
+	ocspHook, crlHook, down := p.OCSPHook, p.CRLHook, p.down
 	p.mu.Unlock()
+	if down {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	switch r.URL.Path {
 	case "/root.cer":
 		w.Write(p.Root.Cert.Raw)

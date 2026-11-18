@@ -406,12 +406,15 @@ func (s *stamper) resume(o Outcome, dir string, n int) Outcome {
 	return s.complete(o, dir, n, tok)
 }
 
-// complete stores what attempt n still lacks: first the validated chain
-// (n.chain.pem, right after acceptance, so certificates fetched via AIA
-// are never lost), then the revocation evidence of each certificate whose
-// stored evidence is missing or not acceptable, one by one, so the pieces
-// fetched in time are kept even if another one fails. Nothing stored is
-// fetched again.
+// complete stores what attempt n still lacks: first the chain
+// (n.chain.pem, as soon as it holds every issuer the revocation evidence
+// needs, so certificates fetched via AIA are never lost), then the
+// revocation evidence of each certificate whose stored evidence is missing
+// or not acceptable, one by one, so the pieces fetched in time are kept
+// even if another one fails. Nothing stored is fetched again. A stored
+// chain is only ever extended (spec §5): missing path certificates and the
+// issuer of a signer that is itself the trusted-list identity are
+// appended, the issuer taken from the token or fetched via AIA.
 func (s *stamper) complete(o Outcome, dir string, n int, tok *tsa.Token) Outcome {
 	raw, err := storedAttempt(dir, n)
 	if err != nil {
@@ -421,14 +424,24 @@ func (s *stamper) complete(o Outcome, dir string, n int, tok *tsa.Token) Outcome
 		return material(o, raw.MaterialErr)
 	}
 	have := map[string]tsa.Evidence{}
-	chain := chainOf(tok)
+	var stored []*x509.Certificate
 	if m := raw.Material; m != nil {
-		have = m.Evidence
-		if len(m.Chain) > 0 {
-			chain = m.Chain // written before; WriteMaterial needs the same bytes
+		have, stored = m.Evidence, m.Chain
+	}
+	chain := slices.Clone(stored)
+	for _, c := range chainOf(tok) {
+		if !slices.ContainsFunc(chain, c.Equal) {
+			chain = append(chain, c)
 		}
 	}
-	if raw.Material == nil || len(raw.Material.Chain) == 0 {
+	if top := tok.Chain[0]; len(tok.Chain) == 1 && issuerOf(top, nil, chain) == nil {
+		iss := s.fetcher.FetchIssuer(s.ctx, top)
+		if iss == nil {
+			return material(o, fmt.Errorf("Aussteller-Zertifikat von %s nicht abrufbar", top.Subject.CommonName))
+		}
+		chain = append(chain, iss)
+	}
+	if len(chain) > len(stored) {
 		if err := tsa.WriteMaterial(dir, n, &tsa.Material{Chain: chain, Evidence: map[string]tsa.Evidence{}}); err != nil {
 			return material(o, fmt.Errorf("Zertifikatskette konnte nicht gespeichert werden: %w", err))
 		}
@@ -520,8 +533,9 @@ func storedAttempt(dir string, n int) (*tsa.Attempt, error) {
 	return nil, fmt.Errorf("Versuch %d nicht gefunden", n)
 }
 
-// chainOf is what n.chain.pem stores: the validated path, plus the issuer
-// of the signer when the signer itself is the trusted-list identity.
+// chainOf is what the token itself contributes to n.chain.pem: the
+// validated path, plus the issuer of the signer from the token's
+// certificates when the signer itself is the trusted-list identity.
 func chainOf(tok *tsa.Token) []*x509.Certificate {
 	ch := slices.Clone(tok.Chain)
 	if len(ch) == 1 {

@@ -11,7 +11,7 @@ MUST/SHOULD/MAY are used per RFC 2119. Rationale for decisions is in `adr/`. Cha
 ├── vertrauenslisten/             cached, signature-verified EU trusted lists (§7)
 ├── 0001_<Name>.zip               Ablage (immutable after commit)
 ├── 0001_<Name>.nachweis/         evidence for that Ablage (append-only)
-│   ├── 1.tsq  1.provider  1.tsr  1.chain.pem  1.rev/…   attempt 1 (immutable files)
+│   ├── 1.tsq  1.provider  1.tsr  1.chain.pem  1.rev/…   attempt 1 (immutable; chain.pem append-only, §5)
 │   └── 2.tsq  …                                      further attempts, if any
 └── …
 ```
@@ -95,10 +95,10 @@ Value formats:
 4. Rename it to `.zip` with no-replace semantics and set the read-only attribute. *This is the commit.*
 5. Create `.nachweis/`. Each attempt writes new files with no-replace semantics:
    - `n.tsq` and `n.provider` before sending;
-   - `n.tsr`, then immediately `n.chain.pem` (the validated path, including AIA-fetched certificates);
+   - `n.tsr`, then `n.chain.pem` (the validated path, including AIA-fetched certificates) as soon as it holds the issuer of every certificate that needs revocation evidence;
    - then `n.rev/*`, piece by piece.
 
-   Existing files are never overwritten.
+   Existing files are never overwritten. The only exception is the append-only extension of `n.chain.pem` (§5).
 6. Release `.lock`.
 
 **Recovery on start:**
@@ -134,6 +134,11 @@ Value formats:
    - the signer (TSU) certificate itself. No CA basicConstraints are required of the TSU in that case, but EKU, validity and revocation are still checked.
 
 **Validation material.** Fetch it right after acceptance and store it as `n.chain.pem` (all chain certificates) and `n.rev/` (one file per certificate). It is needed for the signer and for every intermediate CA in the path.
+- **`n.chain.pem`** is a sequence of PEM `CERTIFICATE` blocks: the validated path from the signer, plus every issuer needed to check the revocation evidence.
+  - If the path ends at the signer (the trusted list names the TSU certificate itself, §5 item 7), the file MUST also hold the signer's issuer. Take it from the token's certificates, else fetch it via the signer's AIA caIssuers URL. A certificate counts as the issuer only if its subject equals the signer's issuer name and its key verifies the signer's signature.
+  - Writers SHOULD create the file only once it holds every issuer needed. Until then it would carry nothing the token does not.
+  - An existing `n.chain.pem` MAY be extended, append-only. The new content MUST begin with exactly the stored certificates (same DER, same order) and only append certificates. It replaces the old file atomically: temp file, fsync, rename over the old file. Any other change MUST be refused: a removed, reordered or altered certificate, or a stored file that does not parse. This lets an attempt whose chain was stored incomplete (an older version, or a failed AIA fetch) be completed within the 24 h window below, without a new timestamp.
+  - Verifiers use the certificates in `n.chain.pem` only as candidates. The path is always built to a trusted-list anchor (§5 item 7). An issuer counts only if its key verifies the certificate's signature, and certificates that are not needed are ignored.
 - Use OCSP for each certificate where an AIA OCSP URL exists. Otherwise use the complete CRL from its CDP. Delta CRLs and partitioned CRLs whose IDP does not cover the certificate do not count.
 - **Accept the evidence only if:**
   - it is signed by the issuing CA, or by an OCSP responder that CA authorized (`id-kp-OCSPSigning`);

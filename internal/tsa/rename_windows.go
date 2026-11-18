@@ -29,6 +29,19 @@ func renameNoReplace(from, to string) error {
 	return err
 }
 
+// renameReplace moves from to to, atomically replacing an existing to.
+func renameReplace(from, to string) error {
+	f, err := windows.UTF16PtrFromString(longPath(from))
+	if err != nil {
+		return err
+	}
+	t, err := windows.UTF16PtrFromString(longPath(to))
+	if err != nil {
+		return err
+	}
+	return windows.MoveFileEx(f, t, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+}
+
 // longPath adds the \\?\ prefix to long absolute paths. Raw Windows calls,
 // unlike os.*, get no automatic long-path handling.
 func longPath(p string) string {

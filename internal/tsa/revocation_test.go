@@ -6,6 +6,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -236,6 +237,46 @@ func TestCollectAndValidate(t *testing.T) {
 		}
 		if len(checks) != 1 || len(m.Chain) != 2 {
 			t.Fatalf("%d checks, %d certs", len(checks), len(m.Chain))
+		}
+	})
+	// Real-world proof (Mensatek): the trusted list names the TSU itself as
+	// the service identity and the token carries only the TSU certificate.
+	// Its issuer is needed for the revocation evidence and must come from
+	// the AIA caIssuers URL.
+	onlySigner := func(e *env) *Token {
+		o := e.opts()
+		o.Anchors = []*x509.Certificate{e.pki.TSU.Cert}
+		raw := e.token(t, func(p *tsatest.TokenParams) { p.Certs = []*x509.Certificate{e.pki.TSU.Cert} })
+		return must(VerifyResponse(tsatest.Response(0, "", raw), o))
+	}
+	t.Run("anchored at TSU, issuer only via AIA", func(t *testing.T) {
+		e := newEnv(t, tsatest.PKIOptions{})
+		tok := onlySigner(e)
+		var f Fetcher
+		m, checks, err := f.Collect(ctx, tok)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(checks) != 1 || len(m.Chain) != 2 || !m.Chain[1].Equal(e.pki.Inter.Cert) || e.pki.Hits["/inter.cer"] != 1 {
+			t.Fatalf("%d checks, %d certs, hits %v", len(checks), len(m.Chain), e.pki.Hits)
+		}
+		if _, err := ValidateMaterial(tok, m); err != nil {
+			t.Fatalf("stored material does not validate offline: %v", err)
+		}
+	})
+	t.Run("anchored at TSU, AIA serves a foreign certificate", func(t *testing.T) {
+		e := newEnv(t, tsatest.PKIOptions{
+			TSU: func(o *tsatest.CertOptions) {
+				o.Issuers = []string{strings.Replace(o.Issuers[0], "/inter.cer", "/root.cer", 1)}
+			},
+		})
+		tok := onlySigner(e)
+		var f Fetcher
+		if _, _, err := f.Collect(ctx, tok); !errors.Is(err, ErrMaterial) {
+			t.Fatalf("foreign issuer accepted: %v", err)
+		}
+		if e.pki.Hits["/root.cer"] != 1 {
+			t.Fatalf("foreign certificate not served: %v", e.pki.Hits)
 		}
 	})
 	t.Run("OCSP fails, CRL fallback", func(t *testing.T) {
