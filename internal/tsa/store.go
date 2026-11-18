@@ -119,6 +119,12 @@ func writeChain(path string, certs []*x509.Certificate) error {
 	if len(certs) == len(stored) {
 		return nil // the same certificates, stored in another encoding
 	}
+	// Append-only in bytes: the stored file must be exactly the start of the
+	// new one. pem.Decode skips blocks it cannot decode, so a parsed prefix
+	// alone could still drop stored bytes (code review 12).
+	if !bytes.HasPrefix(data, old) {
+		return fmt.Errorf("%w: %s (gespeicherte Datei ist kein unveränderter Anfang der neuen Kette)", ErrExists, path)
+	}
 	return replaceFile(path, data)
 }
 

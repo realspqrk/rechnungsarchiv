@@ -1,6 +1,6 @@
 # Rechnungsarchiv — format and verification spec, v1 (normative)
 
-MUST/SHOULD/MAY are used per RFC 2119. Rationale for decisions is in `adr/`. Changing this file is a format change and needs a new `format` number. Revised after adversarial review rounds 1–2 (`research/reviews/`).
+MUST/SHOULD/MAY are used per RFC 2119. Rationale for decisions is in `adr/`. From release 1.0 on, changing this file is a format change and needs a new `format` number; before 1.0 it is revised within format 1. Revised after adversarial review rounds 1–2 (`research/reviews/`).
 
 ## 1. Archive folder
 
@@ -137,7 +137,7 @@ Value formats:
 - **`n.chain.pem`** is a sequence of PEM `CERTIFICATE` blocks: the validated path from the signer, plus every issuer needed to check the revocation evidence.
   - If the path ends at the signer (the trusted list names the TSU certificate itself, §5 item 7), the file MUST also hold the signer's issuer. Take it from the token's certificates, else fetch it via the signer's AIA caIssuers URL. A certificate counts as the issuer only if its subject equals the signer's issuer name and its key verifies the signer's signature.
   - Writers SHOULD create the file only once it holds every issuer needed. Until then it would carry nothing the token does not.
-  - An existing `n.chain.pem` MAY be extended, append-only. The new content MUST begin with exactly the stored certificates (same DER, same order) and only append certificates. It replaces the old file atomically: temp file, fsync, rename over the old file. Any other change MUST be refused: a removed, reordered or altered certificate, or a stored file that does not parse. This lets an attempt whose chain was stored incomplete (an older version, or a failed AIA fetch) be completed within the 24 h window below, without a new timestamp.
+  - An existing `n.chain.pem` MAY be extended, append-only. The new content MUST begin with exactly the stored bytes of the file and only append PEM `CERTIFICATE` blocks; a certificate-wise prefix match is not enough, since PEM readers may skip undecodable blocks. It replaces the old file atomically: temp file, fsync, rename over the old file. Any other change MUST be refused: a removed, reordered or altered certificate, or a stored file that does not parse. This lets an attempt whose chain was stored incomplete (an older version, or a failed AIA fetch) be completed within the 24 h window below, without a new timestamp.
   - Verifiers use the certificates in `n.chain.pem` only as candidates. The path is always built to a trusted-list anchor (§5 item 7). An issuer counts only if its key verifies the certificate's signature, and certificates that are not needed are ignored.
 - Use OCSP for each certificate where an AIA OCSP URL exists. Otherwise use the complete CRL from its CDP. Delta CRLs and partitioned CRLs whose IDP does not cover the certificate do not count.
 - **Accept the evidence only if:**

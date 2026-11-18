@@ -210,6 +210,17 @@ func TestChainExtendsAppendOnly(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(dir, "2.chain.pem")); !bytes.Equal(b, bad) {
 		t.Fatal("malformed chain changed")
 	}
+	// Code review 12: pem.Decode skips a block with broken base64, so the
+	// rest parses as just the TSU and an extension would delete the broken
+	// block. Only a byte-wise append is allowed.
+	hidden := append([]byte("-----BEGIN CERTIFICATE-----\n!invalid-base64!\n-----END CERTIFICATE-----\n"), EncodePEM([]*x509.Certificate{tsu})...)
+	os.WriteFile(filepath.Join(dir, "3.chain.pem"), hidden, 0o644)
+	if err := WriteMaterial(dir, 3, &Material{Chain: []*x509.Certificate{tsu, inter}}); !errors.Is(err, ErrExists) {
+		t.Fatalf("chain with a skipped block replaced: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "3.chain.pem")); !bytes.Equal(b, hidden) {
+		t.Fatal("chain with a skipped block changed")
+	}
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".tmp") {
