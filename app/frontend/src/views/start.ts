@@ -3,7 +3,7 @@
 import { api, errMsg } from "../api";
 import { h, icon } from "../dom";
 import { app, navigate } from "../state";
-import { busy, button, toast } from "../ui";
+import { busy, button, pathText, setPath, toast } from "../ui";
 import { openDisclaimerDialog } from "../dialogs/about";
 
 export function renderStart(): HTMLElement {
@@ -12,14 +12,14 @@ export function renderStart(): HTMLElement {
   const disclaimer = app.disclaimer;
 
   const company = h("input", { id: "firma", type: "text", class: "input", autocomplete: "organization", value: "", placeholder: "z. B. Musterfirma GmbH" });
-  const dirBox = h("span", { class: "path-box mono", id: "archivordner-wert" }, dir);
+  const dirBox = h("span", { class: "path-box mono", id: "archivordner-wert" }, pathText(dir));
 
   const change = button("Ändern …", async () => {
     try {
       const picked = await api.PickFolder("archiv");
       if (picked) {
         dir = picked;
-        dirBox.textContent = picked;
+        setPath(dirBox, picked);
       }
     } catch (e) {
       toast(errMsg(e), "error");
@@ -53,7 +53,7 @@ export function renderStart(): HTMLElement {
       "div",
       { class: "start__inner" },
       h("div", { class: "brand brand--large" }, icon("logo", 34, 1.8, "brand__logo"), h("h1", { class: "brand__name" }, "Rechnungsarchiv")),
-      h("p", { class: "lead-muted" }, "Archiviert Rechnungsordner auf diesem Computer so, dass jede spätere Veränderung erkennbar ist. Ihre Rechnungen verlassen den Computer nicht."),
+      h("p", { class: "lead-muted" }, "Archiviert Rechnungsordner auf diesem Computer so, dass spätere Veränderungen an den Ablagen erkennbar sind. Ihre Rechnungen verlassen den Computer nicht."),
       h(
         "section",
         { class: "card card--start", "aria-labelledby": "neu" },

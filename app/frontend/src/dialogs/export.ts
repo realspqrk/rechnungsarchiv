@@ -3,7 +3,7 @@
 import { api, errMsg, list, type ExportPlan } from "../api";
 import { clear, h } from "../dom";
 import { bytes, plural } from "../fmt";
-import { button, openDialog, toast } from "../ui";
+import { button, openDialog, pathText, setPath, toast } from "../ui";
 
 export async function openExportDialog(): Promise<void> {
   let plan: ExportPlan;
@@ -22,7 +22,7 @@ export async function openExportDialog(): Promise<void> {
     h("select", { id, class: "input input--select" }, ...years.map((y) => h("option", { value: String(y), selected: y === value }, String(y))));
   const from = yearSelect("von", plan.from);
   const to = yearSelect("bis", plan.to);
-  const targetBox = h("span", { class: "path-box mono", id: "ziel-wert" }, target || "Noch nicht gewählt");
+  const targetBox = h("span", { class: "path-box mono", id: "ziel-wert" }, target ? pathText(target) : "Noch nicht gewählt");
   const summary = h("div", { class: "summary__title" });
   const exportBtn = button("Exportieren", () => void run(), "primary");
   const cancelBtn = button("Abbrechen", () => dlg.close());
@@ -34,7 +34,7 @@ export async function openExportDialog(): Promise<void> {
       plan = await api.ExportPlan(Number(from.value), Number(to.value));
       if (!pickedByUser) {
         target = plan.suggestedTarget;
-        targetBox.textContent = target;
+        setPath(targetBox, target);
       }
       summary.textContent =
         plan.deposits === 0
@@ -54,7 +54,7 @@ export async function openExportDialog(): Promise<void> {
       if (picked) {
         target = picked;
         pickedByUser = true;
-        targetBox.textContent = picked;
+        setPath(targetBox, picked);
         exportBtn.disabled = plan.deposits === 0;
       }
     } catch (e) {
@@ -75,7 +75,7 @@ export async function openExportDialog(): Promise<void> {
       dlg.lock(false);
       clear(doneBox);
       doneBox.append(
-        h("span", { class: "grow" }, h("strong", null, "Export abgeschlossen."), ` ${plural(r.deposits, "Ablage", "Ablagen")} in ${r.target}`),
+        h("span", { class: "grow" }, h("strong", null, "Export abgeschlossen."), ` ${plural(r.deposits, "Ablage", "Ablagen")} in `, pathText(r.target)),
         button("Ordner öffnen", async () => {
           try {
             await api.OpenFolder(r.target);

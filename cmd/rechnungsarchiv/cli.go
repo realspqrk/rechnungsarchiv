@@ -245,6 +245,13 @@ func (a *app) confirm(question string) bool {
 	return false
 }
 
+// consentHints say how to obtain consent for each action; export has no
+// --dry-run, so its hint names what to show instead.
+var consentHints = map[string]string{
+	"archive": "Erst rechnungsarchiv archive --dry-run ausführen und den Plan dem Benutzer zeigen; --yes nur übergeben, wenn er genau dieser Aktion zugestimmt hat.",
+	"export":  "Belegjahre und Ziel (details) dem Benutzer zeigen; export hat keinen Probelauf. --yes nur übergeben, wenn er genau dieser Aktion zugestimmt hat.",
+}
+
 // consent enforces ADR-0008: without --yes, an interactive run asks, any
 // other run exits 8 and changes nothing.
 func (a *app) consent(action, question string, details any) error {
@@ -256,7 +263,7 @@ func (a *app) consent(action, question string, details any) error {
 	}
 	return &cliError{Code: "CONSENT_REQUIRED", exit: exitConsent, Details: details,
 		Message: action + " braucht die Zustimmung des Benutzers (--yes); es wurde nichts geändert.",
-		Hint:    "Erst mit --dry-run (archive) prüfen und dem Benutzer zeigen; --yes nur übergeben, wenn er genau dieser Aktion zugestimmt hat."}
+		Hint:    consentHints[action]}
 }
 
 // maxSecret bounds what is read from stdin as a password.

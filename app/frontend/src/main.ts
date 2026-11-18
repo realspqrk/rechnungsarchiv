@@ -59,7 +59,8 @@ async function boot(): Promise<void> {
 
   Events.On(OrdnerAbgelegt, (ev) => {
     const drop = ev.data;
-    if (!app.status?.hasArchive || app.status.archive.readOnly) return;
+    // Read-only mode, or another PC holds the lock: nothing is archived.
+    if (!app.status?.hasArchive || app.status.archive.readOnly || app.status.lock) return;
     if (drop.error) toast(drop.error, "error");
     else openArchiveDialog(drop.folder);
   });

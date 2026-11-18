@@ -5,7 +5,7 @@ import { api, errMsg, list, type Provider, type Settings } from "../api";
 import { h } from "../dom";
 import { country, date } from "../fmt";
 import { app, navigate, rerender } from "../state";
-import { button, subHeader, toast } from "../ui";
+import { button, pathText, setPath, subHeader, toast } from "../ui";
 import { withLock } from "../actions";
 
 export async function renderSettings(): Promise<HTMLElement> {
@@ -57,7 +57,7 @@ function build(s: Settings, providers: Provider[]): HTMLElement {
       h(
         "div",
         { class: "path-row" },
-        h("span", { class: "path-box mono", "aria-labelledby": "l-ordner" }, s.archiveDir),
+        h("span", { class: "path-box mono", "aria-labelledby": "l-ordner" }, pathText(s.archiveDir)),
         button("Anderes Archiv öffnen …", async () => {
           await api.CloseArchive();
           app.status = await api.Status();
@@ -65,7 +65,7 @@ function build(s: Settings, providers: Provider[]): HTMLElement {
           navigate("#/");
         }),
       ),
-      h("div", { class: "hint" }, "Sichern Sie diesen Ordner regelmäßig auf einen zweiten Datenträger – am besten nach jeder Archivierung. Der Zeitstempel schützt vor unbemerkter Veränderung, nicht vor Verlust."),
+      h("div", { class: "hint" }, "Sichern Sie diesen Ordner regelmäßig auf einen zweiten Datenträger – am besten nach jeder Archivierung. Der Zeitstempel macht Veränderungen an den Ablagen erkennbar; vor Verlust schützt er nicht."),
     ),
     h("div", { class: "field" }, h("label", { for: "frist", class: "field__label" }, "Aufbewahrung für neue Ablagen"), retention),
   );
@@ -121,9 +121,10 @@ function build(s: Settings, providers: Provider[]): HTMLElement {
     h(
       "div",
       { class: "hint" },
-      "Änderungen werden sofort gespeichert. Zugangsdaten nur auf diesem PC (Windows-Anmeldeinformationen). Ob alles passt, zeigt der erste Zeitstempel. · EU-Vertrauensliste: Stand ",
-      date(s.trustListDate),
-      ", wird automatisch aktualisiert. ",
+      "Änderungen werden sofort gespeichert. Zugangsdaten nur auf diesem PC (Windows-Anmeldeinformationen). Ob alles passt, zeigt der erste Zeitstempel. · ",
+      s.trustListDate
+        ? `EU-Vertrauensliste: Stand ${date(s.trustListDate)}, wird automatisch aktualisiert. `
+        : "EU-Vertrauensliste: noch nicht geladen; sie wird mit Internetverbindung automatisch geladen. ",
       saved,
     ),
   );
@@ -139,7 +140,7 @@ function credentialFields(p: Provider, s: Settings, save: (fn: () => Promise<Set
   const p12Pass = h("input", { id: "p12-pass", type: "password", class: "input", placeholder: stored, autocomplete: "new-password" });
   const url = h("input", { id: "tsa-url", type: "url", class: "input", value: c.url, placeholder: "https://…", inputmode: "url" });
   let p12Path = c.p12Path;
-  const p12Box = h("span", { class: "path-box mono" }, p12Path || "Noch nicht gewählt");
+  const p12Box = h("span", { class: "path-box mono" }, p12Path ? pathText(p12Path) : "Noch nicht gewählt");
 
   const store = () =>
     save(() =>
@@ -181,7 +182,7 @@ function credentialFields(p: Provider, s: Settings, save: (fn: () => Promise<Set
                 const picked = await api.PickP12();
                 if (picked) {
                   p12Path = picked;
-                  p12Box.textContent = picked;
+                  setPath(p12Box, picked);
                   await store();
                 }
               } catch (e) {

@@ -211,9 +211,10 @@ func depositReportOf(rep *verify.Report, d *verify.Deposit, readOnly bool, dir s
 	if len(out.ChangedPaths) > maxChangedPaths {
 		out.ChangedPaths = out.ChangedPaths[:maxChangedPaths]
 	}
+	out.Content, out.TokenState = contentOf(d), tokenStateOf(d)
 	if t := ownToken(d); t != nil {
 		st := &StampInfo{GenTime: t.GenTime.Format(time.RFC3339Nano), Qualification: qualOf(t.Qualification),
-			SignatureValid: true, KeyCompromise: t.Compromised}
+			SignatureValid: out.TokenState == TokenValid, KeyCompromise: t.Compromised}
 		st.Provider, st.ProviderCountry = tokenProvider(t)
 		if t.AccuracyMS != nil {
 			st.AccuracyMs = int(*t.AccuracyMS)
@@ -235,13 +236,78 @@ func depositReportOf(rep *verify.Report, d *verify.Deposit, readOnly bool, dir s
 		out.Stamp = st
 	}
 	if p := d.Proven; p != nil && p.Via != 0 {
-		out.Inherited = &InheritedProof{FromSeq: p.Via, ProvenLatest: rfc3339(p.At), Qualification: qualOf(p.Qualification)}
+		out.Inherited = &InheritedProof{FromSeq: p.Via, ProvenLatest: rfc3339(p.At), GenTime: p.GenTime.Format(time.RFC3339Nano),
+			Qualification: qualOf(p.Qualification)}
 	}
-	if d.Previous != nil && d.Sequence > 1 {
-		out.Predecessor = d.Sequence - 1
-		out.PredecessorPresent = slices.ContainsFunc(rep.Deposits, func(x verify.Deposit) bool { return x.Sequence == d.Sequence-1 })
+	if d.Sequence > 1 {
+		predecessorOf(&out, rep, d)
 	}
 	return out
+}
+
+// contentOf is the bag result alone: the problems of spec §6 steps 1–4
+// that verify recorded, before the attempts lowered the status.
+func contentOf(d *verify.Deposit) string {
+	out := ContentUnchanged
+	for _, p := range d.Problems {
+		if p.Status == verify.StatusInvalid {
+			return ContentInvalid
+		}
+		out = ContentChanged
+	}
+	if d.Root == "" && d.Status == verify.StatusInvalid {
+		return ContentInvalid
+	}
+	if d.Root == "" || d.Counts.Changed+d.Counts.Missing+d.Counts.Added > 0 {
+		out = ContentChanged
+	}
+	return out
+}
+
+// tokenStateOf is the result of the stored attempts alone, in the order
+// verify decides them (Deposit.evidence): a valid attempt, else an invalid
+// one, else a compromised one or one without a trusted path, else none.
+func tokenStateOf(d *verify.Deposit) string {
+	has := func(o verify.Outcome) bool {
+		return slices.ContainsFunc(d.Attempts, func(a verify.Attempt) bool { return a.Outcome == o })
+	}
+	switch {
+	case has(verify.OutcomeValid):
+		return TokenValid
+	case has(verify.OutcomeInvalid):
+		return TokenInvalid
+	case has(verify.OutcomeCompromised):
+		return TokenCompromised
+	case has(verify.OutcomeNoTrust):
+		return TokenEvidence
+	}
+	return TokenMissing
+}
+
+// predecessorOf states the link to Ablage seq-1: whether that number is in
+// the archive, whether chain.json names exactly its Prüfwert with no chain
+// finding about either Ablage, and those findings.
+func predecessorOf(out *DepositReport, rep *verify.Report, d *verify.Deposit) {
+	seq := d.Sequence
+	out.Predecessor = seq - 1
+	var pred []*verify.Deposit
+	for i := range rep.Deposits {
+		if rep.Deposits[i].Sequence == seq-1 {
+			pred = append(pred, &rep.Deposits[i])
+		}
+	}
+	out.PredecessorPresent = len(pred) > 0
+	for _, f := range rep.Findings {
+		about := f.Sequence == seq || f.Sequence == seq-1
+		if f.Code == verify.FindingGap {
+			about = f.Sequence <= seq-1 && seq-1 <= max(f.To, f.Sequence)
+		}
+		if about && f.Code != verify.FindingPredecessorNotInExport {
+			out.ChainFindings = append(out.ChainFindings, present.Finding(f))
+		}
+	}
+	out.PredecessorLinked = len(pred) == 1 && pred[0].Root != "" && d.Previous != nil && *d.Previous == pred[0].Root &&
+		len(out.ChainFindings) == 0
 }
 
 func archivePath(dir, file string) string {
@@ -253,17 +319,31 @@ func archivePath(dir, file string) string {
 
 func stampResultOf(res *stamp.Result) StampResult {
 	var out StampResult
+	if res == nil {
+		return out
+	}
 	for _, o := range res.Outcomes {
 		switch {
 		case o.Stamped:
 			out.Stamped++
-		case o.Reason != "": // "" = changed or invalid: shown as such, not pending
+		case o.Reason != "":
 			out.Pending++
 			if out.Reason == "" {
 				out.Reason = reasonOf(o.Reason)
 			}
+		default: // changed, invalid or unreadable: never stamped (CLI exit 5)
+			out.Failed++
+			w := fmt.Sprintf("Ablage %s „%s“ wurde nicht gestempelt", present.Number(o.Sequence), o.Name)
+			if o.Message != "" {
+				w += ": " + o.Message
+			}
+			out.Warnings = append(out.Warnings, w+". Bitte das Archiv kontrollieren.")
+		}
+		if o.Warning != "" {
+			out.Warnings = append(out.Warnings, o.Warning)
 		}
 	}
+	out.Warnings = append(out.Warnings, res.Warnings...)
 	return out
 }
 

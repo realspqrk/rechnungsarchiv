@@ -404,3 +404,34 @@ func TestHumanOutput(t *testing.T) {
 		}
 	}
 }
+
+// Workflow simulation W2/W3: the consent hint fits the action (export has
+// no --dry-run), and stamp's --yes is only needed with --take-over.
+func TestConsentHintPerAction(t *testing.T) {
+	w := newWorld(t)
+	dir := filepath.Join(t.TempDir(), "Archiv")
+	w.run("", "init", dir, "--firma", "Musterfirma GmbH").want(t, 0)
+
+	r := w.run("", "archive", demo(demoIncoming))
+	r.want(t, 8)
+	if h, _ := r.errObj(t, "CONSENT_REQUIRED")["hint"].(string); !strings.Contains(h, "archive --dry-run") {
+		t.Errorf("archive hint %q", h)
+	}
+	r = w.run("", "export", "--von", "2026", "--bis", "2026", filepath.Join(t.TempDir(), "Export"))
+	r.want(t, 8)
+	if h, _ := r.errObj(t, "CONSENT_REQUIRED")["hint"].(string); strings.Contains(h, "dry-run") || !strings.Contains(h, "Belegjahre und Ziel") {
+		t.Errorf("export hint %q", h)
+	}
+
+	for _, c := range commands {
+		for _, f := range c.Flags {
+			if f.Name != "yes" {
+				continue
+			}
+			takeOverOnly := strings.Contains(f.Help, "nur zusammen mit --take-over")
+			if c.Consent == takeOverOnly {
+				t.Errorf("%s --yes: %q (consent %v)", c.Name, f.Help, c.Consent)
+			}
+		}
+	}
+}

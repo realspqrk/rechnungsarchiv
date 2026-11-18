@@ -42,6 +42,11 @@ export const REASON_LONG: Record<string, string> = {
 
 /** Result box after "Archivieren" when the stamp is pending. */
 export const REASON_RESULT: Record<string, { title: string; text: string }> = {
+  // Committed, but not checked again (e.g. cancelled after the commit).
+  "": {
+    title: "Zeitstempel noch nicht geholt",
+    text: "Die Ablage ist gespeichert; archivieren Sie den Ordner nicht erneut. Der Zeitstempel wird beim nächsten Programmstart oder über „Jetzt nachholen“ geholt. Bis dahin ist der Zeitpunkt nicht belegt.",
+  },
   "kein-dienst": {
     title: "Noch kein Zeitstempel-Dienst eingerichtet",
     text: "Die Ablage ist gespeichert. Sie erhält ihren Zeitstempel, sobald ein Dienst eingerichtet ist. Bis dahin ist der Zeitpunkt nicht belegt.",

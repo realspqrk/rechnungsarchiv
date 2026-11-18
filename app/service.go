@@ -106,6 +106,22 @@ const (
 	ReasonProvider  = "anbieter"
 )
 
+// DepositReport.Content: the bag checks alone (spec §6 steps 1–4).
+const (
+	ContentUnchanged = "unveraendert"
+	ContentChanged   = "veraendert"
+	ContentInvalid   = "ungueltig"
+)
+
+// DepositReport.TokenState: the stored attempts alone (spec §5–7).
+const (
+	TokenValid       = "gueltig"
+	TokenInvalid     = "ungueltig"
+	TokenCompromised = "kompromittiert"
+	TokenEvidence    = "pruefdaten"
+	TokenMissing     = "fehlt"
+)
+
 // Archive-level findings (spec §6 step 9).
 const (
 	FindingGap       = "luecke"
@@ -267,7 +283,10 @@ type ArchiveOptions struct {
 }
 
 type ArchiveResult struct {
-	Deposit Deposit `json:"deposit"`
+	// Committed: the Ablage is stored. Once true the UI never offers to
+	// archive the same folder again, whatever happened afterwards.
+	Committed bool    `json:"committed"`
+	Deposit   Deposit `json:"deposit"`
 	// Warning: the Ablage is committed, but a later step failed (e.g.
 	// stamping could not start). Never archive again; stamp later.
 	Warning string `json:"warning"`
@@ -278,6 +297,11 @@ type StampResult struct {
 	Pending int `json:"pending"`
 	// Reason of the first Ablage still pending.
 	Reason string `json:"reason"`
+	// Failed counts Ablagen that were not stamped because they are changed,
+	// invalid or unreadable (the CLI exits 5 for them).
+	Failed int `json:"failed"`
+	// Warnings (German) name those Ablagen and other problems of the run.
+	Warnings []string `json:"warnings"`
 }
 
 // DepositReport is verify.Report for one Ablage, flattened for the UI.
@@ -295,10 +319,24 @@ type DepositReport struct {
 	// Inherited proof via a successor (spec §6 step 8), nil if none.
 	Inherited   *InheritedProof `json:"inherited"`
 	Predecessor int             `json:"predecessor"` // 0 = first Ablage
-	// PredecessorPresent is false when the predecessor is missing (Lücke).
-	PredecessorPresent bool   `json:"predecessorPresent"`
-	RetentionYears     int    `json:"retentionYears"`
-	RetentionUntil     string `json:"retentionUntil"` // ISO date
+	// PredecessorPresent: an Ablage with the predecessor's number is in the
+	// archive (false: Lücke). It says nothing about the connection.
+	PredecessorPresent bool `json:"predecessorPresent"`
+	// PredecessorLinked: chain.json names exactly the Prüfwert of that
+	// Ablage and the chain checks found nothing about either of them.
+	PredecessorLinked bool `json:"predecessorLinked"`
+	// ChainFindings (German) are the chain findings about this Ablage or
+	// its predecessor (spec §6 step 9).
+	ChainFindings []string `json:"chainFindings"`
+	// Content is the result of the bag checks alone (spec §6 steps 1–4):
+	// unveraendert | veraendert | ungueltig.
+	Content string `json:"content"`
+	// TokenState is the result of the stored attempts alone (spec §5–7),
+	// independent of Content: gueltig | ungueltig | kompromittiert |
+	// pruefdaten (no trusted path, Unbestimmt) | fehlt.
+	TokenState     string `json:"tokenState"`
+	RetentionYears int    `json:"retentionYears"`
+	RetentionUntil string `json:"retentionUntil"` // ISO date
 }
 
 type FileCounts struct {
@@ -327,8 +365,11 @@ type StampInfo struct {
 }
 
 type InheritedProof struct {
-	FromSeq       int    `json:"fromSeq"`
+	FromSeq int `json:"fromSeq"`
+	// ProvenLatest is "" when the successor's accuracy is unknown; GenTime
+	// is then the only time to show ("Genauigkeit nicht angegeben").
 	ProvenLatest  string `json:"provenLatest"`
+	GenTime       string `json:"genTime"`
 	Qualification string `json:"qualification"`
 }
 

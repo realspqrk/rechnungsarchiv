@@ -79,7 +79,7 @@ Das Programm ersetzt keine Verfahrensdokumentation und keine Buchhaltung.
 
 | Anbieter (Land) | eIDAS-qualifiziert (Stand EU-Vertrauensliste 18.11.2026) | Kleinstes Paket | ca. Kosten pro Ablage | Zugang | Hinweis |
 |---|---|---|---|---|---|
-| Mensatek / ASETEC (ES) | ✓ (granted seit 04.11.2026) | ab 10 € Guthaben, Guthaben verfällt nicht, ca. 0,042 € pro Zeitstempel | ≈ 0,04 € | Benutzer/Passwort (HTTP Basic) | Empfehlung: günstigste Option |
+| Mensatek / ASETEC (ES) | ✓ (granted seit 04.11.2026) | 10 € = 233 Zeitstempel (ca. 0,043 € je Stück), Guthaben verfällt nicht; Rechnung an Unternehmen mit UID ohne spanische USt (Reverse Charge, geprüft 18.11.2026); Kundenbereich nur Spanisch | ≈ 0,04 € | Benutzer/Passwort (HTTP Basic) | Empfehlung: günstigste Option |
 | Disig (SK) | ✓ | 100 Zeitstempel 11,67 € (mind. 365 Tage gültig) | ≈ 0,12 € | Client-Zertifikat | Alternative |
 | Aruba (IT) | ✓ | 50 Zeitstempel 13,50 € | ≈ 0,27 € | Benutzer/Passwort | Endpunkt noch zu bestätigen |
 | Namirial (IT) | ✓ | 100 Zeitstempel 25 €, verfallen nicht | ≈ 0,25 € | Benutzer/Passwort (über Vertrieb) | – |

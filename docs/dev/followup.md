@@ -10,6 +10,8 @@
   - Confirm sale to an Austrian company with reverse charge, the endpoint URL, the policy OID and the accuracy.
   - Disig as second test provider (client cert).
   - Confirm Aruba's RFC 3161 endpoint before listing it as supported.
+- **DGN as default provider** (owner): register at https://www.dgn.de/dgn-zeitstempeldienst/ (German, 5 stamps/month free, QTST granted on the DE list). Confirm Austrian customers, auth method, endpoint URL. If OK, add `dgn` to providers.json and make it the README/GUI recommendation.
+- **GLOBALTRUST small quota** (owner): ask sales@globaltrust.eu for ~100 stamps/year citing their eIDAS best-price guarantee (Mensatek: 233 stamps for EUR 10). If good, make GLOBALTRUST the German-language recommendation in the README (Mensatek's customer area is Spanish only; Disig needs a client certificate, Slovak e-shop, endpoint not public).
 - **Acceptance route (ADR-0007):**
   - informal BMF/KSW enquiry;
   - quotes for a KFS/DV 1 Softwarebescheinigung;

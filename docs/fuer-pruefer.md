@@ -41,7 +41,11 @@ echo $LASTEXITCODE
 | 5 | die Prüfung hat Verändert oder Ungültig ergeben |
 | 6 | etwas ist ausstehend oder unbestimmt; das ist kein positives Ergebnis |
 
-Andere Codes betreffen den Aufruf, die Konfiguration oder den Anbieter. Sie sind keine Aussage über die Rechnungen. Dieselbe Prüfung führt „Archiv kontrollieren“ aus. Liegen Zeitstempel, Zertifikatskette und Sperrstatus im Export, braucht die Kontrolle den Anbieter nicht. Fehlt eine Vertrauensliste, die nach dem Stempel ausgestellt wurde, bleibt offen, ob der Dienst zu diesem Zeitpunkt qualifiziert war (Status unbestätigt), bis eine neuere Liste vorliegt.
+Andere Codes betreffen den Aufruf, die Konfiguration oder den Anbieter. Sie sind keine Aussage über die Rechnungen. Dieselbe Prüfung führt „Archiv kontrollieren“ aus. Liegen Zeitstempel, Zertifikatskette und Sperrstatus im Export, braucht die Kontrolle den Anbieter nicht. Fehlt eine Vertrauensliste, die nach dem Stempel ausgestellt wurde, bleibt offen, ob der Dienst zu diesem Zeitpunkt qualifiziert war (Status unbestätigt), bis eine neuere Liste vorliegt. Die Kontrolle läuft ohne weitere Angabe offline. Mit Internetverbindung lädt dieser Aufruf zusätzlich aktuelle Vertrauenslisten und Sperrstatus, in einen Zwischenspeicher außerhalb des Exportordners:
+
+```powershell
+.\rechnungsarchiv.exe verify '.' --online
+```
 
 ## Kontrolle ohne das Programm
 
@@ -58,14 +62,16 @@ sha256sum tagmanifest-sha256.txt
 
 Die dritte Zeile liefert 64 Hexzeichen. Der Prüfwert ist `sha256:` plus dieser Wert. Er ist der SHA-256 über die genauen Bytes von `tagmanifest-sha256.txt`. Dateinamen mit `%`, Wagenrücklauf oder Zeilenumbruch stehen im Manifest prozentkodiert (BagIt, RFC 8493). Bei üblichen Rechnungsnamen entfällt das.
 
-3. Im Nachweisordner `NNNN_Name.nachweis` neben der ZIP. `1.tsr` ist die erste Antwort, `1.chain.pem` die Zertifikatskette:
+3. Im Nachweisordner `NNNN_Name.nachweis` neben der ZIP. Dort liegt je Versuch `n` eine Anfrage `n.tsq`. Nur ein beantworteter Versuch hat auch die Antwort `n.tsr` und die Zertifikatskette `n.chain.pem`; nach einem gescheiterten ersten Versuch gibt es etwa nur `1.tsq` und `2.tsr`. Welcher Versuch gilt, nennt das Prüfprogramm (in `PRUEFANLEITUNG.txt` bei jeder Ablage: „Zeitstempel: …\2.tsr“). Sonst nehmen Sie den höchsten Versuch `n`, zu dem `n.tsr` und `n.chain.pem` vorliegen, und setzen seine Nummer für `n` ein:
 
 ```text
-openssl ts -reply -in 1.tsr -text
-openssl ts -verify -digest <Prüfwert-hex> -in 1.tsr -CAfile 1.chain.pem -untrusted 1.chain.pem
+openssl ts -reply -in n.tsr -text
+openssl ts -verify -digest <Prüfwert-hex> -in n.tsr -CAfile n.chain.pem -untrusted n.chain.pem
 ```
 
-`<Prüfwert-hex>` sind die 64 Zeichen ohne das Präfix `sha256:`. Die Anzeige des Abdrucks (`Message imprint`) muss dazu passen. `Verification: OK` heißt: Abdruck und Signaturkette stimmen. Dieselbe Datei steht bei `-untrusted`, weil die Kette auch das Stempelzertifikat und Zwischenzertifikate enthält; `-CAfile` allein vertraut nur Ankerzertifikaten. Fehlt der Vertrauensanker in `1.chain.pem`, setzen Sie ihn extra als `-CAfile`.
+`<Prüfwert-hex>` sind die 64 Zeichen ohne das Präfix `sha256:`. Die Anzeige des Abdrucks (`Message imprint`) muss dazu passen. `Verification: OK` heißt: Abdruck und Signatur stimmen, geprüft über die Kette in `n.chain.pem`. Ob der Dienst ein qualifizierter EU-Zeitstempeldienst war, prüft das nicht (siehe unten). Dieselbe Datei steht bei `-untrusted`, weil die Kette auch das Stempelzertifikat und Zwischenzertifikate enthält; `-CAfile` allein vertraut nur Ankerzertifikaten. Ohne `-CAfile` und `-untrusted` meldet openssl `unable to get local issuer certificate`. Fehlt der Vertrauensanker in `n.chain.pem`, setzen Sie ihn extra als `-CAfile`.
+
+Der Zeitstempel belegt den Stand spätestens zur Stempelzeit (`Time stamp`) zuzüglich der angegebenen Genauigkeit (`Accuracy`). So rechnen auch das Prüfprogramm und das Archivprotokoll.
 
 `openssl` prüft die Qualifikation nicht. Dafür die EU-Vertrauensliste: <https://eidas.ec.europa.eu/efda/trust-services/browse/eidas/tls>. Dienst des Anbieters, Typ qualifizierter Zeitstempel (QTST), Status „granted“ in einem Intervall, das die Stempelzeit enthält.
 

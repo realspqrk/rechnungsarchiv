@@ -14,7 +14,7 @@ Prices are for ~50 stamps per year:
 
 | # | Provider | Smallest package (verbatim) | Validity | Protocol / auth | ≈ €/year for 50 (net) |
 |---|---|---|---|---|---|
-| 1 | **Mensatek / ASETEC (ES)** | "From €10, for any amount you like"; €0.042/credit, 1 credit/stamp; excl. VAT | **"They never expire"** | RFC 3161 HTTPS POST, **HTTP Basic** or client certificate | **~€2** (a €10 top-up lasts for years) |
+| 1 | **Mensatek / ASETEC (ES)** | "From €10, for any amount you like"; €10 = 233 credits (€0.043/credit, checked in the customer area 2026-11-18), 1 credit/stamp; invoiced to an AT company with UID as "Exento de IVA" (reverse charge); customer area Spanish only | **"They never expire"** | RFC 3161 HTTPS POST, **HTTP Basic** or client certificate | **~€2** (a €10 top-up lasts for years) |
 | 2 | InfoCert via Openapi.com (IT) | "100: €9.70 + VAT" | 10 years | Openapi JSON API, unclear whether raw RFC 3161 is offered | ~€9.70 |
 | 3 | **Disig (SK)** | "TS 100: 11,67 € without VAT" | ≥365 days, token valid 3 years | RFC 3161 HTTP(S); auth via access-token certificate; e-shop | €11.67 |
 | 4 | Aruba (IT) | "Pack of 50: €13.50 + VAT" | not stated | user/password; endpoint known only from third-party guides | €13.50 |
@@ -46,3 +46,28 @@ Prices are for ~50 stamps per year:
 - <https://globaltrust.eu/produkte/qualified-timestamp/>
 - <https://www.a-trust.at/en/products/signature_solutions_for_companies/timestamp_and_ltv>
 - <https://www.slovensko.sk/_img/CMS4/Podmienky_pouzivania_sluzby-NASES-TSA.pdf>
+
+## Update 2026-11-18 (afternoon): German-language options
+
+Austrian QTST services on the AT list: A-Trust (3 granted), GLOBALTRUST (2 granted, 1 withdrawn), Swisscom IT Services Finance S.E. (Vienna, 1 granted).
+
+| Provider | Price for 20–100/yr | German | Self-service | Access |
+|---|---|---|---|---|
+| **DGN Deutsches Gesundheitsnetz Service GmbH** (DE list: "DGN Zeitstempelservice" granted) | "0-5 Zeitstempel 0,00 €/Stück", "6-99 Zeitstempel 0,09 €/Stück", "5 Zeitstempel/Monat kostenlos", "Keine monatlichen Gebühren - keine Mindestabnahme" | yes | free online registration | RFC 3161 over HTTPS, "ausschließlich über einen authentifizierten Zugriff"; method to confirm |
+| GLOBALTRUST (AT) | 1,000/yr EUR 185; the order form only offers "individuelles Angebot"; best-price guarantee "Differenz + 10%" | yes | quote form | user/password |
+| A-Trust (AT) | no business price published | yes | sales contact | unknown |
+| Swisscom (AT entity) | no price; smallest package 1,800 units/yr | yes | request an offer | unknown |
+| D-Trust (DE) | no price | yes | no | client certificate |
+| AlfaTrust (RO) | 6,000 for EUR 250 over 24 months | no | yes | unknown |
+
+**Consequence:** DGN is the most suitable for German-speaking SMEs (free at a monthly rhythm) if it accepts Austrian customers and offers user/password access. Still to confirm by registering: endpoint URL, auth, AT customers, billing.
+
+Sources:
+- <https://www.dgn.de/dgn-zeitstempeldienst/>
+- <https://www.dgn.de/support/article/dgn-preisblatt/>
+- <https://globaltrust.eu/produkte/qualified-timestamp/>
+- <https://order.globaltrust.eu/php/formservice.php?form=order_timestamp>
+- <https://www.a-trust.at/de/produkte/signaturlösungen_für_unternehmen/zeitstempel_und_ltv/>
+- <https://trustservices.swisscom.com/en/products/service-packages>
+- <https://qtsa.eu/>
+- DE trusted list: <https://tl.bundesnetzagentur.de/TL-DE.xml>

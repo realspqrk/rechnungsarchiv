@@ -3,6 +3,9 @@ package report
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -211,5 +214,64 @@ func TestGenTimeFractionInDetails(t *testing.T) {
 	}
 	if s := Statement(rep, d); !strings.Contains(s, "vom 05.11.2026, 13:00:00,9 Uhr MEZ (± 1 s)") {
 		t.Errorf("statement: %s", s)
+	}
+}
+
+// Workflow simulation W11: text extraction (pdftotext -layout) put the
+// values of the two-column "Angaben" block before their labels. Every
+// label/value pair is one "Label: Wert" line in reading order.
+func TestDetailsAreLabelValueLines(t *testing.T) {
+	rep, d := sample(2)
+	lines, err := Text(rep, d, Options{Version: "1.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPrefix := []string{
+		"Ergebnis: Zeitgestempelt",
+		"Archiv-ID: 6f1c0d7e-1111-4222-8333-444455556666",
+		"Prüfwert: sha256:0f0f",
+		"Aufbewahrung: Gewählte Frist: 7 Jahre",
+		"Anbieter: Mensatek",
+		"Seriennummer: 4711",
+		"Qualifikation: qualifiziert",
+		"Belegt: spätestens 05.11.2026, 09:14:23 Uhr MEZ",
+	}
+	for _, w := range wantPrefix {
+		found := false
+		for _, l := range lines {
+			found = found || strings.HasPrefix(l, w)
+		}
+		if !found {
+			t.Errorf("no line starting with %q in\n%s", w, strings.Join(lines, "\n"))
+		}
+	}
+
+	pdftotext, err := exec.LookPath("pdftotext")
+	if err != nil {
+		t.Skip("pdftotext not installed; extraction order not checked")
+	}
+	pdf, err := PDF(rep, d, Options{Version: "1.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "p.pdf")
+	if err := os.WriteFile(file, pdf, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(pdftotext, "-layout", "-enc", "UTF-8", file, "-").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(out)
+	for _, w := range []string{
+		"Archiv-ID: 6f1c0d7e-1111-4222-8333-444455556666",
+		"Seriennummer: 4711",
+		"Policy-OID: 0.4.0.2023.1.1",
+		"Aussteller: CN=CA,O=ASETEC",
+		"Qualifikation: qualifiziert",
+	} {
+		if !strings.Contains(text, w) {
+			t.Errorf("pdftotext -layout lacks %q:\n%s", w, text)
+		}
 	}
 }

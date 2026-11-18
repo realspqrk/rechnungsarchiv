@@ -413,7 +413,7 @@ func (f *fakeService) Archive(ctx context.Context, opts ArchiveOptions) (Archive
 	}
 	f.deposits = append([]Deposit{d}, f.deposits...)
 	f.recount()
-	return ArchiveResult{Deposit: d}, nil
+	return ArchiveResult{Committed: true, Deposit: d}, nil
 }
 
 func (f *fakeService) providerNameLocked() string {
@@ -489,10 +489,16 @@ func (f *fakeService) VerifyDeposit(ctx context.Context, seq int) (DepositReport
 		Files:          FileCounts{Unchanged: d.Files},
 		RetentionYears: 7,
 		RetentionUntil: fmt.Sprintf("%04d-12-31", d.Belegjahr+7),
+		Content:        ContentUnchanged,
+		TokenState:     TokenValid,
 	}
 	if d.Seq > 1 {
 		r.Predecessor = d.Seq - 1
 		r.PredecessorPresent = slices.ContainsFunc(f.deposits, func(x Deposit) bool { return x.Seq == d.Seq-1 })
+		r.PredecessorLinked = r.PredecessorPresent
+		if !r.PredecessorPresent {
+			r.ChainFindings = []string{fmt.Sprintf("Lücke: Ablage %04d fehlt", d.Seq-1)}
+		}
 	}
 	stamp := func(qual string) *StampInfo {
 		return &StampInfo{
@@ -510,17 +516,21 @@ func (f *fakeService) VerifyDeposit(ctx context.Context, seq int) (DepositReport
 		}
 	case StateModified:
 		r.Stamp = stamp(QualQualified)
+		r.Content = ContentChanged
 		r.Files = FileCounts{Unchanged: d.Files - 1, Changed: 1}
 		r.ChangedPaths = []string{"2026-10-14_Huber_R-4471.pdf"}
 	case StateIndeterminate:
 		r.Stamp = stamp("")
 		r.Stamp.KeyCompromise = true
-	case StateInvalid:
-		r.Stamp = stamp("")
 		r.Stamp.SignatureValid = false
+		r.TokenState = TokenCompromised
+	case StateInvalid:
+		r.Stamp = nil
+		r.TokenState = TokenInvalid
 	case StatePending:
+		r.TokenState = TokenMissing
 		if d.InheritedFrom > 0 {
-			r.Inherited = &InheritedProof{FromSeq: d.InheritedFrom, ProvenLatest: d.ProvenLatest, Qualification: d.Qualification}
+			r.Inherited = &InheritedProof{FromSeq: d.InheritedFrom, ProvenLatest: d.ProvenLatest, GenTime: d.ProvenLatest, Qualification: d.Qualification}
 		}
 	}
 	// The normal scenario mirrors the mockup: 0013 pending without a successor.

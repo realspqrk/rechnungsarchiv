@@ -62,7 +62,7 @@ async function main() {
     await shoot(page, "real-03-uebersicht-nach-archivieren");
 
     await page.getByRole("button", { name: "Archiv kontrollieren" }).click();
-    await page.waitForSelector(".banner--green, .banner--red", { timeout: 60000 });
+    await page.waitForSelector('[aria-label="Kontrollergebnis"]', { timeout: 60000 });
     await shoot(page, "real-04-uebersicht-kontrolliert");
 
     await page.evaluate(() => (location.hash = "#/ablage/1"));

@@ -29,7 +29,7 @@ const shots = [
   ["01-start", "start", async (p) => { await p.fill("#firma", "Musterfirma GmbH"); await p.locator("#firma").blur(); }],
   ["02-start-haftungsausschluss", "start", async (p) => { await p.getByRole("button", { name: "Vollständiger Text" }).click(); await p.waitForSelector("dialog[open]"); }],
   ["03-main-normal", "normal", null],
-  ["04-main-kontrolliert", "normal", async (p) => { await p.getByRole("button", { name: "Archiv kontrollieren" }).click(); await p.waitForSelector(".banner--green"); }],
+  ["04-main-kontrolliert", "normal", async (p) => { await checkArchive(p); }],
   ["05-main-alle-ablagen", "normal", async (p) => { await p.getByRole("button", { name: /Weitere .* anzeigen/ }).click(); }],
   ["06-main-leer", "leer", null],
   ["07-main-kein-dienst", "kein-dienst", null],
@@ -69,7 +69,14 @@ const shots = [
     await p.evaluate(() => { const c = document.querySelector("dialog[open] .dialog__content--scroll"); c.scrollTop = c.scrollHeight; });
     await p.waitForTimeout(100);
   }],
+  ["39-main-leer-kontrolliert", "leer", async (p) => { await checkArchive(p); }],
+  ["40-ablage-gesperrt", "gesperrt", async (p) => { await gotoDeposit(p, 13); }],
 ];
+
+async function checkArchive(p) {
+  await p.getByRole("button", { name: "Archiv kontrollieren" }).click();
+  await p.waitForSelector('[aria-label="Kontrollergebnis"]');
+}
 
 async function openArchive(p) {
   await p.evaluate((f) => window.raDebug.archiveFolder(f), SCAN);

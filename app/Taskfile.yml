@@ -33,6 +33,7 @@ tasks:
     deps: [install:frontend, bindings]
     dir: frontend
     cmds:
+      - npm test # pure text modules: src/unit.test.ts
       - npm run {{if eq .DEV "true"}}build:dev{{else}}build{{end}}
 
   syso:

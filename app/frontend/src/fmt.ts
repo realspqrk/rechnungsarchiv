@@ -58,6 +58,19 @@ export function dateTimeLong(iso: string): string {
   return d ? `${dateFmt.format(d)}, ${hmsFmt.format(d)} Uhr ${tzName(d)}` : "";
 }
 
+/**
+ * The signed time with its fraction as signed, like present.Exact:
+ * "05.11.2026, 13:00:00,9 Uhr MEZ". Never rounded; the seconds are those of
+ * the token, the fraction is copied digit by digit from the RFC 3339 value.
+ */
+export function dateTimeExact(iso: string): string {
+  const d = parse(iso.replace(/(T\d{2}:\d{2}:\d{2})\.\d+/, "$1"));
+  if (!d) return "";
+  const m = iso.match(/T\d{2}:\d{2}:\d{2}\.(\d+)/);
+  const frac = m ? m[1].replace(/0+$/, "") : "";
+  return `${dateFmt.format(d)}, ${hmsFmt.format(d)}${frac ? `,${frac}` : ""} Uhr ${tzName(d)}`;
+}
+
 function sameDay(a: Date, b: Date): boolean {
   return dateFmt.format(a) === dateFmt.format(b);
 }

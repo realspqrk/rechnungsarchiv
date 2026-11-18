@@ -45,11 +45,14 @@ type realService struct {
 	onChange func()
 
 	// write serializes everything that takes the archive's writer lock:
-	// one writer per archive, also inside this process.
+	// one writer per archive, also inside this process. Opening and
+	// closing take it too, so a writer always works on the archive and
+	// mode that are current while it holds the slot (beginWrite).
 	write sync.Mutex
 
 	mu       sync.Mutex
 	autoOpen bool // the remembered default archive was tried
+	chosen   bool // the user opened, created or closed an archive: no auto-open
 	gen      int  // increments with every open and close
 	genStop  context.CancelFunc
 	genCtx   context.Context
@@ -86,6 +89,7 @@ func (s *realService) wait() { s.bg.Wait() }
 var (
 	errReadOnly  = errors.New("Im Modus „nur kontrollieren“ wird nichts verändert.")
 	errNoArchive = errors.New("Kein Archiv geöffnet.")
+	errReopened  = errors.New("Abgebrochen: Das Archiv wurde inzwischen neu geöffnet oder geschlossen. Es wurde nichts geändert.")
 )
 
 // opCtx is ctx that also ends when the application shuts down.
@@ -96,9 +100,10 @@ func (s *realService) opCtx(ctx context.Context) (context.Context, context.Cance
 }
 
 type snapshot struct {
-	ar    *archive.Archive
-	trust *trust.Store
-	gen   int
+	ar     *archive.Archive
+	trust  *trust.Store
+	gen    int
+	genCtx context.Context // cancelled when this archive is closed or reopened
 }
 
 func (s *realService) current() (snapshot, error) {
@@ -107,7 +112,7 @@ func (s *realService) current() (snapshot, error) {
 	if s.ar == nil {
 		return snapshot{}, errNoArchive
 	}
-	return snapshot{s.ar, s.trust, s.gen}, nil
+	return snapshot{s.ar, s.trust, s.gen, s.genCtx}, nil
 }
 
 func (s *realService) writer() (snapshot, error) {
@@ -116,6 +121,27 @@ func (s *realService) writer() (snapshot, error) {
 		err = errReadOnly
 	}
 	return c, err
+}
+
+// beginWrite takes the writer slot, then the current archive in normal
+// mode. The snapshot is taken only while the slot is held, and opening or
+// closing cancels the old generation before it waits for the slot, so a
+// queued writer sees either the new mode or a cancelled generation, never
+// a stale archive. The returned ctx ends with the request, the
+// application and the generation; done releases everything.
+func (s *realService) beginWrite(ctx context.Context) (snapshot, context.Context, func(), error) {
+	s.write.Lock()
+	c, err := s.writer()
+	if err == nil && c.genCtx.Err() != nil {
+		err = errReopened
+	}
+	if err != nil {
+		s.write.Unlock()
+		return snapshot{}, nil, nil, err
+	}
+	octx, cancel := s.opCtx(ctx)
+	stop := context.AfterFunc(c.genCtx, cancel)
+	return c, octx, func() { stop(); cancel(); s.write.Unlock() }, nil
 }
 
 // uiErr turns core errors into what the GUI shows. A lock of another
@@ -162,22 +188,28 @@ func (s *realService) notify() {
 
 func (s *realService) Status(ctx context.Context) (Status, error) {
 	s.mu.Lock()
-	try := !s.autoOpen
+	try := !s.autoOpen && !s.chosen && s.ar == nil
 	s.autoOpen = true
 	s.mu.Unlock()
 	if try {
-		// The GUI opens the remembered default archive on start.
+		// The GUI opens the remembered default archive on start, unless the
+		// user has opened, created or closed one already.
 		if dir := archive.DefaultDir(); dir != "" {
-			if _, err := s.OpenArchive(ctx, dir, false); err != nil {
+			if err := s.open(ctx, dir, false, true); err != nil {
 				log.Printf("default archive %s: %v", dir, err)
 			}
 		}
 	}
+	return s.status(), nil
+}
+
+// status is the Status of what is open now; it never opens anything.
+func (s *realService) status() Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := Status{SuggestedDir: s.suggestedDir()}
 	if s.ar == nil {
-		return st, nil
+		return st
 	}
 	st.HasArchive = true
 	st.Archive = ArchiveInfo{Dir: s.ar.Dir, Company: s.ar.Config.Company, ArchiveID: s.ar.Config.ArchiveID,
@@ -201,7 +233,15 @@ func (s *realService) Status(ctx context.Context) (Status, error) {
 	if s.locked != nil {
 		st.Lock = lockInfo(s.locked.LockInfo)
 	}
-	return st, nil
+	return st
+}
+
+// choose records that the user decided which archive is open (or none):
+// the remembered default is no longer opened automatically.
+func (s *realService) choose() {
+	s.mu.Lock()
+	s.chosen, s.autoOpen = true, true
+	s.mu.Unlock()
 }
 
 // suggestedDir proposes a new, unused archive folder in the user's home
@@ -255,17 +295,27 @@ func (s *realService) CreateArchive(ctx context.Context, req CreateArchiveReques
 }
 
 func (s *realService) OpenArchive(ctx context.Context, dir string, readOnly bool) (Status, error) {
+	s.choose()
+	if err := s.open(ctx, dir, readOnly, false); err != nil {
+		return Status{}, err
+	}
+	return s.status(), nil
+}
+
+// open opens dir and makes it the current archive. auto: the remembered
+// default on start, which gives way to any choice the user made meanwhile.
+func (s *realService) open(ctx context.Context, dir string, readOnly, auto bool) error {
 	if strings.TrimSpace(dir) == "" {
-		return Status{}, errors.New("Bitte wählen Sie einen Archivordner.")
+		return errors.New("Bitte wählen Sie einen Archivordner.")
 	}
 	ctx, cancel := s.opCtx(ctx)
 	defer cancel()
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return Status{}, err
+		return err
 	}
 	if !isArchive(abs) {
-		return Status{}, fmt.Errorf("Im Ordner %s liegt kein Archiv (rechnungsarchiv.json fehlt).", abs)
+		return fmt.Errorf("Im Ordner %s liegt kein Archiv (rechnungsarchiv.json fehlt).", abs)
 	}
 	var ar *archive.Archive
 	var ts *trust.Store
@@ -279,18 +329,29 @@ func (s *realService) OpenArchive(ctx context.Context, dir string, readOnly bool
 		ts, err = s.sys.trust(abs)
 	}
 	if err != nil {
-		return Status{}, s.uiErr(err)
+		return s.uiErr(err)
 	}
 	rep, err := verify.Archive(ctx, abs, verify.Options{Trust: ts})
 	if err != nil {
-		return Status{}, s.uiErr(err)
+		return s.uiErr(err)
 	}
 	busy := busyCheck
 	if !readOnly && ar.Config.TSA != nil && hasPending(rep) {
 		busy = busyStamp
 	}
 
+	// End the current generation first, so writers queued on the slot give
+	// up, then switch while holding the slot.
+	if !s.endGeneration(auto) {
+		return nil
+	}
+	s.write.Lock()
 	s.mu.Lock()
+	if auto && s.chosen {
+		s.mu.Unlock()
+		s.write.Unlock()
+		return nil
+	}
 	if s.genStop != nil {
 		s.genStop()
 	}
@@ -300,6 +361,7 @@ func (s *realService) OpenArchive(ctx context.Context, dir string, readOnly bool
 	s.reasons, s.locked, s.busy, s.trustErr = nil, nil, busy, nil
 	gen, gctx := s.gen, s.genCtx
 	s.mu.Unlock()
+	s.write.Unlock()
 
 	if !readOnly {
 		if err := archive.RememberDefault(abs); err != nil {
@@ -308,7 +370,21 @@ func (s *realService) OpenArchive(ctx context.Context, dir string, readOnly bool
 	}
 	s.bg.Add(1)
 	go s.background(gctx, gen)
-	return s.Status(ctx)
+	return nil
+}
+
+// endGeneration cancels the operations of the current archive. It returns
+// false for an automatic open that a user's choice has overtaken.
+func (s *realService) endGeneration(auto bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if auto && s.chosen {
+		return false
+	}
+	if s.genStop != nil {
+		s.genStop()
+	}
+	return true
 }
 
 // background runs after opening (spec §7 and "pending Ablagen are retried
@@ -348,9 +424,15 @@ func (s *realService) background(ctx context.Context, gen int) {
 	s.mu.Unlock()
 	if busy == busyStamp {
 		s.write.Lock()
-		res, err := s.runStamp(ctx, ar, ts)
+		s.mu.Lock()
+		current := s.gen == gen
+		s.mu.Unlock()
+		var res *stamp.Result
+		if current && ctx.Err() == nil {
+			res, err = s.runStamp(ctx, ar, ts)
+		}
 		s.write.Unlock()
-		if ctx.Err() != nil {
+		if !current || ctx.Err() != nil {
 			return
 		}
 		s.noteStamp(gen, res, err)
@@ -365,6 +447,10 @@ func hasPending(rep *verify.Report) bool {
 }
 
 func (s *realService) CloseArchive(ctx context.Context) error {
+	s.choose()
+	s.endGeneration(false)
+	s.write.Lock()
+	defer s.write.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.genStop != nil {
@@ -487,10 +573,26 @@ func (s *realService) SaveProtocol(ctx context.Context, seq int, path string) er
 var errIntoArchive = errors.New("Das Archivprotokoll wird nie in den Archivordner gespeichert. Bitte wählen Sie einen anderen Ordner.")
 
 // outsideArchive refuses a target inside the archive, compared as written
-// and where the paths physically lead (junctions, links), like the CLI.
+// and where the paths physically lead (junctions, links), like the CLI. The
+// target is also judged on its own: no ancestor of it, as written or
+// physically, may be any archive (not only the open one).
 func outsideArchive(target, archiveDir string) error {
 	if within(target, archiveDir) {
 		return errIntoArchive
+	}
+	phys, err := export.Physical(target)
+	if err != nil {
+		return err
+	}
+	for _, p := range []string{target, phys} {
+		for dir := filepath.Dir(p); ; dir = filepath.Dir(dir) {
+			if isArchive(dir) {
+				return errIntoArchive
+			}
+			if filepath.Dir(dir) == dir {
+				break
+			}
+		}
 	}
 	pt, err1 := export.Physical(target)
 	pa, err2 := export.Physical(archiveDir)
@@ -604,8 +706,7 @@ func (s *realService) Archive(ctx context.Context, opts ArchiveOptions) (Archive
 	if strings.TrimSpace(opts.Name) == "" {
 		return ArchiveResult{}, errors.New("Bitte geben Sie der Ablage einen Namen.")
 	}
-	c, err := s.writer()
-	if err != nil {
+	if _, err := s.writer(); err != nil {
 		return ArchiveResult{}, err
 	}
 	folder, err := filepath.Abs(opts.Folder)
@@ -615,12 +716,17 @@ func (s *realService) Archive(ctx context.Context, opts ArchiveOptions) (Archive
 	if fi, err := os.Stat(folder); err != nil || !fi.IsDir() {
 		return ArchiveResult{}, fmt.Errorf("Der Ordner ist nicht erreichbar: %s", folder)
 	}
-	ctx, cancel := s.opCtx(ctx)
-	defer cancel()
-	s.write.Lock()
-	defer s.write.Unlock()
+	c, ctx, done, err := s.beginWrite(ctx)
+	if err != nil {
+		return ArchiveResult{}, err
+	}
+	defer done()
 	r, err := c.ar.Resolve(folder, archive.Options{Name: strings.TrimSpace(opts.Name), Belegjahr: opts.Belegjahr, RetentionYears: opts.RetentionYears})
 	if err != nil {
+		return ArchiveResult{}, s.uiErr(err)
+	}
+	// The last chance to stop: after this the Ablage is committed.
+	if err := ctx.Err(); err != nil {
 		return ArchiveResult{}, s.uiErr(err)
 	}
 	// Like the CLI: commit, then stamp. A stamping failure leaves the
@@ -634,33 +740,61 @@ func (s *realService) Archive(ctx context.Context, opts ArchiveOptions) (Archive
 	case err != nil:
 		return ArchiveResult{}, s.uiErr(err)
 	}
+	// From here on the result always says committed: an error would let
+	// the user archive the same folder again (a second Ablage, a second
+	// paid timestamp).
+	again := fmt.Sprintf("Die Ablage %s ist gespeichert; bitte nicht erneut archivieren.", present.Number(dep.Sequence))
 	res, serr := s.runStamp(ctx, c.ar, c.trust)
 	s.noteStamp(c.gen, res, serr)
 	if serr != nil {
-		warn = append(warn, "Die Ablage ist gespeichert; bitte nicht erneut archivieren. Der Zeitstempel konnte nicht angefordert werden: "+s.uiErr(serr).Error())
+		warn = append(warn, again+" Der Zeitstempel konnte nicht angefordert werden: "+s.uiErr(serr).Error())
 	}
+	warn = append(warn, stampResultOf(res).Warnings...)
 	rep, err := s.reverify(ctx, c.gen, false)
-	if err != nil {
-		return ArchiveResult{}, err
-	}
-	i := slices.IndexFunc(rep.Deposits, func(d verify.Deposit) bool { return d.Root == dep.Bag.Root })
-	if i < 0 {
-		return ArchiveResult{}, fmt.Errorf("Ablage %s wurde gespeichert, ist aber nicht mehr im Archiv.", present.Number(dep.Sequence))
+	i := -1
+	if err == nil {
+		i = slices.IndexFunc(rep.Deposits, func(d verify.Deposit) bool { return d.Root == dep.Bag.Root })
 	}
 	s.notify()
-	return ArchiveResult{Deposit: depositOf(rep, &rep.Deposits[i]), Warning: strings.Join(warn, " ")}, nil
+	if i < 0 {
+		// Not checked again (cancelled, archive closed, …): say only what
+		// is certain.
+		why := "sie ist nicht mehr im Archiv"
+		if err != nil {
+			why = err.Error()
+		}
+		if serr == nil {
+			warn = append(warn, again)
+		}
+		warn = append(warn, "Ihr Zustand konnte nicht mehr geprüft werden ("+strings.TrimSuffix(why, ".")+"); „Archiv kontrollieren“ zeigt ihn.")
+		return ArchiveResult{Committed: true, Deposit: committedDeposit(dep), Warning: strings.Join(warn, " ")}, nil
+	}
+	return ArchiveResult{Committed: true, Deposit: depositOf(rep, &rep.Deposits[i]), Warning: strings.Join(warn, " ")}, nil
+}
+
+// committedDeposit describes a committed Ablage that was not checked
+// again: pending, since no timestamp is known to be valid.
+func committedDeposit(dep *archive.Deposit) Deposit {
+	out := Deposit{Seq: dep.Sequence, Name: dep.Name, State: StatePending, File: filepath.Base(dep.Path)}
+	if b := dep.Bag; b != nil {
+		out.Files = len(b.Manifest)
+		for _, f := range b.Files {
+			out.Bytes += f.Size
+		}
+		if b.Info != nil {
+			out.Belegjahr = b.Info.Belegjahr
+		}
+	}
+	return out
 }
 
 func (s *realService) StampPending(ctx context.Context) (StampResult, error) {
-	c, err := s.writer()
+	c, ctx, done, err := s.beginWrite(ctx)
 	if err != nil {
 		return StampResult{}, err
 	}
-	ctx, cancel := s.opCtx(ctx)
-	defer cancel()
-	s.write.Lock()
+	defer done()
 	res, err := s.runStamp(ctx, c.ar, c.trust)
-	s.write.Unlock()
 	s.noteStamp(c.gen, res, err)
 	if err != nil {
 		return StampResult{}, s.uiErr(err)
@@ -673,12 +807,11 @@ func (s *realService) StampPending(ctx context.Context) (StampResult, error) {
 }
 
 func (s *realService) TakeOver(ctx context.Context) error {
-	c, err := s.writer()
+	c, _, done, err := s.beginWrite(ctx)
 	if err != nil {
 		return err
 	}
-	s.write.Lock()
-	defer s.write.Unlock()
+	defer done()
 	s.mu.Lock()
 	le := s.locked
 	s.mu.Unlock()
@@ -797,12 +930,11 @@ func (s *realService) settingsOf(c snapshot) Settings {
 }
 
 func (s *realService) SetSettings(ctx context.Context, u SettingsUpdate) (Settings, error) {
-	c, err := s.writer()
+	c, _, done, err := s.beginWrite(ctx)
 	if err != nil {
 		return Settings{}, err
 	}
-	s.write.Lock()
-	defer s.write.Unlock()
+	defer done()
 	// The archive's Config changes; Status reads it under s.mu.
 	config := func(set func() error) error {
 		s.mu.Lock()
@@ -854,10 +986,11 @@ func (s *realService) Providers(ctx context.Context) ([]Provider, error) {
 // store (creds.System), like `provider set`. Empty secret fields keep the
 // stored secret; a client certificate is checked with its password first.
 func (s *realService) SetCredentials(ctx context.Context, in Credentials) (Settings, error) {
-	c, err := s.writer()
+	c, _, done, err := s.beginWrite(ctx)
 	if err != nil {
 		return Settings{}, err
 	}
+	defer done()
 	cfg := c.ar.Config
 	if cfg.TSA == nil {
 		return Settings{}, errors.New("Bitte wählen Sie zuerst einen Anbieter.")

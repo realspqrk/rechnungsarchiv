@@ -5,7 +5,7 @@ import { clear, h, icon } from "../dom";
 import { bytes, date, dateTimeSeconds, n, plural, seq } from "../fmt";
 import { app, navigate } from "../state";
 import { PROBLEM_TEXT, QUAL, REASON_RESULT, REASON_SHORT, STATE } from "../text";
-import { button, openDialog, toast, type DialogHandle } from "../ui";
+import { button, openDialog, pathText, toast, type DialogHandle } from "../ui";
 import { refreshStatus, withLock } from "../actions";
 
 let openNow = false;
@@ -133,7 +133,7 @@ function confirmStep(dlg: DialogHandle, p: Preview): void {
     h(
       "div",
       { class: "dialog__content" },
-      h("div", null, h("h1", { id: "dlg-title", class: "dialog__title" }, "Ordner archivieren"), h("div", { class: "mono mono--small muted mt4 break" }, p.folder)),
+      h("div", null, h("h1", { id: "dlg-title", class: "dialog__title" }, "Ordner archivieren"), h("div", { class: "mono mono--small muted mt4 break" }, pathText(p.folder))),
       h(
         "div",
         { class: "mini-tiles" },
@@ -223,7 +223,7 @@ function resultStep(dlg: DialogHandle, d: Deposit, warning = ""): void {
           resultStep(dlg, now);
           return;
         }
-        toast(`Zeitstempel weiterhin ausstehend${r.reason ? ` (${REASON_SHORT[r.reason] ?? r.reason})` : ""}.`, "error");
+        toast([`Zeitstempel weiterhin ausstehend${r.reason ? ` (${REASON_SHORT[r.reason] ?? r.reason})` : ""}.`, ...list(r.warnings)].join(" "), "error");
       } catch (e) {
         toast(errMsg(e), "error");
       }

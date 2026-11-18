@@ -318,14 +318,23 @@ unverändert im Unterordner data/.
 2. Metadaten kontrollieren:  sha256sum -c tagmanifest-sha256.txt
 3. Prüfwert berechnen:       sha256sum tagmanifest-sha256.txt
    Der Prüfwert ist "sha256:" gefolgt von diesem Hashwert.
-4. Zeitstempel kontrollieren (Ordner <Ablage>.nachweis neben der ZIP-Datei):
-   openssl ts -verify -digest <Hashwert aus Schritt 3> -in 1.tsr
-   mit der Zertifikatskette aus 1.chain.pem.
+4. Zeitstempel kontrollieren, im Ordner <Ablage>.nachweis neben der
+   ZIP-Datei. Dort liegt je Versuch n eine Anfrage n.tsq; nur ein
+   beantworteter Versuch hat auch n.tsr und n.chain.pem. Welcher Versuch
+   gilt, nennt das Prüfprogramm; sonst den höchsten Versuch n mit n.tsr
+   und n.chain.pem nehmen und n in den Befehlen durch diese Nummer ersetzen:
+   openssl ts -reply -in n.tsr -text
+   openssl ts -verify -digest <Hashwert aus Schritt 3> -in n.tsr -CAfile n.chain.pem -untrusted n.chain.pem
+   "Verification: OK" heißt: Abdruck und Signatur stimmen, geprüft über
+   die Kette in n.chain.pem. Ob der Dienst ein qualifizierter
+   EU-Zeitstempeldienst war, prüft openssl nicht; das zeigt nur die
+   EU-Vertrauensliste.
 chain.json verbindet diese Ablage mit der vorigen Ablage ("previous" ist
 deren Prüfwert). files.json enthält die ursprünglichen Änderungsdaten,
 skipped.txt die nicht archivierten Systemdateien.
-Der Zeitstempel belegt, dass diese Dateien spätestens zu seinem Zeitpunkt
-in dieser Form vorlagen. Er belegt nicht, dass sie echt oder vollständig sind.
+Der Zeitstempel belegt, dass diese Dateien spätestens zur Stempelzeit
+(Time stamp) zuzüglich der angegebenen Genauigkeit (Accuracy) in dieser
+Form vorlagen. Er belegt nicht, dass sie echt oder vollständig sind.
 
 ENGLISH
 This folder is a BagIt bag (RFC 8493). The original files are stored
@@ -334,12 +343,21 @@ unchanged in the data/ subfolder.
 2. Check the metadata:       sha256sum -c tagmanifest-sha256.txt
 3. Compute the root value:   sha256sum tagmanifest-sha256.txt
    The root value (Prüfwert) is "sha256:" followed by this hash.
-4. Check the timestamp (folder <Ablage>.nachweis next to the ZIP file):
-   openssl ts -verify -digest <hash from step 3> -in 1.tsr
-   using the certificate chain from 1.chain.pem.
+4. Check the timestamp, in the folder <Ablage>.nachweis next to the ZIP
+   file. Each attempt n has a request n.tsq; only an answered attempt also
+   has n.tsr and n.chain.pem. The verifier program names the attempt that
+   counts; otherwise take the highest n with n.tsr and n.chain.pem and use
+   that number for n in the commands:
+   openssl ts -reply -in n.tsr -text
+   openssl ts -verify -digest <hash from step 3> -in n.tsr -CAfile n.chain.pem -untrusted n.chain.pem
+   "Verification: OK" means: imprint and signature match, checked through
+   the chain in n.chain.pem. openssl does not check whether the service
+   was a qualified EU timestamp service; only the EU trusted list shows
+   that.
 chain.json links this Ablage to the previous one ("previous" is its root
 value). files.json holds the original modification times, skipped.txt the
 system files that were not archived.
 The timestamp proves that these files existed in this form no later than
-its time. It does not prove that they are genuine or complete.
+its time (Time stamp) plus the stated accuracy (Accuracy). It does not
+prove that they are genuine or complete.
 `

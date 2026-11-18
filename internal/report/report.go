@@ -72,7 +72,8 @@ const (
 	kSubtitle
 	kHeading
 	kPara
-	kKV   // key: value
+	kSub  // small heading inside a section
+	kKV   // "key: value", one column in reading order
 	kFile // one Dateiverzeichnis entry
 	kMono
 )
@@ -103,7 +104,8 @@ func build(rep *verify.Report, d *verify.Deposit) []block {
 	kv("Ablage", present.Number(d.Sequence)+" „"+d.Name+"“, Datei "+d.File)
 	switch {
 	case d.Previous != nil:
-		kv("Vorgänger", "Ablage "+present.Number(d.Sequence-1)+", Prüfwert "+*d.Previous)
+		kv("Vorgänger", "Ablage "+present.Number(d.Sequence-1))
+		kv("Prüfwert des Vorgängers", *d.Previous)
 	case d.ArchiveID != "":
 		kv("Vorgänger", "keiner (erste Ablage des Archivs)")
 	}
@@ -114,10 +116,18 @@ func build(rep *verify.Report, d *verify.Deposit) []block {
 	if d.RetentionYears > 0 {
 		kv("Aufbewahrung", fmt.Sprintf("Gewählte Frist: %d Jahre, gewöhnliches Datum %s", d.RetentionYears, present.ISODate(d.RetentionUntil)))
 	}
+	kv("Kontrolle", present.TimeFull(rep.CheckedAt)+onlineText(rep.Online))
+	if len(rep.TrustLists) > 0 && d.Token == nil {
+		var ls []string
+		for _, tl := range rep.TrustLists {
+			ls = append(ls, trustListText(tl))
+		}
+		kv("Vertrauenslisten", strings.Join(ls, "; "))
+	}
 	if t := d.Token; t != nil {
-		own := "Zeitstempel"
-		kv(own+": Anbieter", strings.TrimSpace(t.TSP+" "+paren(t.Service)))
-		kv(own+": Zeitpunkt", present.ExactFull(t.GenTime)) // as signed, with its fraction
+		bs = append(bs, block{kind: kSub, text: "Zeitstempel"})
+		kv("Anbieter", strings.TrimSpace(t.TSP+" "+paren(t.Service)))
+		kv("Zeitpunkt", present.ExactFull(t.GenTime)) // as signed, with its fraction
 		acc := present.Accuracy(t.AccuracyMS)
 		switch t.AccuracySource {
 		case "token":
@@ -125,11 +135,11 @@ func build(rep *verify.Report, d *verify.Deposit) []block {
 		case "provider":
 			acc += " (laut Angabe des Anbieters)"
 		}
-		kv(own+": Genauigkeit", acc)
-		kv(own+": Seriennummer", t.Serial)
-		kv(own+": Policy-OID", t.Policy)
-		kv(own+": Signaturzertifikat", t.Signer+", Seriennummer "+t.SignerSerial)
-		kv(own+": Aussteller", t.Issuer)
+		kv("Genauigkeit", acc)
+		kv("Seriennummer", t.Serial)
+		kv("Policy-OID", t.Policy)
+		kv("Signaturzertifikat", t.Signer+", Seriennummer "+t.SignerSerial)
+		kv("Aussteller", t.Issuer)
 		for _, r := range t.Revocation {
 			kv("Sperrstatus", revocationText(r))
 		}
@@ -142,14 +152,6 @@ func build(rep *verify.Report, d *verify.Deposit) []block {
 	}
 	if p := d.Proven; p != nil {
 		kv("Belegt", present.Proven(p))
-	}
-	kv("Kontrolle", present.TimeFull(rep.CheckedAt)+onlineText(rep.Online))
-	if len(rep.TrustLists) > 0 && d.Token == nil {
-		var ls []string
-		for _, tl := range rep.TrustLists {
-			ls = append(ls, trustListText(tl))
-		}
-		kv("Vertrauenslisten", strings.Join(ls, "; "))
 	}
 
 	bs = append(bs, block{kind: kHeading, text: "Dateiverzeichnis"})
@@ -313,10 +315,16 @@ func (l *layouter) font(name string, size float64) {
 	l.pdf.SetFont(name, "", size)
 }
 
+// text draws s and records it as one line of Text.
 func (l *layouter) text(x, y float64, s string) {
+	l.draw(x, y, s)
+	l.lines = append(l.lines, s)
+}
+
+// draw draws s without recording it (part of a line keyValue records).
+func (l *layouter) draw(x, y float64, s string) {
 	l.pdf.SetXY(x, y)
 	l.pdf.Text(s)
-	l.lines = append(l.lines, s)
 }
 
 func (l *layouter) wrap(s string, w float64) ([]string, error) {
@@ -364,27 +372,57 @@ func (l *layouter) block(b block) error {
 	case kMono:
 		l.y += 3
 		return l.para("mono", 9, 12.5, marginX+10, textW-10, b.text)
+	case kSub:
+		l.ensure(40)
+		l.y += 6
+		return l.para("bold", 10, 14, marginX, textW, b.text)
 	case kKV:
-		const keyW = 150.0
-		l.font("regular", 9.5)
-		lines, err := l.wrap(b.text, textW-keyW)
+		return l.keyValue(b.key+": ", b.text)
+	case kFile:
+		return l.file(b.file)
+	}
+	return nil
+}
+
+// keyValue lays out "Label: Wert" as one column in reading order: the bold
+// label, then the value on the same baseline; continuation lines hang
+// indented. Text extraction (pdftotext -layout) then reads label before
+// value, which a two-column layout did not guarantee.
+func (l *layouter) keyValue(label, value string) error {
+	const size, lead, indent = 9.5, 13.0, 14.0
+	l.font("bold", size)
+	labelW, err := l.pdf.MeasureTextWidth(label)
+	if err != nil {
+		return err
+	}
+	l.font("regular", size)
+	first, err := l.wrap(value, textW-labelW)
+	if err != nil {
+		return err
+	}
+	lines := first[:1]
+	if rest := strings.TrimLeft(strings.TrimPrefix(value, first[0]), " "); len(first) > 1 && strings.HasPrefix(value, first[0]) {
+		more, err := l.wrap(rest, textW-indent)
 		if err != nil {
 			return err
 		}
-		l.ensure(13 * float64(min(len(lines), 3)))
-		for i, ln := range lines {
-			l.ensure(13)
-			l.y += 13
-			if i == 0 {
-				l.font("bold", 9.5)
-				l.text(marginX, l.y, b.key)
-				l.font("regular", 9.5)
-			}
-			l.text(marginX+keyW, l.y, ln)
+		lines = append(lines, more...)
+	} else {
+		lines = first
+	}
+	l.ensure(lead * float64(min(len(lines), 3)))
+	for i, ln := range lines {
+		l.ensure(lead)
+		l.y += lead
+		if i > 0 {
+			l.text(marginX+indent, l.y, ln)
+			continue
 		}
-		return nil
-	case kFile:
-		return l.file(b.file)
+		l.font("bold", size)
+		l.draw(marginX, l.y, label)
+		l.font("regular", size)
+		l.draw(marginX+labelW, l.y, ln)
+		l.lines = append(l.lines, label+ln)
 	}
 	return nil
 }

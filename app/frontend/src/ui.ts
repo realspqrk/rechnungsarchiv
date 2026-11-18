@@ -164,8 +164,38 @@ export function pathField(label: string, path: string, buttonEl: Node | null, id
     h(
       "div",
       { class: "path-row" },
-      h("span", { class: "path-box mono", "aria-labelledby": id }, path || "Noch nicht gewählt"),
+      h("span", { class: "path-box mono", "aria-labelledby": id }, path ? pathText(path) : "Noch nicht gewählt"),
       buttonEl,
     ),
   );
+}
+
+/**
+ * A path as text that may wrap after each separator (\ or /) instead of
+ * inside a name: "…\demo\<wbr>Betriebspruefung-2026". Copying the text
+ * gives the path unchanged (<wbr> adds no characters).
+ */
+export function pathText(path: string): HTMLElement {
+  // One element: inside a flex box (.path-box) every <wbr> would otherwise
+  // become a flex item of its own.
+  // Each segment is an inline-block (.path-seg), so a line breaks at a
+  // separator first ("…\demo\" / "Betriebspruefung-2026") and inside a
+  // segment only when the segment alone is wider than the box.
+  const out = h("span", { class: "path-text" });
+  for (const part of path.split(/(?<=[\\/])/)) {
+    if (out.childNodes.length) out.append(h("wbr"));
+    out.append(h("span", { class: "path-seg" }, part));
+  }
+  return out;
+}
+
+/** Replaces the content of a path box. */
+export function setPath(el: HTMLElement, path: string): void {
+  clear(el);
+  el.append(pathText(path));
+}
+
+/** Short note next to actions that wait while another PC holds the lock. */
+export function lockedNote(): HTMLElement {
+  return h("span", { class: "locked-note" }, icon("lock", 14, 2), "Archiv gesperrt");
 }

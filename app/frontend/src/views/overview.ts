@@ -2,10 +2,11 @@
 
 import { api, list, type Deposit, type Status } from "../api";
 import { h, icon } from "../dom";
-import { dateTimeShort, n, plural, seq, whenRelative } from "../fmt";
+import { dateTimeShort, n, plural, seq } from "../fmt";
 import { app, navigate, rerender } from "../state";
 import { findingText, QUAL, QUAL_SHORT, REASON_SHORT, STATE, depositTone } from "../text";
-import { banner, busy, button, readOnlyBadge } from "../ui";
+import { banner, busy, button, lockedNote, readOnlyBadge } from "../ui";
+import { checkSummary, lastCheckText } from "../summary";
 import { confirmTakeOver, onStatusChanged, stampPending } from "../actions";
 import { openArchiveDialog } from "../dialogs/archive";
 import { openExportDialog } from "../dialogs/export";
@@ -25,6 +26,10 @@ function pollWhileBusy(s: Status): void {
 export function renderMain(): HTMLElement {
   const s = app.status as Status;
   const ro = s.archive.readOnly;
+  // Another PC holds the writer lock: nothing can be archived or stamped
+  // here until it is released or taken over (banner). Checking and the
+  // export stay available.
+  const locked = !ro && !!s.lock;
   const deposits = list(s.deposits);
   const findings = list(s.findings);
   pollWhileBusy(s);
@@ -113,19 +118,31 @@ export function renderMain(): HTMLElement {
     banners.push(banner("red", "Befund", t.title, t.text, null, "warn"));
   }
 
-  const drop = ro
-    ? null
-    : h(
-        "section",
-        { class: "dropzone", "aria-label": "Ordner archivieren", "data-file-drop-target": "", id: "dropzone" },
-        icon("folderUp", 44, 1.6, "dropzone__icon"),
-        h("div", { class: "dropzone__title" }, "Ordner mit Rechnungen hierher ziehen"),
-        h("div", { class: "dropzone__text" }, "Das Archiv erhält eine Kopie (Ablage) mit Prüfsumme und dem Zeitstempel eines qualifizierten EU-Dienstes. Ihr Ordner bleibt unverändert."),
-        button("Ordner auswählen …", async () => {
-          const folder = await api.PickFolder("ablage");
-          if (folder) openArchiveDialog(folder);
-        }, "primary", { class: "dropzone__btn" }),
-      );
+  let drop: HTMLElement | null = null;
+  if (locked) {
+    // No data-file-drop-target: Wails delivers no drop here while locked.
+    drop = h(
+      "section",
+      { class: "dropzone dropzone--locked", "aria-label": "Ordner archivieren (gesperrt)", "aria-disabled": "true", id: "dropzone" },
+      icon("folderUp", 44, 1.6, "dropzone__icon"),
+      h("div", { class: "dropzone__title" }, "Ordner mit Rechnungen hierher ziehen"),
+      h("div", { class: "dropzone__text" }, "Solange das Archiv auf einem anderen PC gesperrt ist, kann hier nichts archiviert werden."),
+      lockedNote(),
+      button("Ordner auswählen …", () => {}, "primary", { class: "dropzone__btn", disabled: true }),
+    );
+  } else if (!ro) {
+    drop = h(
+      "section",
+      { class: "dropzone", "aria-label": "Ordner archivieren", "data-file-drop-target": "", id: "dropzone" },
+      icon("folderUp", 44, 1.6, "dropzone__icon"),
+      h("div", { class: "dropzone__title" }, "Ordner mit Rechnungen hierher ziehen"),
+      h("div", { class: "dropzone__text" }, "Das Archiv erhält eine Kopie (Ablage) mit Prüfsumme und dem Zeitstempel eines qualifizierten EU-Dienstes. Ihr Ordner bleibt unverändert."),
+      button("Ordner auswählen …", async () => {
+        const folder = await api.PickFolder("ablage");
+        if (folder) openArchiveDialog(folder);
+      }, "primary", { class: "dropzone__btn" }),
+    );
+  }
 
   return h(
     "div",
@@ -137,30 +154,15 @@ export function renderMain(): HTMLElement {
       ...banners,
       drop,
       tiles(s),
-      table(deposits, ro),
+      table(deposits, ro, locked),
       footer(),
     ),
   );
 }
 
 function checkBanner(): HTMLElement {
-  const c = app.checked!;
-  const when = whenRelative(c.at);
-  const counts: string[] = [];
-  if (c.counts.stamped) counts.push(`${n(c.counts.stamped)} zeitgestempelt`);
-  if (c.counts.pending) counts.push(`${n(c.counts.pending)} ausstehend`);
-  if (c.counts.indeterminate) counts.push(`${n(c.counts.indeterminate)} unbestimmt`);
-  if (c.counts.modified) counts.push(`${n(c.counts.modified)} verändert`);
-  if (c.counts.invalid) counts.push(`${n(c.counts.invalid)} ungültig`);
-  const findings = list(c.findings).length;
-  const base = `${plural(c.deposits, "Ablage", "Ablagen")}, ${plural(c.files, "Datei", "Dateien")}`;
-  if (c.deviations === 0 && findings === 0) {
-    return banner("green", "Kontrollergebnis", `Kontrolle abgeschlossen (${when}):`, `${base}, keine Abweichung. ${counts.join(", ")}.`, null, "check");
-  }
-  const issues: string[] = [];
-  if (c.deviations) issues.push(plural(c.deviations, "Ablage weicht ab", "Ablagen weichen ab"));
-  if (findings) issues.push(plural(findings, "Befund im Archiv", "Befunde im Archiv"));
-  return banner("red", "Kontrollergebnis", `Kontrolle abgeschlossen (${when}):`, `${base}. ${issues.join(", ")}. ${counts.join(", ")}.`, null, "warn");
+  const v = checkSummary(app.checked!);
+  return banner(v.tone, "Kontrollergebnis", v.title, v.text, null, v.icon);
 }
 
 function tiles(s: Status): HTMLElement {
@@ -197,17 +199,7 @@ function tiles(s: Status): HTMLElement {
     main = c.total === 1 ? "Zeitgestempelt" : `Alle ${n(c.total)} zeitgestempelt`;
   }
 
-  let last = "Noch nicht kontrolliert";
-  const lc = s.lastCheck;
-  if (lc) {
-    const gap = list(lc.findings).find((f) => f.kind === "luecke");
-    const dup = list(lc.findings).find((f) => f.kind === "nummer-doppelt");
-    const when = whenRelative(lc.at, true).replace(", ", " ").replace(" Uhr", "");
-    if (gap) last = `${when} · Lücke: Ablage ${seq(gap.seq)} fehlt`;
-    else if (dup) last = `${when} · Nummer ${seq(dup.seq)} doppelt vergeben`;
-    else if (lc.deviations) last = `${when} · ${plural(lc.deviations, "Abweichung", "Abweichungen")}`;
-    else last = `${when} · Nummern ${seq(lc.firstSeq)}–${seq(lc.lastSeq)} ohne Lücke`;
-  }
+  const last = lastCheckText(s.lastCheck, c.total);
 
   return h(
     "section",
@@ -229,12 +221,12 @@ function tiles(s: Status): HTMLElement {
   );
 }
 
-function table(deposits: Deposit[], ro: boolean): HTMLElement {
+function table(deposits: Deposit[], ro: boolean, locked: boolean): HTMLElement {
   if (deposits.length === 0) {
     return h(
       "section",
       { class: "card card--table card--empty", "aria-label": "Ablagen" },
-      h("p", null, "Noch keine Ablage. Ziehen Sie einen Ordner mit Rechnungen in das Feld oben oder wählen Sie „Ordner auswählen …“."),
+      h("p", null, ro || locked ? "Noch keine Ablage." : "Noch keine Ablage. Ziehen Sie einen Ordner mit Rechnungen in das Feld oben oder wählen Sie „Ordner auswählen …“."),
     );
   }
   const shown = app.showAll ? deposits : deposits.slice(0, FIRST_ROWS);
@@ -253,7 +245,7 @@ function table(deposits: Deposit[], ro: boolean): HTMLElement {
           null,
           h("tr", null, ...["Nr.", "Ablage", "Belegjahr", "Dateien", "Zeitstempel", "Status"].map((t) => h("th", { scope: "col" }, t))),
         ),
-        h("tbody", null, ...shown.map((d) => row(d, ro))),
+        h("tbody", null, ...shown.map((d) => row(d, ro, locked))),
       ),
     ),
     more > 0 || app.showAll
@@ -273,7 +265,7 @@ function table(deposits: Deposit[], ro: boolean): HTMLElement {
   );
 }
 
-function row(d: Deposit, ro: boolean): HTMLElement {
+function row(d: Deposit, ro: boolean, locked: boolean): HTMLElement {
   let stamp = "–";
   if (d.state === STATE.pending) stamp = "ausstehend";
   else if (d.genTime) stamp = dateTimeShort(d.genTime);
@@ -285,11 +277,11 @@ function row(d: Deposit, ro: boolean): HTMLElement {
     h("td", null, String(d.belegjahr)),
     h("td", null, n(d.files)),
     h("td", null, stamp),
-    h("td", null, statusCell(d, ro)),
+    h("td", null, statusCell(d, ro, locked)),
   );
 }
 
-export function statusCell(d: Deposit, ro: boolean): HTMLElement {
+export function statusCell(d: Deposit, ro: boolean, locked = false): HTMLElement {
   const tone = depositTone(d);
   let label = "";
   let sub: (string | Node)[] = [];
@@ -305,7 +297,10 @@ export function statusCell(d: Deposit, ro: boolean): HTMLElement {
       iconName = "clock";
       sub = [REASON_SHORT[d.reason] ?? d.reason];
       if (!ro && d.reason !== "kein-dienst") {
-        const b: HTMLButtonElement = button("Jetzt nachholen", () => void stampPending(b), "plain-link");
+        const b: HTMLButtonElement = button("Jetzt nachholen", () => void stampPending(b), "plain-link", {
+          disabled: locked,
+          title: locked ? "Archiv gesperrt: erst die Sperre übernehmen" : undefined,
+        });
         sub.push(" · ", b);
       }
       break;

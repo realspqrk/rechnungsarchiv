@@ -51,6 +51,7 @@ export function openAboutDialog(): void {
         h("dd", null, "IBM Plex Sans und IBM Plex Mono (SIL Open Font License 1.1)"),
       ),
       h("div", null, project),
+      h("p", { class: "muted small m0" }, "Das Programm macht Veränderungen an den Ablagen erkennbar. Das Löschen der jeweils letzten Ablage erkennt es nicht."),
       h(
         "p",
         { class: "muted small m0" },

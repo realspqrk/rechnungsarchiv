@@ -45,6 +45,29 @@ The same paths work inside a project (`.claude/skills/…`, `.agents/skills/…`
 - `--version` prints the version; JSON `{"version":"…"}`.
 - Error messages never repeat the value of an unknown flag or of an unexpected argument, since it could be a password.
 
+### Fields left out when empty
+
+Some keys are **omitted** instead of printed as `null`, `""`, `[]`, `0` or `false`. A missing key means exactly that default; scripts must not treat it as an error. All other keys are always present.
+
+| Result | Omitted when empty | Default |
+|---|---|---|
+| every error object | `hint`, `details` | no hint, no details |
+| `archive` | `warnings` | `[]` |
+| `stamp` (and `archive.stamp`) | `provider`, `warnings` | `""`, `[]` |
+| `stamp` outcome | `root`, `attempt`, `gen_time`, `reason`, `message`, `warning` | `""`, `0`, none, `""` (a stamped outcome has no `reason`), `""`, `""` |
+| `export` | `bridged`, `warnings` | `[]`, `[]` |
+| `verify.Report` (also `export.report`) | `archive_id`, `company`, `provider`, `bridged`, `findings`, `trust_problems` | `""`, `""`, `""`, `[]`, `[]` (no chain finding), `[]` |
+| `verify` deposit | `root`, `qualification` (only for `timestamped`), `reason` (only for `pending`; also `""` when unknown), `archive_id`, `previous` (first Ablage: omitted, not `null`), `company`, `belegjahr`, `bagging_date`, `archived_by`, `retention_years`, `retention_until`, `tool_version`, `added`, `ignored`, `problems`, `token`, `attempts`, `proven` | `""` / `0` / `[]`; `token`, `proven`: none |
+| `verify` finding | `sequence`, `to`, `detail` | `0`, `0`, `""` |
+| `verify` attempt, bridge | `detail`, `root` | `""` |
+| `verify` token | `provider`, `accuracy_ms`, `accuracy_source`, `tsp`, `service`, `trust_list`, `compromised` | `""`, unknown accuracy, `""`, `""`, `""`, no list names the service, `false` |
+| `verify` revocation | `reason`, `revoked_at`, `next_update` | `0`, not revoked, none |
+| `verify` proven | `at` (accuracy unknown: no "spätestens" time), `accuracy_ms`, `via` (`0`: own token) | none, unknown, `0` |
+| `status` pending entry | `root`, `status`, `reason`, `error` | `""` |
+| `providers` entry | `url` (`url_from_contract` providers) | `""` |
+| `provider show` / `provider set` `credentials` | `user`, `p12`, `url` | `""` (`stored` and `password` are always present) |
+| `protocol` | `qualification`, `reason` | `""` |
+
 ## Which archive
 
 Commands that work on an archive use, in this order:
@@ -123,6 +146,8 @@ The output is `verify.Report`: `{mode, path, checked_at, online, archive_id, com
 ### export
 
 `export --von <jahr> --bis <jahr> <ziel> --yes` refreshes the trusted lists if possible (into a cache outside the archive), then writes the folder described in spec §8, including `rechnungsarchiv.exe` (this program), one Archivprotokoll per Ablage, `DATEIVERZEICHNIS.csv` and `PRUEFANLEITUNG.txt`. The target must be new or empty and must not be inside the archive. The archive is only read. `report` is the check of the export itself, computed only from what the export contains. Exit 0 once the export is written; if that check is not clean, a warning says so.
+
+`export` has no `--dry-run`. Without `--yes` and without a terminal it exits 8 `CONSENT_REQUIRED` with `details: {action, from, to, target}`; show those to the user and repeat with `--yes` only after they agreed. `stamp` needs `--yes` only together with `--take-over`.
 
 ### providers, provider set, provider show
 

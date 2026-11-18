@@ -75,9 +75,16 @@ export async function stampPending(btn: HTMLButtonElement): Promise<void> {
     await refreshStatus();
     return;
   }
-  if (r.pending > 0) {
+  const warnings = r.warnings ?? [];
+  if (r.failed > 0) {
+    // Changed, invalid or unreadable Ablagen are never stamped (CLI exit 5).
+    const head = `${plural(r.failed, "Ablage wurde", "Ablagen wurden")} nicht gestempelt, weil sie verändert, ungültig oder unlesbar ${r.failed === 1 ? "ist" : "sind"}. Bitte „Archiv kontrollieren“.`;
+    toast([head, ...warnings].join(" "), "error");
+  } else if (r.pending > 0) {
     const why = REASON_SHORT[r.reason] ?? "";
-    toast(`${plural(r.pending, "Zeitstempel", "Zeitstempel")} weiterhin ausstehend${why ? ` (${why})` : ""}.`, "error");
+    toast([`${plural(r.pending, "Zeitstempel", "Zeitstempel")} weiterhin ausstehend${why ? ` (${why})` : ""}.`, ...warnings].join(" "), "error");
+  } else if (warnings.length) {
+    toast(warnings.join(" "), "error");
   } else if (r.stamped > 0) {
     toast(`${plural(r.stamped, "Zeitstempel", "Zeitstempel")} geholt.`);
   } else {

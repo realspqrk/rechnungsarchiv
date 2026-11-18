@@ -32,6 +32,11 @@ export interface ArchiveOptions {
 }
 
 export interface ArchiveResult {
+    /**
+     * Committed: the Ablage is stored. Once true the UI never offers to
+     * archive the same folder again, whatever happened afterwards.
+     */
+    "committed": boolean;
     "deposit": Deposit;
 
     /**
@@ -177,9 +182,35 @@ export interface DepositReport {
     "predecessor": number;
 
     /**
-     * PredecessorPresent is false when the predecessor is missing (Lücke).
+     * PredecessorPresent: an Ablage with the predecessor's number is in the
+     * archive (false: Lücke). It says nothing about the connection.
      */
     "predecessorPresent": boolean;
+
+    /**
+     * PredecessorLinked: chain.json names exactly the Prüfwert of that
+     * Ablage and the chain checks found nothing about either of them.
+     */
+    "predecessorLinked": boolean;
+
+    /**
+     * ChainFindings (German) are the chain findings about this Ablage or
+     * its predecessor (spec §6 step 9).
+     */
+    "chainFindings": string[] | null;
+
+    /**
+     * Content is the result of the bag checks alone (spec §6 steps 1–4):
+     * unveraendert | veraendert | ungueltig.
+     */
+    "content": string;
+
+    /**
+     * TokenState is the result of the stored attempts alone (spec §5–7),
+     * independent of Content: gueltig | ungueltig | kompromittiert |
+     * pruefdaten (no trusted path, Unbestimmt) | fehlt.
+     */
+    "tokenState": string;
     "retentionYears": number;
 
     /**
@@ -284,7 +315,13 @@ export interface FolderDrop {
 
 export interface InheritedProof {
     "fromSeq": number;
+
+    /**
+     * ProvenLatest is "" when the successor's accuracy is unknown; GenTime
+     * is then the only time to show ("Genauigkeit nicht angegeben").
+     */
     "provenLatest": string;
+    "genTime": string;
     "qualification": string;
 }
 
@@ -447,6 +484,17 @@ export interface StampResult {
      * Reason of the first Ablage still pending.
      */
     "reason": string;
+
+    /**
+     * Failed counts Ablagen that were not stamped because they are changed,
+     * invalid or unreadable (the CLI exits 5 for them).
+     */
+    "failed": number;
+
+    /**
+     * Warnings (German) name those Ablagen and other problems of the run.
+     */
+    "warnings": string[] | null;
 }
 
 /**

@@ -37,9 +37,12 @@ type command struct {
 }
 
 var (
-	flagYes      = flagSpec{Name: "yes", Kind: boolFlag, Help: "Zustimmung des Benutzers liegt vor (auch -y); ohne Terminal Pflicht"}
-	flagTakeOver = flagSpec{Name: "take-over", Kind: boolFlag, Help: "Sperre eines anderen PCs übernehmen, die nach einem Absturz hängt (nur mit --yes, nach Rückfrage)"}
-	flagOnline   = flagSpec{Name: "online", Kind: boolFlag, Help: "Vertrauenslisten und Sperrstatus zusätzlich online abfragen"}
+	flagYes = flagSpec{Name: "yes", Kind: boolFlag, Help: "Zustimmung des Benutzers liegt vor (auch -y); ohne Terminal Pflicht"}
+	// stamp needs no consent of its own (schema: consent false); --yes only
+	// confirms a --take-over.
+	flagYesTakeOver = flagSpec{Name: "yes", Kind: boolFlag, Help: "Zustimmung des Benutzers liegt vor (auch -y); nur zusammen mit --take-over nötig"}
+	flagTakeOver    = flagSpec{Name: "take-over", Kind: boolFlag, Help: "Sperre eines anderen PCs übernehmen, die nach einem Absturz hängt (nur mit --yes, nach Rückfrage)"}
+	flagOnline      = flagSpec{Name: "online", Kind: boolFlag, Help: "Vertrauenslisten und Sperrstatus zusätzlich online abfragen"}
 )
 
 var commands []*command
@@ -66,7 +69,7 @@ func init() {
 			},
 			run: (*app).archive},
 		{Name: "stamp", Writes: true, Summary: "Fehlende Zeitstempel holen.",
-			Flags: []flagSpec{flagYes, flagTakeOver}, run: (*app).stamp},
+			Flags: []flagSpec{flagYesTakeOver, flagTakeOver}, run: (*app).stamp},
 		{Name: "verify", Args: "[<archiv>|<ablage.zip>|<export-ordner>]", MaxArgs: 1,
 			Summary: "Archiv, Export oder einzelne Ablage kontrollieren. Schreibt nie.",
 			Help:    "Ohne Pfad: das Archiv (--archiv, aktueller Ordner oder Standardarchiv). Exit 0 in Ordnung, 5 Verändert/Ungültig oder Befund der Kette, 6 Ausstehend/Unbestimmt.",
