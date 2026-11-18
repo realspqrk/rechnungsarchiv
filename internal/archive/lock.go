@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -12,7 +13,33 @@ import (
 	"github.com/realspqrk/rechnungsarchiv/internal/bag"
 )
 
+// The writer lock (spec §1) has two layers:
+//
+//   - The OS lock: the writer keeps .lock open with an exclusive OS-level
+//     lock for as long as it holds the archive (Windows: a share mode that
+//     admits no other writer or deleter; elsewhere: flock(2)). The OS
+//     releases it when the process dies, and every acquisition, takeover
+//     and release happens while holding it, so they are atomic.
+//   - The JSON payload {host,user,pid,since}: what the UI shows, and what
+//     decides whether a lock found without a live OS holder (a crash) may
+//     be taken over silently or needs the user's confirmation.
+
 const lockFile = ".lock"
+
+// maxLockBytes bounds what is read from .lock.
+const maxLockBytes = 64 << 10
+
+// busyWait is how long acquisition retries while the OS lock is held but
+// the payload still names a dead owner (or none): the holder is in the
+// middle of a takeover and is about to write its own payload.
+const busyWait = 2 * time.Second
+
+// errBusy means another handle holds the OS lock.
+var errBusy = errors.New("lock busy")
+
+// hookTakeover, if set by a test, runs after the OS lock is held and the
+// found payload was judged takeover-able, just before ours is written.
+var hookTakeover func(*Archive)
 
 // LockInfo is the content of .lock (spec §1).
 type LockInfo struct {
@@ -50,74 +77,115 @@ func (a *Archive) lock() (release func(), err error) {
 	if err != nil {
 		return nil, err
 	}
-	for attempt := 0; ; attempt++ {
-		f, err := os.OpenFile(a.lockPath(), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-		if err == nil {
-			_, err = f.Write(mine)
-			if err == nil {
-				err = f.Sync()
-			}
-			if cerr := f.Close(); err == nil {
-				err = cerr
-			}
-			if err != nil {
-				os.Remove(a.lockPath())
-				return nil, err
-			}
-			return func() { a.removeLockIf(mine) }, nil
-		}
-		if !errors.Is(err, os.ErrExist) {
-			return nil, err
-		}
-		held, err := a.readLock()
-		if err != nil {
-			return nil, err
-		}
-		if attempt == 0 && held.Host == a.host && held.PID != a.pid && !pidAlive(held.PID) {
-			if err := a.removeLockIf(held.raw); err != nil {
-				return nil, err
-			}
-			continue // stale lock from a crashed process on this PC
-		}
-		return nil, held
+	f, raw, err := a.grab()
+	if err != nil {
+		return nil, err
 	}
+	if len(raw) != 0 {
+		if held := parseLock(raw); !a.staleOnThisHost(held) {
+			closeLock(f)
+			return nil, held
+		}
+		if hookTakeover != nil {
+			hookTakeover(a) // stale lock from a crashed process on this PC
+		}
+	}
+	if err := writeLock(f, mine); err != nil {
+		removeLock(f, a.lockPath())
+		return nil, err
+	}
+	path := a.lockPath()
+	return func() { removeLock(f, path) }, nil
+}
+
+// staleOnThisHost reports a payload left by a dead process on this PC. A
+// payload naming this very process is never stale: it can only come from
+// another Archive value of ours or a forged file.
+func (a *Archive) staleOnThisHost(held *LockedError) bool {
+	return held.Host == a.host && held.PID != a.pid && !pidAlive(held.PID)
+}
+
+// grab takes the OS lock on .lock (creating the file if needed) and returns
+// the payload found in it. If a live process holds the OS lock, it returns
+// that holder's payload as *LockedError.
+func (a *Archive) grab() (*os.File, []byte, error) {
+	deadline := time.Now().Add(busyWait)
+	for {
+		f, err := openLock(a.lockPath())
+		if err == nil {
+			raw, err := io.ReadAll(io.LimitReader(f, maxLockBytes))
+			if err != nil {
+				closeLock(f)
+				return nil, nil, err
+			}
+			return f, raw, nil
+		}
+		if lockRetryable(err) && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		if !errors.Is(err, errBusy) {
+			return nil, nil, err
+		}
+		raw, rerr := readLockFile(a.lockPath())
+		held := parseLock(raw)
+		midTakeover := rerr != nil || len(raw) == 0 || a.staleOnThisHost(held)
+		if midTakeover && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		return nil, nil, held
+	}
+}
+
+func errLockNotFile(path string) error {
+	return fmt.Errorf("%s ist keine normale Datei (Verknüpfung oder Ordner)", path)
+}
+
+func parseLock(raw []byte) *LockedError {
+	le := &LockedError{raw: raw}
+	if json.Unmarshal(raw, &le.LockInfo) != nil || le.Host == "" {
+		le.LockInfo = LockInfo{Host: "unbekannt", User: "unbekannt"}
+	}
+	return le
 }
 
 // readLock returns the current lock as *LockedError. An unreadable lock is
 // reported with host "unbekannt" so the UI can still offer a takeover.
 func (a *Archive) readLock() (*LockedError, error) {
-	raw, err := os.ReadFile(a.lockPath())
+	raw, err := readLockFile(a.lockPath())
 	if err != nil {
 		return nil, err
 	}
-	le := &LockedError{raw: raw}
-	if json.Unmarshal(raw, &le.LockInfo) != nil || le.Host == "" {
-		le.LockInfo = LockInfo{Host: "unbekannt", User: "unbekannt"}
-	}
-	return le, nil
+	return parseLock(raw), nil
 }
 
-// removeLockIf deletes .lock only if it still has exactly the given content.
-func (a *Archive) removeLockIf(content []byte) error {
-	raw, err := os.ReadFile(a.lockPath())
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
+func writeLock(f *os.File, content []byte) error {
+	if err := f.Truncate(0); err != nil {
 		return err
 	}
-	if !bytes.Equal(raw, content) {
-		return errors.New("Sperre wurde inzwischen von einem anderen Programm übernommen")
+	if _, err := f.WriteAt(content, 0); err != nil {
+		return err
 	}
-	return os.Remove(a.lockPath())
+	return f.Sync()
 }
 
 // TakeOver removes the lock the user saw in seen, after the user confirmed
 // (spec §1: a lock from another host needs confirmation). It refuses if the
-// lock changed in the meantime.
+// lock changed in the meantime, and it can never remove the lock of a
+// writer that is still running: that writer holds the OS lock, and
+// TakeOver then returns its *LockedError.
 func (a *Archive) TakeOver(seen *LockedError) error {
 	if a.readOnly {
 		return ErrReadOnly
 	}
-	return a.removeLockIf(seen.raw)
+	f, raw, err := a.grab()
+	if err != nil {
+		return err
+	}
+	if len(raw) != 0 && !bytes.Equal(raw, seen.raw) {
+		closeLock(f)
+		return errors.New("Sperre wurde inzwischen von einem anderen Programm übernommen")
+	}
+	return removeLock(f, a.lockPath())
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -19,6 +18,33 @@ const (
 	maxEOCDBytes = 22 + max16
 	maxEntryName = 2048 // top dir + "data/" + payload path
 )
+
+// MaxTotalBytes is the largest payload an Ablage may hold: the sum of all
+// payload file sizes, 64 GiB. Scan and Write refuse larger input; Check
+// treats a larger ZIP or extracted bag as Ungültig before hashing anything.
+const MaxTotalBytes = 64 << 30
+
+// totalLimit is MaxTotalBytes; tests lower it.
+var totalLimit int64 = MaxTotalBytes
+
+var errTooLarge = fmt.Errorf("Ordner zu groß: höchstens %d GiB pro Ablage", MaxTotalBytes>>30)
+
+// addBounded adds n to *total if the sum stays within [0, limit], without
+// overflowing, and reports whether it did.
+func addBounded(total *int64, n, limit int64) bool {
+	if n < 0 || *total > limit || n > limit-*total {
+		return false
+	}
+	*total += n
+	return true
+}
+
+// maxZipBytes bounds the size of an Ablage ZIP: the payload limit plus the
+// most that tag files, local and central headers and the end records add.
+func maxZipBytes() int64 {
+	perEntry := int64(30 + maxEntryName + 20 + 46 + maxEntryName + 28)
+	return totalLimit + int64(len(tagFiles))*maxTagBytes + maxEntries*perEntry + 22 + 56 + 20
+}
 
 type zipEntry struct {
 	name      string
@@ -46,19 +72,22 @@ func parseZip(r io.ReaderAt, size int64) ([]zipEntry, error) {
 	if size < 22 {
 		return nil, bad("Datei zu klein")
 	}
+	if size > maxZipBytes() {
+		return nil, bad("Datei zu groß für eine Ablage")
+	}
 	tail := min(size, maxEOCDBytes)
 	buf := make([]byte, tail)
 	if _, err := r.ReadAt(buf, size-tail); err != nil {
 		return nil, err
 	}
-	eocd := -1
-	for i := len(buf) - 22; i >= 0; i-- {
-		if le.Uint32(buf[i:]) == sigEOCD && i+22+int(le.Uint16(buf[i+20:])) == len(buf) {
-			eocd = i
-			break
+	// No archive comment: the end record is the last 22 bytes.
+	eocd := len(buf) - 22
+	if le.Uint32(buf[eocd:]) != sigEOCD || le.Uint16(buf[eocd+20:]) != 0 {
+		for i := len(buf) - 22; i >= 0; i-- {
+			if le.Uint32(buf[i:]) == sigEOCD && i+22+int(le.Uint16(buf[i+20:])) == len(buf) {
+				return nil, bad("Archivkommentar nicht erlaubt")
+			}
 		}
-	}
-	if eocd < 0 {
 		return nil, bad("Verzeichnisende nicht gefunden")
 	}
 	e := buf[eocd:]
@@ -172,18 +201,21 @@ func parseZip(r io.ReaderAt, size int64) ([]zipEntry, error) {
 	if len(p) != 0 {
 		return nil, bad("Daten hinter dem Zentralverzeichnis")
 	}
-	// Entries must not overlap each other or the central directory.
-	byOff := append([]zipEntry(nil), entries...)
-	sort.Slice(byOff, func(i, j int) bool { return byOff[i].headerOff < byOff[j].headerOff })
-	for i, e := range byOff {
-		end := e.dataOff + e.size
-		limit := cdOff
-		if i+1 < len(byOff) {
-			limit = byOff[i+1].headerOff
+	// The entries lie back to back in central-directory order, from the
+	// first byte up to the central directory: no overlaps, no gaps, no
+	// hidden data, and the physical order equals the central order.
+	next := uint64(0)
+	for _, e := range entries {
+		if e.headerOff != next {
+			return nil, bad("Einträge nicht lückenlos in der Reihenfolge des Zentralverzeichnisses (%q)", e.name)
 		}
-		if end > limit || end < e.dataOff {
+		next = e.dataOff + e.size
+		if next < e.dataOff || next > cdOff {
 			return nil, bad("Einträge überlappen (%q)", e.name)
 		}
+	}
+	if next != cdOff {
+		return nil, bad("Daten vor dem Zentralverzeichnis")
 	}
 	return entries, nil
 }

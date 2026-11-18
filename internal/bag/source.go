@@ -75,6 +75,8 @@ func zipSource(f *os.File, size int64) (*source, error) {
 	}
 	src := &source{files: map[string]*srcFile{}}
 	coll := newCollisions()
+	var total int64
+	rank := 0 // entry order (spec §2): bagit.txt, payload, other tags, tagmanifest
 	for _, e := range entries {
 		top, rel, ok := strings.Cut(e.name, "/")
 		if !ok || top == "" {
@@ -103,12 +105,33 @@ func zipSource(f *os.File, size int64) (*source, error) {
 		if e.dir {
 			continue
 		}
+		r := entryRank(rel)
+		if r < rank || r == 0 && len(src.files) > 0 || rank == 3 {
+			return nil, bad("Reihenfolge der Einträge verletzt bei %q (erwartet: bagit.txt, Nutzdaten, Steuerdateien, tagmanifest-sha256.txt zuletzt)", e.name)
+		}
+		rank = r
+		if strings.HasPrefix(rel, "data/") && !addBounded(&total, int64(e.size), totalLimit) {
+			return nil, bad("Nutzdaten zu groß (höchstens %d GiB)", MaxTotalBytes>>30)
+		}
 		off, n, crc := int64(e.dataOff), int64(e.size), e.crc
 		src.files[rel] = &srcFile{rel: rel, size: n, crc: &crc, open: func() (io.ReadCloser, error) {
 			return io.NopCloser(io.NewSectionReader(f, off, n)), nil
 		}}
 	}
 	return src, nil
+}
+
+// entryRank is the position class of a ZIP entry in the required order.
+func entryRank(rel string) int {
+	switch {
+	case rel == fileBagIt:
+		return 0
+	case strings.HasPrefix(rel, "data/"):
+		return 1
+	case rel == fileTagManifest:
+		return 3
+	}
+	return 2
 }
 
 func openDir(path string) (*source, error) {
@@ -123,6 +146,7 @@ func openDir(path string) (*source, error) {
 	}
 	src := &source{dir: filepath.Base(path), files: map[string]*srcFile{}, extracted: true}
 	coll := newCollisions()
+	var total int64
 	err := filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -153,6 +177,9 @@ func openDir(path string) (*source, error) {
 		}
 		if fi.IsDir() {
 			return nil
+		}
+		if strings.HasPrefix(rel, "data/") && !addBounded(&total, fi.Size(), totalLimit) {
+			return &formatError{fmt.Sprintf("Nutzdaten zu groß (höchstens %d GiB)", MaxTotalBytes>>30)}
 		}
 		osPath := p
 		src.files[rel] = &srcFile{rel: rel, size: fi.Size(), open: func() (io.ReadCloser, error) { return os.Open(osPath) }}
@@ -196,7 +223,7 @@ func (s *source) hash(rel string) (string, bool, error) {
 	}
 	defer rc.Close()
 	h, c := sha256.New(), crc32.NewIEEE()
-	n, err := io.Copy(io.MultiWriter(h, c), rc)
+	n, err := io.Copy(io.MultiWriter(h, c), io.LimitReader(rc, f.size+1))
 	if err != nil {
 		return "", false, err
 	}

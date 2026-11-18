@@ -189,6 +189,12 @@ func readTags(src *source, res *Result) error {
 		return
 	})
 	parse(fileSkipped, func(d []byte) (err error) { b.Skipped, err = parseSkipped(d); return })
+	parse(fileVerify, func(d []byte) error {
+		if string(d) != verifyText {
+			return errors.New("weicht vom festen Text ab")
+		}
+		return nil
+	})
 	return nil
 }
 

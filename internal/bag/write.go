@@ -59,6 +59,12 @@ func Write(w io.WriteSeeker, name string, in *Input, m Meta) (*Written, error) {
 	manifest := make([]ManifestEntry, 0, len(in.Files))
 	var octets int64
 	for _, f := range in.Files {
+		if !addBounded(&octets, f.Size, totalLimit) {
+			return nil, errTooLarge
+		}
+	}
+	octets = 0
+	for _, f := range in.Files {
 		entry := top + "data/" + f.Path
 		if len(entry) > maxEntryName {
 			return nil, fmt.Errorf("%w: %q (Pfad zu lang)", ErrInvalidName, f.Path)
@@ -105,6 +111,12 @@ func Write(w io.WriteSeeker, name string, in *Input, m Meta) (*Written, error) {
 		return nil, err
 	}
 	if _, err := parseChain(tags[fileChain]); err != nil {
+		return nil, err
+	}
+	if _, err := parseFiles(tags[fileFiles]); err != nil {
+		return nil, err
+	}
+	if _, err := parseSkipped(tags[fileSkipped]); err != nil {
 		return nil, err
 	}
 	tagManifest := renderTagManifest(tags)

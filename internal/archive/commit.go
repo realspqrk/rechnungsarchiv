@@ -42,7 +42,7 @@ func BelegjahrFromName(name string) int {
 // lock → write .zip.tmp → fsync → re-open and check fully → no-replace
 // rename (the commit) → read-only attribute → create .nachweis/ → unlock.
 // If the returned Deposit is non-nil, the Ablage was committed even if err
-// reports a later problem.
+// reports a later problem (then a *CommittedError).
 func (a *Archive) Archive(folder string, opts Options) (*Deposit, error) {
 	if a.readOnly {
 		return nil, ErrReadOnly
@@ -123,19 +123,39 @@ func (a *Archive) Archive(folder string, opts Options) (*Deposit, error) {
 		os.Remove(tmp)
 		return nil, err
 	}
-	if err := renameNoReplace(tmp, final); err != nil { // step 4: the commit
+	published, err := a.rename(tmp, final) // step 4: the commit
+	if !published {
 		os.Remove(tmp)
 		return nil, fmt.Errorf("Ablage konnte nicht gespeichert werden: %w", err)
 	}
+	// From here on the Ablage is committed: finish every remaining step and
+	// report problems alongside the Deposit, never instead of it.
 	dep := &Deposit{Sequence: seq, Name: name, Path: final, EvidenceDir: filepath.Join(a.Dir, base+".nachweis"), Bag: res.Bag}
-	if err := os.Chmod(final, 0o444); err != nil {
-		return dep, fmt.Errorf("Ablage gespeichert, Schreibschutz nicht gesetzt: %w", err)
+	var problems []error
+	if err != nil {
+		problems = append(problems, fmt.Errorf("Aufräumen nach dem Speichern: %w", err))
+	}
+	if err := protect(final); err != nil {
+		problems = append(problems, fmt.Errorf("Schreibschutz nicht gesetzt: %w", err))
 	}
 	if err := os.Mkdir(dep.EvidenceDir, 0o755); err != nil && !errors.Is(err, os.ErrExist) { // step 5
-		return dep, fmt.Errorf("Ablage gespeichert, Nachweis-Ordner nicht angelegt: %w", err)
+		problems = append(problems, fmt.Errorf("Nachweis-Ordner nicht angelegt: %w", err))
+	}
+	if len(problems) > 0 {
+		return dep, &CommittedError{Err: errors.Join(problems...)}
 	}
 	return dep, nil
 }
+
+// CommittedError is returned together with a non-nil Deposit: the Ablage
+// was committed (spec §4 step 4), but a step after the commit failed, e.g.
+// removing the temp name, syncing the directory, setting the read-only
+// attribute or creating .nachweis/. Callers show it as a warning; recovery
+// on the next Open repairs what it can.
+type CommittedError struct{ Err error }
+
+func (e *CommittedError) Error() string { return "Ablage gespeichert, aber: " + e.Err.Error() }
+func (e *CommittedError) Unwrap() error { return e.Err }
 
 func writeTmp(tmp, name string, in *bag.Input, meta bag.Meta) (*bag.Written, error) {
 	f, err := os.OpenFile(tmp, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o644)
@@ -143,6 +163,12 @@ func writeTmp(tmp, name string, in *bag.Input, meta bag.Meta) (*bag.Written, err
 		return nil, err
 	}
 	w, err := bag.Write(f, name, in, meta)
+	if err == nil {
+		// Read-only before publication (spec §4 step 4), so a crash right
+		// after the rename cannot leave a writable Ablage. Windows renames
+		// a read-only file without complaint.
+		err = f.Chmod(0o444)
+	}
 	if err == nil {
 		err = f.Sync()
 	}

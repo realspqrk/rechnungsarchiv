@@ -12,6 +12,8 @@
 ## Environment (Windows / Git Bash)
 - `gh api /path` in Git Bash: MSYS rewrites the leading `/` into `C:/Program Files/Git/...`. Use `MSYS_NO_PATHCONV=1 gh api licenses/apache-2.0` (no leading slash).
 - Long multi-file heredocs in one Bash call can fail with `unexpected EOF while looking for matching '` (quote chars in Markdown). Write docs with the Write tool, one file per call.
+- The Bash tool collapses `\\` to `\` even inside a quoted heredoc (`<<'EOF'`), so inline Python patches that contain backslashes silently write the wrong bytes. Write patch scripts with the Write tool and build backslashes with `chr(92)`.
+- WSL Ubuntu has no Go. To run the Unix code paths (flock, link, symlinks), cross-compile the test binary (`GOOS=linux go test -c -o <scratch>/x.test ./internal/archive`) and run it in WSL from the package directory under `/mnt/d/...` (relative `testdata` paths).
 
 ## Go / toolchain / libraries
 - System Go is 1.25.6; Wails v3 needs Go >= 1.26. go.mod pins `toolchain go1.27.4` so `go` auto-downloads it (GOTOOLCHAIN=auto). Do not upgrade system Go. Verified 2026-11-18: download works.
@@ -49,6 +51,16 @@
 - NTFS is case-insensitive, so case-only collisions cannot be created on disk in tests; NFC/NFD pairs (`Müller` vs `Müller`) can.
 - The root `.gitignore` ignores `Thumbs.db` everywhere; the demo junk file is re-included with `!/testdata/demo/**/Thumbs.db`.
 - Git does not keep mtimes: after a checkout, `files.json` of a demo Ablage shows checkout time, not the generator's fixed dates. Tests must not assert demo mtimes.
+- Writer lock: a JSON compare-then-delete on `.lock` is not atomic, and two processes can both take over a dead owner's lock. The writer therefore keeps `.lock` open with an OS lock for the whole session (`internal/archive/lock_*.go`):
+  - Windows: `CreateFile` with share mode `FILE_SHARE_READ` only and `DELETE` access. While it is held, `os.ReadFile(".lock")` fails with a sharing violation (Go opens without `FILE_SHARE_DELETE`). Read it only through `readLockFile`, which passes all three share flags. Release deletes through the handle (`FileDispositionInfoEx` + POSIX semantics) before closing, never by name after closing.
+  - Unix: `flock(2)`. The holder unlinks the name before it closes, so after locking, compare the fd's inode with `Lstat(path)` and retry on a mismatch.
+  - Over SMB, a crashed remote host's handle lives until the server's session times out. Until then `TakeOver` keeps reporting the lock as busy, which is intended.
+  - Share modes and flock apply per handle, so two `Archive` values in one test process contend like two processes.
+- Windows junctions: `filepath.Glob` and `os.Stat` follow them, and `Lstat` does not reliably report them as `ModeSymlink`. Check `FILE_ATTRIBUTE_REPARSE_POINT` (`isLink` in `internal/archive`). Tests create junctions with `cmd /c mklink /J`, which needs no admin rights.
+- Raw `windows.*` calls (`MoveFileEx`, `CreateFile`) get no automatic long-path handling. Go's `os.*` adds it, so a broken prefix only shows up beyond 240 characters. The prefix is `\\?\`; `internal/archive` once had `\?\`.
+- Read-only before commit: `(*os.File).Chmod(0o444)` works on Windows on the open write handle, `MoveFileEx` renames a read-only file, and `os.Remove` clears `READONLY` by itself on Windows.
+- Crafting bad ZIPs: `zip.Writer.SetOffset(n)` after writing n junk bytes gives data in front of the first entry with consistent offsets. For an archive comment, append bytes and patch the last 2 bytes of the EOCD. To swap the central order but not the physical order, rewrite the CD records by hand (`swapCentral` in `internal/bag/hardening_test.go`).
+- `tsa.writeNew` names its temp files `.tmp-*` (a prefix). Archive recovery deletes only `*.tmp` (a suffix), so stale evidence temp files are never cleaned up (they are harmless: `ReadAttempts` ignores them).
 
 ## RFC 3161 / ASN.1 (internal/tsa)
 - `encoding/asn1` Unmarshal: a RawValue tagged `explicit,tag:0` comes back still wrapped; unwrap it by hand.

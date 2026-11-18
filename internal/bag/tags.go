@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+	"unicode/utf8"
 )
 
 // Tag file names (spec §3).
@@ -91,8 +93,8 @@ func parseBagInfo(data []byte) (*BagInfo, error) {
 		}
 		v[i] = val
 	}
-	if !reDate.MatchString(v[1]) || !reOxum.MatchString(v[2]) || !reYear.MatchString(v[4]) ||
-		!reInt.MatchString(v[5]) || !reDate.MatchString(v[6]) || !reNonce.MatchString(v[9]) {
+	if !validDate(v[1]) || !reOxum.MatchString(v[2]) || !reYear.MatchString(v[4]) ||
+		!reInt.MatchString(v[5]) || !validDate(v[6]) || !reNonce.MatchString(v[9]) {
 		return nil, fmt.Errorf("bag-info.txt: Wert im falschen Format")
 	}
 	bi := &BagInfo{SourceOrganization: v[0], BaggingDate: v[1], PayloadOxum: v[2], ExternalIdentifier: v[3],
@@ -103,6 +105,22 @@ func parseBagInfo(data []byte) (*BagInfo, error) {
 		return nil, fmt.Errorf("bag-info.txt: Aufbewahrung-Bis passt nicht zu Belegjahr und Aufbewahrung-Jahre")
 	}
 	return bi, nil
+}
+
+// validDate accepts a real calendar date written as YYYY-MM-DD.
+func validDate(s string) bool {
+	if !reDate.MatchString(s) {
+		return false
+	}
+	t, err := time.Parse(time.DateOnly, s)
+	return err == nil && t.Format(time.DateOnly) == s
+}
+
+// validMTime accepts exactly what the writer produces: RFC 3339 in UTC, to
+// the second, with "Z" ("2026-10-01T08:00:00Z").
+func validMTime(s string) bool {
+	t, err := time.Parse(time.RFC3339, s)
+	return err == nil && t.UTC().Format(time.RFC3339) == s
 }
 
 // RetentionUntil is 31.12. of Belegjahr + years (ADR-0006), as YYYY-MM-DD.
@@ -161,7 +179,7 @@ func parseFiles(data []byte) ([]FileEntry, error) {
 		return nil, fmt.Errorf("files.json: %v", err)
 	}
 	for i, f := range fs {
-		if !reHex.MatchString(f.SHA256) || f.Size < 0 || !strings.HasPrefix(f.Path, "data/") {
+		if !reHex.MatchString(f.SHA256) || f.Size < 0 || !strings.HasPrefix(f.Path, "data/") || !validMTime(f.MTime) {
 			return nil, fmt.Errorf("files.json: Eintrag %d ungültig", i+1)
 		}
 		if i > 0 && fs[i-1].Path >= f.Path {
@@ -232,8 +250,11 @@ func parseSkipped(data []byte) ([]string, error) {
 			return nil, fmt.Errorf("skipped.txt: Zeile %d ungültig", i+1)
 		}
 		p, err := decodeBagPath(p)
-		if err != nil {
-			return nil, fmt.Errorf("skipped.txt: Zeile %d ungültig", i+1)
+		if err != nil || validatePath(p) != nil || !isJunk(p) {
+			return nil, fmt.Errorf("skipped.txt: Zeile %d: kein gültiger Pfad einer Systemdatei", i+1)
+		}
+		if len(out) > 0 && out[len(out)-1] >= p {
+			return nil, fmt.Errorf("skipped.txt: nicht sortiert oder doppelt")
 		}
 		out = append(out, p)
 	}
@@ -266,6 +287,9 @@ func isRoot(s string) bool {
 func splitLines(data []byte) ([]string, error) {
 	if len(data) == 0 {
 		return nil, nil
+	}
+	if !utf8.Valid(data) {
+		return nil, fmt.Errorf("Textformat ungültig (kein UTF-8)")
 	}
 	if bytes.HasPrefix(data, []byte("\xef\xbb\xbf")) || bytes.IndexByte(data, '\r') >= 0 || data[len(data)-1] != '\n' {
 		return nil, fmt.Errorf("Textformat ungültig (BOM, CR oder fehlender Zeilenumbruch am Ende)")

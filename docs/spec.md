@@ -45,7 +45,7 @@ The ZIP has exactly one top-level directory, `<NNNN>_<Name>/`, and that director
 | Extra fields | none, except zip64 (0x0001) when needed |
 | Forbidden | encryption; multi-disk; duplicate names (after NFC + Unicode case fold); absolute paths; `..`; backslashes; entries outside the bag dir; symlinks |
 
-A verifier MUST reject a ZIP that breaks any of these rules. It MUST bound its parsing (entry count, name length, total size). It MUST also accept the extracted bag directory, including a single wrapper folder around it (as created by Windows "Extract all").
+A verifier MUST reject a ZIP that breaks any of these rules. It MUST bound its parsing (entry count, name length, total size; v1: payload sum at most 64 GiB per Ablage). It MUST also accept the extracted bag directory, including a single wrapper folder around it (as created by Windows "Extract all").
 
 The v1 writer is stricter, and the v1 reader enforces it:
 - general-purpose flags exactly 0x0800, so no data descriptors;

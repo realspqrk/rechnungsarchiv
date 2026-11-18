@@ -137,6 +137,9 @@ func utf16Less(a, b string) bool {
 // decodeCanonical decodes data into v (unknown fields rejected) and then
 // requires that re-encoding the value with enc yields exactly data.
 func decodeCanonical(data []byte, v any, enc func() ([]byte, error)) error {
+	if !utf8.Valid(data) {
+		return fmt.Errorf("kein gültiges UTF-8")
+	}
 	d := json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 	if err := d.Decode(v); err != nil {

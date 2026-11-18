@@ -32,6 +32,7 @@ type InputFile struct {
 func Scan(dir string) (*Input, error) {
 	in := &Input{Root: dir}
 	coll := newCollisions()
+	var total int64
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -44,13 +45,14 @@ func Scan(dir string) (*Input, error) {
 			return err
 		}
 		rel = norm.NFC.String(filepath.ToSlash(rel))
+		// Validate the name first: Windows cannot even stat some invalid
+		// names. Junk names too, since skipped.txt must stay valid.
+		if err := validatePath(rel); err != nil {
+			return err
+		}
 		if !d.IsDir() && isJunk(rel) {
 			in.Skipped = append(in.Skipped, rel)
 			return nil
-		}
-		// Validate the name first: Windows cannot even stat some invalid names.
-		if err := validatePath(rel); err != nil {
-			return err
 		}
 		fi, err := os.Lstat(p)
 		if err != nil {
@@ -70,6 +72,9 @@ func Scan(dir string) (*Input, error) {
 		}
 		if err := coll.add("data/"+rel, false); err != nil {
 			return err
+		}
+		if !addBounded(&total, fi.Size(), totalLimit) {
+			return errTooLarge
 		}
 		in.Files = append(in.Files, InputFile{Path: rel, OSPath: p, Size: fi.Size(), ModTime: fi.ModTime()})
 		return nil

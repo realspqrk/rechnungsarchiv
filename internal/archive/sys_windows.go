@@ -3,9 +3,11 @@
 package archive
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/windows"
 )
@@ -13,7 +15,17 @@ import (
 // renameNoReplace renames without replacing an existing target. os.Rename
 // replaces on Windows (MOVEFILE_REPLACE_EXISTING), so call MoveFileEx
 // without that flag.
-func renameNoReplace(from, to string) error {
+//
+// published reports whether to now exists. MoveFileEx is one step, so on
+// Windows an error always means "not published".
+func renameNoReplace(from, to string) (published bool, err error) {
+	if err := moveNoReplace(from, to); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func moveNoReplace(from, to string) error {
 	f, err := windows.UTF16PtrFromString(longPath(from))
 	if err != nil {
 		return err
@@ -33,7 +45,7 @@ func longPath(p string) string {
 	if err != nil || len(abs) < 240 || strings.HasPrefix(abs, `\`) {
 		return p
 	}
-	return `\?\` + abs
+	return `\\?\` + abs
 }
 
 func pidAlive(pid int) bool {
@@ -51,4 +63,14 @@ func pidAlive(pid int) bool {
 	}
 	const stillActive = 259
 	return code == stillActive
+}
+
+// isLink reports symlinks, junctions and every other reparse point (as
+// returned by Lstat). Such entries are never followed or deleted through.
+func isLink(fi fs.FileInfo) bool {
+	if fi.Mode()&fs.ModeSymlink != 0 {
+		return true
+	}
+	d, ok := fi.Sys().(*syscall.Win32FileAttributeData)
+	return ok && d.FileAttributes&syscall.FILE_ATTRIBUTE_REPARSE_POINT != 0
 }

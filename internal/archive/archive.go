@@ -52,11 +52,12 @@ type Archive struct {
 
 	readOnly bool
 	// Hooks for tests; set by open.
-	now   func() time.Time
-	user  string
-	host  string
-	pid   int
-	nonce func() (string, error)
+	now    func() time.Time
+	user   string
+	host   string
+	pid    int
+	nonce  func() (string, error)
+	rename func(from, to string) (published bool, err error)
 }
 
 // Deposit is one Ablage found in the archive folder.
@@ -128,7 +129,8 @@ func open(dir string, readOnly bool) (*Archive, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Archive{Dir: dir, readOnly: readOnly, now: time.Now, pid: os.Getpid(), nonce: randomHex16}
+	a := &Archive{Dir: dir, readOnly: readOnly, now: time.Now, pid: os.Getpid(), nonce: randomHex16,
+		rename: renameNoReplace}
 	d := json.NewDecoder(strings.NewReader(string(data)))
 	d.DisallowUnknownFields()
 	if err := d.Decode(&a.Config); err != nil {
@@ -144,7 +146,11 @@ func open(dir string, readOnly bool) (*Archive, error) {
 	return a, nil
 }
 
-// recover deletes leftover *.tmp files (spec §4) while holding the lock.
+// recover runs crash recovery (spec §4) while holding the lock: it deletes
+// leftover *.tmp files and restores the read-only attribute of committed
+// Ablagen. It only touches entries that physically live in the archive
+// folder or in a real .nachweis/ directory in it: links and other reparse
+// points are never followed, so a junction cannot redirect a deletion.
 func (a *Archive) recover() error {
 	release, err := a.lock()
 	var le *LockedError
@@ -155,18 +161,81 @@ func (a *Archive) recover() error {
 		return err
 	}
 	defer release()
-	for _, pattern := range []string{"*.tmp", "*.nachweis/*.tmp"} {
-		matches, err := filepath.Glob(filepath.Join(a.Dir, pattern))
+	root, err := os.Lstat(a.Dir)
+	if err != nil {
+		return err
+	}
+	des, err := os.ReadDir(a.Dir)
+	if err != nil {
+		return err
+	}
+	for _, de := range des {
+		name := de.Name()
+		p := filepath.Join(a.Dir, name)
+		switch {
+		case strings.HasSuffix(name, ".tmp"):
+			err = removeTmp(a.Dir, root, p)
+		case strings.HasSuffix(name, ".nachweis"):
+			err = a.recoverEvidence(p)
+		case reDeposit.MatchString(name):
+			err = protect(p)
+		}
 		if err != nil {
 			return err
 		}
-		for _, m := range matches {
-			if err := os.Remove(m); err != nil && !errors.Is(err, os.ErrNotExist) {
+	}
+	return nil
+}
+
+// recoverEvidence deletes *.tmp files directly inside a .nachweis folder,
+// if it is a real directory.
+func (a *Archive) recoverEvidence(dir string) error {
+	fi, err := os.Lstat(dir)
+	if err != nil || !fi.IsDir() || isLink(fi) {
+		return nil // not ours to clean
+	}
+	des, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, de := range des {
+		if strings.HasSuffix(de.Name(), ".tmp") {
+			if err := removeTmp(dir, fi, filepath.Join(dir, de.Name())); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// removeTmp deletes p if it is a plain file and its directory is still the
+// one that was enumerated (dirInfo), not a link swapped in meanwhile.
+func removeTmp(dir string, dirInfo os.FileInfo, p string) error {
+	if filepath.Dir(p) != dir {
+		return fmt.Errorf("%s liegt nicht im Archiv", p)
+	}
+	fi, err := os.Lstat(p)
+	if err != nil || !fi.Mode().IsRegular() || isLink(fi) {
+		return nil
+	}
+	if now, err := os.Lstat(dir); err != nil || isLink(now) || !os.SameFile(now, dirInfo) {
+		return nil
+	}
+	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// protect sets the read-only attribute of a committed Ablage that lacks it
+// (spec §4 step 4), e.g. after a crash of an older version between rename
+// and chmod.
+func protect(p string) error {
+	fi, err := os.Lstat(p)
+	if err != nil || !fi.Mode().IsRegular() || isLink(fi) || fi.Mode().Perm()&0o222 == 0 {
+		return nil
+	}
+	return os.Chmod(p, 0o444)
 }
 
 var reDeposit = regexp.MustCompile(`^(\d{4,})_(.+)\.zip$`)
@@ -275,11 +344,17 @@ func writeNew(path string, data []byte) error {
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
-	if err == nil {
-		err = renameNoReplace(tmp, path)
-	}
 	if err != nil {
 		os.Remove(tmp)
+		return err
 	}
+	published, err := renameNoReplace(tmp, path)
+	if published {
+		// The file exists with its full, synced content; a failed cleanup
+		// of the temp name only leaves a link that recovery removes.
+		os.Remove(tmp)
+		return nil
+	}
+	os.Remove(tmp)
 	return err
 }

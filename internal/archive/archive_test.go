@@ -225,7 +225,7 @@ func TestRecoveryAndNoReplace(t *testing.T) {
 	src, dst := filepath.Join(a.Dir, "x.tmp"), filepath.Join(a.Dir, "ziel.txt")
 	os.WriteFile(src, []byte("neu"), 0o644)
 	os.WriteFile(dst, []byte("alt"), 0o644)
-	if err := renameNoReplace(src, dst); !errors.Is(err, os.ErrExist) {
+	if ok, err := renameNoReplace(src, dst); ok || !errors.Is(err, os.ErrExist) {
 		t.Fatalf("rename replaced or failed oddly: %v", err)
 	}
 	if data, _ := os.ReadFile(dst); string(data) != "alt" {
