@@ -219,6 +219,16 @@ type CheckSummary struct {
 	Findings   []Finding `json:"findings"`
 	FirstSeq   int       `json:"firstSeq"`
 	LastSeq    int       `json:"lastSeq"`
+	// Inherited are the ausstehend Ablagen whose state is proven through a
+	// stamped successor (spec §6 step 8): no own timestamp, but not
+	// "nicht belegt" either.
+	Inherited []InheritedPending `json:"inherited"`
+}
+
+// InheritedPending is an ausstehend Ablage Seq proven through Ablage Via.
+type InheritedPending struct {
+	Seq int `json:"seq"`
+	Via int `json:"via"`
 }
 
 type TrustListInfo struct {

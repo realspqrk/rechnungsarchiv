@@ -61,6 +61,13 @@ export interface CheckSummary {
     "findings": Finding[] | null;
     "firstSeq": number;
     "lastSeq": number;
+
+    /**
+     * Inherited are the ausstehend Ablagen whose state is proven through a
+     * stamped successor (spec §6 step 8): no own timestamp, but not
+     * "nicht belegt" either.
+     */
+    "inherited": InheritedPending[] | null;
 }
 
 export interface Counts {
@@ -311,6 +318,14 @@ export interface FolderDrop {
      * Error is a German message when the drop cannot be used (files, several folders).
      */
     "error": string;
+}
+
+/**
+ * InheritedPending is an ausstehend Ablage Seq proven through Ablage Via.
+ */
+export interface InheritedPending {
+    "seq": number;
+    "via": number;
 }
 
 export interface InheritedProof {

@@ -26,6 +26,7 @@ export type {
     FileCounts,
     Finding,
     FolderDrop,
+    InheritedPending,
     InheritedProof,
     LockInfo,
     Preview,

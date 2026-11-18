@@ -41,9 +41,28 @@ export function checkSummary(c: CheckSummary, when = whenRelative(c.at)): Summar
     return { tone: "grey", icon: "info", title, text: `${base}. Bei ${plural(c.counts.indeterminate, "Ablage", "Ablagen")} ist der Zeitpunkt nicht sicher belegt.${tail}` };
   }
   if (c.counts.pending) {
-    return { tone: "amber", icon: "clock", title, text: `${base}. Bei ${plural(c.counts.pending, "Ablage", "Ablagen")} fehlt noch ein gültiger Zeitstempel; ihr Zeitpunkt ist nicht belegt.${tail}` };
+    // Pending with inherited proof: no own timestamp, but the state is
+    // belegt through a stamped successor (core and detail view say so).
+    const inherited = c.inherited ?? [];
+    const parts: string[] = [];
+    const unproven = c.counts.pending - inherited.length;
+    if (unproven > 0) parts.push(`Bei ${plural(unproven, "Ablage", "Ablagen")} fehlt noch ein gültiger Zeitstempel; ihr Zeitpunkt ist nicht belegt.`);
+    const byVia = new Map<number, number[]>();
+    for (const i of inherited) byVia.set(i.via, [...(byVia.get(i.via) ?? []), i.seq]);
+    for (const [via, seqs] of byVia) {
+      parts.push(`${ablagen(seqs)}: eigener Zeitstempel fehlt (Stand über Ablage ${seq(via)} belegt).`);
+    }
+    return { tone: "amber", icon: "clock", title, text: `${base}. ${parts.join(" ")}${tail}` };
   }
   return { tone: "green", icon: "check", title, text: `${base}, keine Abweichung.${tail}` };
+}
+
+/** "Ablage 0002", "Ablagen 0001 und 0002", "Ablagen 0001, 0002 und 0004"; more than three as a count. */
+function ablagen(seqs: number[]): string {
+  if (seqs.length === 1) return `Ablage ${seq(seqs[0])}`;
+  if (seqs.length > 3) return plural(seqs.length, "Ablage", "Ablagen");
+  const s = seqs.map(seq);
+  return `Ablagen ${s.slice(0, -1).join(", ")} und ${s[s.length - 1]}`;
 }
 
 /** The "Zuletzt kontrolliert" tile. */

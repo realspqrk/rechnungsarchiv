@@ -186,6 +186,9 @@ func chain(ctx context.Context, rep *Report) error {
 					rep.Findings = append(rep.Findings, Finding{Code: FindingPreviousMismatch, Sequence: s})
 				} else {
 					linked[s] = before[0].intact
+					if cur[0].dep != nil { // nil for Brückendaten nodes
+						cur[0].dep.LinkedPrevious = before[0].intact
+					}
 				}
 			}
 		}

@@ -137,15 +137,19 @@ type Deposit struct {
 	Qualification Qualification `json:"qualification,omitempty"` // Zeitgestempelt only
 	Reason        Reason        `json:"reason,omitempty"`        // Ausstehend only; "" if unknown
 
-	ArchiveID      string  `json:"archive_id,omitempty"`
-	Previous       *string `json:"previous,omitempty"`
-	Company        string  `json:"company,omitempty"`
-	Belegjahr      int     `json:"belegjahr,omitempty"`
-	BaggingDate    string  `json:"bagging_date,omitempty"` // local assertion
-	ArchivedBy     string  `json:"archived_by,omitempty"`  // local assertion
-	RetentionYears int     `json:"retention_years,omitempty"`
-	RetentionUntil string  `json:"retention_until,omitempty"`
-	ToolVersion    string  `json:"tool_version,omitempty"`
+	ArchiveID string  `json:"archive_id,omitempty"`
+	Previous  *string `json:"previous,omitempty"`
+	// LinkedPrevious is true when the chain check verified that this Ablage
+	// commits to the predecessor's Prüfwert and both tag sets are intact
+	// (spec §6 step 9). It is the only source for "schließt an".
+	LinkedPrevious bool   `json:"linked_previous,omitempty"`
+	Company        string `json:"company,omitempty"`
+	Belegjahr      int    `json:"belegjahr,omitempty"`
+	BaggingDate    string `json:"bagging_date,omitempty"` // local assertion
+	ArchivedBy     string `json:"archived_by,omitempty"`  // local assertion
+	RetentionYears int    `json:"retention_years,omitempty"`
+	RetentionUntil string `json:"retention_until,omitempty"`
+	ToolVersion    string `json:"tool_version,omitempty"`
 
 	Counts   Counts    `json:"counts"`
 	Files    []File    `json:"files"`

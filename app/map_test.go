@@ -65,7 +65,8 @@ func TestDepositReportPredecessorLink(t *testing.T) {
 	mk := func(previous *string, findings ...verify.Finding) DepositReport {
 		rep := &verify.Report{Deposits: []verify.Deposit{
 			{Sequence: 1, Root: prev, Status: verify.StatusTimestamped},
-			{Sequence: 2, Root: root("2"), Previous: previous, Status: verify.StatusTimestamped},
+			{Sequence: 2, Root: root("2"), Previous: previous, Status: verify.StatusTimestamped,
+				LinkedPrevious: previous != nil && *previous == prev && len(findings) == 0},
 		}, Findings: findings}
 		return depositReportOf(rep, &rep.Deposits[1], false, `D:\A`)
 	}
@@ -121,5 +122,42 @@ func TestStampResultReportsFailures(t *testing.T) {
 	if !slices.ContainsFunc(r.Warnings, func(w string) bool { return strings.Contains(w, "0002") && strings.Contains(w, "Ablage verändert") }) ||
 		!slices.Contains(r.Warnings, "Uhr des PCs geht falsch") {
 		t.Fatalf("warnings %q", r.Warnings)
+	}
+}
+
+// Code review 2 finding 2: chain.json of an Ablage that failed tag
+// integrity (spec §6 step 2) is untrusted. The core skips that link without
+// a chain finding, so "previous names the predecessor's Prüfwert" proves
+// nothing: no verified link, whichever endpoint failed.
+func TestDepositReportPredecessorUntrustedTags(t *testing.T) {
+	// The link decision belongs to the core (verify.Deposit.LinkedPrevious,
+	// set by the chain check only when both tag sets are intact); the mapper
+	// must follow it and never re-derive it. The tag-integrity cases are
+	// exercised end to end in TestPredecessorNotLinkedWhenTagsBroken.
+	prev := root("1")
+	for _, linked := range []bool{false, true} {
+		rep := &verify.Report{Deposits: []verify.Deposit{
+			{Sequence: 1, Root: prev, Status: verify.StatusTimestamped},
+			{Sequence: 2, Root: root("2"), Previous: &prev, Status: verify.StatusTimestamped, LinkedPrevious: linked},
+		}}
+		if r := depositReportOf(rep, &rep.Deposits[1], false, `D:\A`); !r.PredecessorPresent || r.PredecessorLinked != linked {
+			t.Fatalf("linked=%v: %+v", linked, r)
+		}
+	}
+}
+
+// Code review 2 finding 3: the check summary names the pending Ablagen
+// whose state is proven through a stamped successor, so the banner does not
+// call their time "nicht belegt".
+func TestCheckSummaryNamesInheritedProof(t *testing.T) {
+	gen := time.Date(2026, 11, 5, 8, 14, 22, 0, time.UTC)
+	rep := &verify.Report{Deposits: []verify.Deposit{
+		{Sequence: 1, Root: root("1"), Status: verify.StatusPending},
+		{Sequence: 2, Root: root("2"), Status: verify.StatusPending, Proven: &verify.Proven{GenTime: gen, Via: 3, Qualification: verify.Qualified}},
+		{Sequence: 3, Root: root("3"), Status: verify.StatusTimestamped, Proven: &verify.Proven{GenTime: gen, Qualification: verify.Qualified}},
+	}}
+	c := checkOf(rep)
+	if c.Counts.Pending != 2 || len(c.Inherited) != 1 || c.Inherited[0] != (InheritedPending{Seq: 2, Via: 3}) {
+		t.Fatalf("%+v", c)
 	}
 }

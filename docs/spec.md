@@ -74,7 +74,7 @@ Value formats:
 | `chain.json` | JCS: `{"archive_id":"…","format":1,"previous":"sha256:<hex>"\|null,"sequence":N}` |
 | `files.json` | JCS array sorted by path: `{"mtime":"<RFC 3339>","path":"data/…","sha256":"<hex>","size":N}` |
 | `skipped.txt` | `system\t<path>` for each input file not archived (Thumbs.db, desktop.ini, .DS_Store, `~$*`). Paths are relative to the input folder and percent-encoded like the manifest. May be empty. |
-| `VERIFY.txt` | Fixed text (DE/EN) describing manual verification |
+| `VERIFY.txt` | Fixed text (DE/EN) describing manual verification. The reader requires these exact bytes. The text is frozen from release 1.0 on; any later change needs a new `format` number (pre-release test bags with an older text are Ungültig by design). |
 | `tagmanifest-sha256.txt` | `<hex>  <tagfile>` for exactly the 7 tag files above, in this fixed order: bagit.txt, bag-info.txt, chain.json, files.json, manifest-sha256.txt, skipped.txt, VERIFY.txt. It never lists itself. |
 
 - **Prüfwert** = SHA-256 over the exact bytes of `tagmanifest-sha256.txt`, written as `sha256:<64 hex>`.

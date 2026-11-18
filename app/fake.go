@@ -228,6 +228,7 @@ func (f *fakeService) todayCheck() *CheckSummary {
 		c.LastSeq = f.deposits[0].Seq
 	}
 	c.Counts = countStates(f.deposits)
+	c.Inherited = inheritedPending(f.deposits)
 	return c
 }
 
@@ -235,6 +236,7 @@ func (f *fakeService) recount() {
 	if f.lastCheck != nil {
 		f.lastCheck.Counts = countStates(f.deposits)
 		f.lastCheck.Deviations = f.lastCheck.Counts.Modified + f.lastCheck.Counts.Invalid
+		f.lastCheck.Inherited = inheritedPending(f.deposits)
 	}
 }
 

@@ -91,7 +91,7 @@ check("missing", has(predecessorText(report({ predecessorPresent: false, predece
 
 // Finding 6 and W6: severity of the check banner.
 function summary(over: Partial<CheckSummary>): CheckSummary {
-  return { at: "2026-11-18T10:00:00Z", deposits: 2, files: 9, deviations: 0, findings: [], firstSeq: 1, lastSeq: 2,
+  return { at: "2026-11-18T10:00:00Z", deposits: 2, files: 9, deviations: 0, findings: [], firstSeq: 1, lastSeq: 2, inherited: null,
     counts: { total: 2, stamped: 2, pending: 0, indeterminate: 0, modified: 0, invalid: 0 }, ...over };
 }
 check("all stamped: green", checkSummary(summary({}), "heute").tone === "green");
@@ -103,7 +103,21 @@ check("all stamped: green", checkSummary(summary({}), "heute").tone === "green")
   const s = checkSummary(summary({ counts: { total: 2, stamped: 1, pending: 0, indeterminate: 1, modified: 0, invalid: 0 } }), "heute");
   check("indeterminate: not green", s.tone === "grey", s);
 }
-check("modified: red", checkSummary(summary({ deviations: 1, counts: { total: 2, stamped: 1, pending: 0, indeterminate: 0, modified: 1, invalid: 0 } }), "heute").tone === "red");
+// Code review 2 finding 3: a pending Ablage whose state is proven through a
+// stamped successor is not "nicht belegt" (core and detail view say belegt).
+{
+  const pending = { total: 3, stamped: 1, pending: 2, indeterminate: 0, modified: 0, invalid: 0 };
+  const s = checkSummary(summary({ deposits: 3, lastSeq: 3, counts: pending, inherited: [{ seq: 1, via: 3 }, { seq: 2, via: 3 }] }), "heute");
+  check("inherited pending: amber", s.tone === "amber", s);
+  check("inherited pending: proof named", has(s.text, "Ablagen 0001 und 0002: eigener Zeitstempel fehlt (Stand über Ablage 0003 belegt)"), s.text);
+  check("inherited pending: never 'nicht belegt'", !has(s.text, "nicht belegt"), s.text);
+  const m = checkSummary(summary({ deposits: 3, lastSeq: 3, counts: pending, inherited: [{ seq: 2, via: 3 }] }), "heute");
+  check("mixed pending: own count", has(m.text, "Bei 1 Ablage fehlt noch ein gültiger Zeitstempel; ihr Zeitpunkt ist nicht belegt."), m.text);
+  check("mixed pending: inherited named", has(m.text, "Ablage 0002: eigener Zeitstempel fehlt (Stand über Ablage 0003 belegt)"), m.text);
+  const none = checkSummary(summary({ counts: { total: 2, stamped: 1, pending: 1, indeterminate: 0, modified: 0, invalid: 0 }, inherited: null }), "heute");
+  check("pending without proof: nicht belegt", has(none.text, "ihr Zeitpunkt ist nicht belegt"), none.text);
+}
+check("modified: red",checkSummary(summary({ deviations: 1, counts: { total: 2, stamped: 1, pending: 0, indeterminate: 0, modified: 1, invalid: 0 } }), "heute").tone === "red");
 {
   const s = checkSummary(summary({ deposits: 0, files: 0, firstSeq: 0, lastSeq: 0, counts: { total: 0, stamped: 0, pending: 0, indeterminate: 0, modified: 0, invalid: 0 } }), "heute");
   check("empty archive: no green, no '. .'", s.tone !== "green" && s.text === "Noch keine Ablage im Archiv.", s);

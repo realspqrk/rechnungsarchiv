@@ -188,7 +188,21 @@ func checkOf(rep *verify.Report) *CheckSummary {
 	}
 	c.Counts = countStates(ds)
 	c.Deviations = c.Counts.Modified + c.Counts.Invalid
+	c.Inherited = inheritedPending(ds)
 	return c
+}
+
+// inheritedPending lists the ausstehend Ablagen with inherited proof, in
+// ascending order.
+func inheritedPending(ds []Deposit) []InheritedPending {
+	var out []InheritedPending
+	for _, d := range ds {
+		if d.State == StatePending && d.InheritedFrom != 0 {
+			out = append(out, InheritedPending{Seq: d.Seq, Via: d.InheritedFrom})
+		}
+	}
+	slices.SortFunc(out, func(a, b InheritedPending) int { return cmp.Compare(a.Seq, b.Seq) })
+	return out
 }
 
 const maxChangedPaths = 20
@@ -306,8 +320,10 @@ func predecessorOf(out *DepositReport, rep *verify.Report, d *verify.Deposit) {
 			out.ChainFindings = append(out.ChainFindings, present.Finding(f))
 		}
 	}
-	out.PredecessorLinked = len(pred) == 1 && pred[0].Root != "" && d.Previous != nil && *d.Previous == pred[0].Root &&
-		len(out.ChainFindings) == 0
+	// The core compares previous only when both chain.json files are
+	// trustworthy and reports nothing when one is not (spec §6 step 2), so
+	// "no finding" alone is no verified link.
+	out.PredecessorLinked = len(pred) == 1 && d.LinkedPrevious && len(out.ChainFindings) == 0
 }
 
 func archivePath(dir, file string) string {

@@ -46,8 +46,8 @@ type realService struct {
 
 	// write serializes everything that takes the archive's writer lock:
 	// one writer per archive, also inside this process. Opening and
-	// closing take it too, so a writer always works on the archive and
-	// mode that are current while it holds the slot (beginWrite).
+	// closing take it too; a writer captures the generation it was asked
+	// for before it waits and gives up if that changed (beginWriteFor).
 	write sync.Mutex
 
 	mu       sync.Mutex
@@ -90,6 +90,7 @@ var (
 	errReadOnly  = errors.New("Im Modus „nur kontrollieren“ wird nichts verändert.")
 	errNoArchive = errors.New("Kein Archiv geöffnet.")
 	errReopened  = errors.New("Abgebrochen: Das Archiv wurde inzwischen neu geöffnet oder geschlossen. Es wurde nichts geändert.")
+	errSwitched  = errors.New("Abgebrochen: Das Archiv wurde inzwischen gewechselt – bitte erneut ausführen. Es wurde nichts geändert.")
 )
 
 // opCtx is ctx that also ends when the application shuts down.
@@ -123,17 +124,34 @@ func (s *realService) writer() (snapshot, error) {
 	return c, err
 }
 
-// beginWrite takes the writer slot, then the current archive in normal
-// mode. The snapshot is taken only while the slot is held, and opening or
-// closing cancels the old generation before it waits for the slot, so a
-// queued writer sees either the new mode or a cancelled generation, never
-// a stale archive. The returned ctx ends with the request, the
-// application and the generation; done releases everything.
+// beginWrite takes the writer slot for the archive that is current now, in
+// normal mode (see beginWriteFor).
 func (s *realService) beginWrite(ctx context.Context) (snapshot, context.Context, func(), error) {
+	want, err := s.writer()
+	if err != nil {
+		return snapshot{}, nil, nil, err
+	}
+	return s.beginWriteFor(ctx, want)
+}
+
+// beginWriteFor takes the writer slot for want, the archive (generation)
+// that was current when the user asked. want is captured before waiting:
+// an open queued on the slot ahead of this writer switches to another
+// archive while it waits, and a snapshot taken only after the wait would
+// silently write into that one. After the wait the generation must still
+// be want's (errSwitched otherwise) and not ended by an open or close that
+// is still waiting (errReopened). The returned ctx ends with the request,
+// the application and the generation; done releases everything.
+func (s *realService) beginWriteFor(ctx context.Context, want snapshot) (snapshot, context.Context, func(), error) {
 	s.write.Lock()
-	c, err := s.writer()
-	if err == nil && c.genCtx.Err() != nil {
+	c, err := s.current()
+	switch {
+	case err != nil || c.gen != want.gen || c.ar != want.ar:
+		err = errSwitched
+	case c.genCtx.Err() != nil:
 		err = errReopened
+	case c.ar.ReadOnly():
+		err = errReadOnly
 	}
 	if err != nil {
 		s.write.Unlock()
@@ -706,7 +724,10 @@ func (s *realService) Archive(ctx context.Context, opts ArchiveOptions) (Archive
 	if strings.TrimSpace(opts.Name) == "" {
 		return ArchiveResult{}, errors.New("Bitte geben Sie der Ablage einen Namen.")
 	}
-	if _, err := s.writer(); err != nil {
+	// The archive the user archives into: captured now, before waiting
+	// for the writer slot (beginWriteFor).
+	want, err := s.writer()
+	if err != nil {
 		return ArchiveResult{}, err
 	}
 	folder, err := filepath.Abs(opts.Folder)
@@ -716,7 +737,7 @@ func (s *realService) Archive(ctx context.Context, opts ArchiveOptions) (Archive
 	if fi, err := os.Stat(folder); err != nil || !fi.IsDir() {
 		return ArchiveResult{}, fmt.Errorf("Der Ordner ist nicht erreichbar: %s", folder)
 	}
-	c, ctx, done, err := s.beginWrite(ctx)
+	c, ctx, done, err := s.beginWriteFor(ctx, want)
 	if err != nil {
 		return ArchiveResult{}, err
 	}
