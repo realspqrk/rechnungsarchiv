@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="http://www.ebinterface.at/schema/6p1/" GeneratingSystem="Demo" DocumentType="Invoice" InvoiceCurrency="EUR" Language="ger">
+  <InvoiceNumber>RG-2026-1017</InvoiceNumber>
+  <InvoiceDate>2026-10-17</InvoiceDate>
+  <Delivery>
+    <Period><FromDate>2026-10-01</FromDate><ToDate>2026-10-31</ToDate></Period>
+  </Delivery>
+  <Biller>
+    <VATIdentificationNumber>ATU00000124</VATIdentificationNumber>
+    <Address>
+      <Name>Reinigungsdienst Glänzend GmbH</Name>
+      <Street>Sauberweg 4</Street>
+      <Town>Linz</Town>
+      <ZIP>4030</ZIP>
+      <Country CountryCode="AT">Österreich</Country>
+    </Address>
+  </Biller>
+  <InvoiceRecipient>
+    <VATIdentificationNumber>ATU00000017</VATIdentificationNumber>
+    <Address>
+      <Name>Alpenblick Tischlerei GmbH</Name>
+      <Street>Lärchenweg 12</Street>
+      <Town>Linz</Town>
+      <ZIP>4020</ZIP>
+      <Country CountryCode="AT">Österreich</Country>
+    </Address>
+  </InvoiceRecipient>
+  <Details>
+    <ItemList>
+      <ListLineItem>
+        <Description>Unterhaltsreinigung Werkstatt und Büro, Oktober 2026</Description>
+        <Quantity Unit="C62">1</Quantity>
+        <UnitPrice>320.00</UnitPrice>
+        <TaxItem><TaxableAmount>320.00</TaxableAmount><TaxPercent TaxCategoryCode="S">20</TaxPercent><TaxAmount>64.00</TaxAmount></TaxItem>
+        <LineItemAmount>320.00</LineItemAmount>
+      </ListLineItem>
+    </ItemList>
+  </Details>
+  <Tax>
+    <TaxItem><TaxableAmount>320.00</TaxableAmount><TaxPercent TaxCategoryCode="S">20</TaxPercent><TaxAmount>64.00</TaxAmount></TaxItem>
+  </Tax>
+  <TotalGrossAmount>384.00</TotalGrossAmount>
+  <PayableAmount>384.00</PayableAmount>
+  <PaymentMethod>
+    <UniversalBankTransaction>
+      <BeneficiaryAccount><IBAN>AT000000000000001017</IBAN></BeneficiaryAccount>
+    </UniversalBankTransaction>
+  </PaymentMethod>
+  <PaymentConditions><DueDate>2026-10-31</DueDate></PaymentConditions>
+</Invoice>

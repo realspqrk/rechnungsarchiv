@@ -1,0 +1,3 @@
+# Embedded snapshots and pinned certificates: keep byte-exact.
+bootstrap/* binary
+pins/* -text

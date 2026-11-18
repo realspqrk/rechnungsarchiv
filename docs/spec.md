@@ -45,11 +45,25 @@ The ZIP has exactly one top-level directory, `<NNNN>_<Name>/`, and that director
 | Extra fields | none, except zip64 (0x0001) when needed |
 | Forbidden | encryption; multi-disk; duplicate names (after NFC + Unicode case fold); absolute paths; `..`; backslashes; entries outside the bag dir; symlinks |
 
-A verifier MUST reject a ZIP that breaks any of these rules. It MUST bound its parsing (entry count, name length, total size). It MUST also accept the extracted bag directory.
+A verifier MUST reject a ZIP that breaks any of these rules. It MUST bound its parsing (entry count, name length, total size). It MUST also accept the extracted bag directory, including a single wrapper folder around it (as created by Windows "Extract all").
+
+The v1 writer is stricter, and the v1 reader enforces it:
+- general-purpose flags exactly 0x0800, so no data descriptors;
+- no entry or archive comments;
+- zip64 records only when a value needs them;
+- every local header must match its central-directory entry, and entries must not overlap;
+- entry order: `bagit.txt`, the payload, the other tag files, `tagmanifest-sha256.txt` last;
+- no directory entries are written (empty ones are tolerated when reading).
 
 ## 3. Bag (BagIt 1.0, RFC 8493 profile)
 
-Tag files are UTF-8 without BOM, with LF line endings and no line folding. All of the following are **mandatory**, and no other tag files are allowed:
+Tag files are UTF-8 without BOM, with LF line endings and no line folding.
+
+Value formats:
+- dates are ISO `YYYY-MM-DD` (`Aufbewahrung-Bis: 2033-12-31`);
+- `files.json` mtimes are UTC RFC 3339 to the second (`…Z`);
+- the sequence in `External-Identifier` is not zero-padded;
+- tag files whose hash matches but which cannot be parsed, are not canonical JCS, or are internally inconsistent (e.g. Aufbewahrung-Bis ≠ Belegjahr + N, External-Identifier ≠ chain.json) are **Ungültig**. All of the following are **mandatory**, and no other tag files are allowed:
 
 | File | Content |
 |---|---|
@@ -58,7 +72,7 @@ Tag files are UTF-8 without BOM, with LF line endings and no line folding. All o
 | `manifest-sha256.txt` | `<hex>  data/<path>`, one line per payload file, sorted by UTF-8 bytes; `%`, CR and LF percent-encoded as BagIt requires |
 | `chain.json` | JCS: `{"archive_id":"…","format":1,"previous":"sha256:<hex>"\|null,"sequence":N}` |
 | `files.json` | JCS array sorted by path: `{"mtime":"<RFC 3339>","path":"data/…","sha256":"<hex>","size":N}` |
-| `skipped.txt` | `system\t<path>` for each input file not archived (Thumbs.db, desktop.ini, .DS_Store, `~$*`). May be empty. |
+| `skipped.txt` | `system\t<path>` for each input file not archived (Thumbs.db, desktop.ini, .DS_Store, `~$*`). Paths are relative to the input folder and percent-encoded like the manifest. May be empty. |
 | `VERIFY.txt` | Fixed text (DE/EN) describing manual verification |
 | `tagmanifest-sha256.txt` | `<hex>  <tagfile>` for exactly the 7 tag files above, in this fixed order: bagit.txt, bag-info.txt, chain.json, files.json, manifest-sha256.txt, skipped.txt, VERIFY.txt. It never lists itself. |
 
@@ -97,7 +111,7 @@ Tag files are UTF-8 without BOM, with LF line endings and no line folding. All o
   - `messageImprint` = SHA-256 / Prüfwert;
   - `certReq = TRUE`;
   - a fresh 64-bit random `nonce`;
-  - `reqPolicy` set to the provider's expected policy OID if the provider list names one.
+  - `reqPolicy` = the provider's `request_policy`, only if set.
 - Send it as an HTTPS POST of `application/timestamp-query`, with HTTP Basic or a TLS client certificate as configured.
 - Do not follow redirects.
 - **There is no fallback to any other provider.**
@@ -109,11 +123,11 @@ Tag files are UTF-8 without BOM, with LF line endings and no line folding. All o
    - the CMS signature over the signed attributes verifies with the signer certificate's public key.
 3. The signer certificate is the one identified by ESSCertID or ESSCertIDv2, using the hash algorithm the token states. It is not merely any certificate in the bag.
 4. The signer certificate carries a **critical, sole** `id-kp-timeStamping` EKU.
-5. The imprint, the nonce and the policy match (expected OID, if one is listed).
+5. The imprint and the nonce match; the token policy is one of the provider's `expected_policies` (if any are listed).
 6. The algorithms are on the allowlist:
    - hashes: SHA-256, SHA-384, SHA-512;
    - signatures: RSA ≥ 2048 (PKCS#1 v1.5 or PSS), ECDSA P-256 or P-384.
-7. **Path validation (RFC 5280) at genTime** must succeed from the signer to a certificate that the provider's trusted-list service identity names (§7). This includes validity periods, basicConstraints, keyUsage and name constraints. The named certificate is either:
+7. **Path validation (RFC 5280) at genTime** must succeed from the signer to a certificate named as `ServiceDigitalIdentity` of **any** QTST service in the verified trusted lists (§7). Providers may route to another QTSP (e.g. Mensatek → FNMT), so the anchor set is not limited to the configured provider; qualification is decided separately in §6 step 6. This includes validity periods, basicConstraints, keyUsage and name constraints. The named certificate is either:
    - a CA certificate in the signer's path; or
    - the signer (TSU) certificate itself. No CA basicConstraints are required of the TSU in that case, but EKU, validity and revocation are still checked.
 
@@ -145,7 +159,7 @@ An Ablage is **Zeitgestempelt** only when the token and all validation material 
 For each Ablage:
 1. ZIP rules (§2) → **Ungültig** if broken.
 2. The tag files are exactly the mandatory set (§3) and match `tagmanifest-sha256.txt` → **Verändert** if not.
-3. Payload against `manifest-sha256.txt`: report matched, changed, missing and added files (complete vs. valid). Any change, missing or added file → **Verändert**.
+3. Payload against `manifest-sha256.txt`: report matched, changed, missing and added files (complete vs. valid). Any change, missing or added file → **Verändert**. A CRC mismatch on a payload entry also counts as changed. In an extracted directory, system junk (Thumbs.db, desktop.ini, .DS_Store, `~$*`) that the manifest does not list is reported as *ignored*, not added.
 4. `Payload-Oxum`, `files.json` and the manifest must agree → **Ungültig** if not.
 5. Find the Nachweis by imprint (§1) and take the earliest attempt that is valid per §5.
    - No valid attempt → **Ausstehend** (with the §5 reason). Attempts whose token passes the cryptographic checks (§5 items 1–7) but lack timely validation material count as discarded, not invalid.
@@ -191,7 +205,8 @@ Qualifiers:
   - country;
   - TSA URL;
   - auth type (`basic` or `clientcert`);
-  - the expected policy OID, if known;
+  - `url_from_contract` (true when the endpoint is handed out with the contract, e.g. Disig; the UI then shows a URL field);
+  - `request_policy` (OID sent as `reqPolicy`, usually empty) and `expected_policies` (OIDs accepted in the token; empty = not checked), kept separate because some providers forbid `reqPolicy`;
   - the country code of the trusted list that covers it.
 
   The file contains **only providers with a QTST service on their national list**. It holds connection data, not trust decisions. **It contains no prices.** Prices change and belong in the README only, with a date. The app links to the README and to the provider's website.
@@ -199,7 +214,7 @@ Qualifiers:
   - the LOTL against the LOTL signing certificates pinned in the release (published in the EU Official Journal);
   - each national list against the certificates the LOTL names for it.
 
-  Verified lists are cached as `vertrauenslisten/<CC>-<sequence>.xml`. Older versions are kept, so history is never lost.
+  Verified lists are cached as `vertrauenslisten/<CC>-<sequence>.xml` (exact signed bytes). If a different list reuses an existing sequence number, it is stored as `<CC>-<sequence>-2.xml` and so on; nothing is overwritten. Older versions are kept, so history is never lost.
 - **Bootstrap.** A release ships a verified snapshot.
 - **Refresh.** Lists are refreshed on start, right after every successful stamp, before export and during online verification, whenever the network is available. In the app's normal mode this makes fresh stamps show as qualifiziert at once, because the verifier itself fetched the list online. An offline auditor sees unbestätigt for stamps newer than the newest cached list's issue date.
 - **Banner.** If the newest cached list is past its `NextUpdate` and a refresh fails, the main screen shows "Vertrauensliste veraltet – Internetverbindung prüfen oder Programm aktualisieren".

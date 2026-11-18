@@ -14,9 +14,12 @@ coverage.out
 Thumbs.db
 desktop.ini
 .DS_Store
+# ...except the demo junk file the archiver must skip
+!/testdata/demo/**/Thumbs.db
 # Local agent state
 .claude/settings.local.json
 # Temporary review inputs
 /.review/
 # harness-subagent temp files
 /.harness-subagent-*
+/.claude/worktrees/

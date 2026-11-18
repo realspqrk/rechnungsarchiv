@@ -1,0 +1,48 @@
+[
+  {
+    "id": "mensatek",
+    "name": "Mensatek (ASETEC Ingeniería de Sistemas S.L.)",
+    "country": "ES",
+    "url": "https://api.mensatek.com/tsaMENSATEK",
+    "auth": "basic",
+    "accuracy": "1s",
+    "trusted_list": "ES"
+  },
+  {
+    "id": "disig",
+    "name": "Disig, a.s.",
+    "country": "SK",
+    "url": "",
+    "auth": "clientcert",
+    "accuracy": "1s",
+    "trusted_list": "SK"
+  },
+  {
+    "id": "namirial",
+    "name": "Namirial S.p.A.",
+    "country": "IT",
+    "url": "https://timestamp.namirialtsp.com",
+    "auth": "basic",
+    "accuracy": "1s",
+    "trusted_list": "IT"
+  },
+  {
+    "id": "aruba",
+    "name": "Aruba PEC S.p.A.",
+    "country": "IT",
+    "url": "https://servizi.arubapec.it/tsa/ngrequest.php",
+    "auth": "basic",
+    "policy": "0.4.0.2023.1.1",
+    "accuracy": "1s",
+    "trusted_list": "IT"
+  },
+  {
+    "id": "globaltrust",
+    "name": "GLOBALTRUST (e-commerce monitoring GmbH)",
+    "country": "AT",
+    "url": "https://timestamp.globaltrust.eu:10080",
+    "auth": "basic",
+    "accuracy": "1s",
+    "trusted_list": "AT"
+  }
+]

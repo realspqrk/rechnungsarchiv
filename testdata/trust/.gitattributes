@@ -1,0 +1,2 @@
+# Signed trusted lists: keep byte-exact, never normalise line endings.
+* -text

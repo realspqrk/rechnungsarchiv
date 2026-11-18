@@ -6,7 +6,7 @@
 - **Go 1.27** (go.mod `toolchain go1.27.4`), pure Go in the core and CLI.
 - Dependencies are deliberately few:
   - the standard library;
-  - `digitorus/timestamp` + `digitorus/pkcs7` (RFC 3161 / CMS);
+  - RFC 3161 / CMS parsing and checks on stdlib `encoding/asn1` + `crypto/x509` (own code; digitorus not needed);
   - `golang.org/x/crypto/ocsp` (OCSP evidence);
   - `danieljoos/wincred` (TSA credentials in Windows Credential Manager);
   - `russellhaering/goxmldsig` (verifying EU trusted-list XML signatures);
