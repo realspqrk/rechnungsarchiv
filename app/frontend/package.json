@@ -1,0 +1,22 @@
+{
+  "name": "rechnungsarchiv-gui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:dev": "tsc && vite build --minify false --mode development",
+    "build": "tsc && vite build --mode production",
+    "preview": "vite preview",
+    "typecheck": "tsc",
+    "screenshots": "node scripts/screenshots.mjs"
+  },
+  "dependencies": {
+    "@wailsio/runtime": "3.1.0"
+  },
+  "devDependencies": {
+    "playwright-core": "1.64.1",
+    "typescript": "5.9.3",
+    "vite": "8.2.4"
+  }
+}

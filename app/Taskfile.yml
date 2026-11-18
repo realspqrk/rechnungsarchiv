@@ -1,0 +1,80 @@
+# Tasks for the Wails v3 GUI (Windows). Run through the pinned CLI:
+#   go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+#   wails3 build            # -> ../bin/rechnungsarchiv-gui.exe
+#   wails3 dev              # live reload with Vite (build/config.yml)
+#   wails3 task screenshots # -> screenshots/*.png (sample data)
+version: '3'
+
+vars:
+  APP_NAME: rechnungsarchiv-gui
+  BIN_DIR: '{{.ROOT_DIR}}/../bin'
+  VERSION: '{{.VERSION | default "0.1.0-dev"}}'
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+
+tasks:
+  install:frontend:
+    summary: Install frontend dependencies (exact versions from package-lock.json)
+    dir: frontend
+    sources: [package.json, package-lock.json]
+    generates: [node_modules/.package-lock.json]
+    cmds:
+      - npm ci --no-audit --no-fund
+
+  bindings:
+    summary: Generate TypeScript bindings for the Shell service
+    sources: ["*.go", "../go.mod", "../go.sum"]
+    generates: ["frontend/bindings/**/*"]
+    cmds:
+      - wails3 generate bindings -clean=true -ts -i
+
+  build:frontend:
+    summary: Type-check and bundle the frontend into frontend/dist
+    deps: [install:frontend, bindings]
+    dir: frontend
+    cmds:
+      - npm run {{if eq .DEV "true"}}build:dev{{else}}build{{end}}
+
+  syso:
+    summary: Windows resources (icon, manifest, version info)
+    dir: build
+    cmds:
+      - wails3 generate syso -arch {{ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../wails_windows_{{ARCH}}.syso
+
+  build:
+    summary: Build the GUI (DEV=true keeps the console and devtools)
+    deps:
+      - task: build:frontend
+        vars: { DEV: '{{.DEV}}' }
+    cmds:
+      - task: syso
+      - go build {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" .
+      - cmd: powershell -NoProfile -Command "Remove-Item -ErrorAction SilentlyContinue *.syso"
+        platforms: [windows]
+    vars:
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l" -ldflags="-X main.version={{.VERSION}}"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui -X main.version={{.VERSION}}"{{end}}'
+    env:
+      CGO_ENABLED: 0
+
+  run:
+    summary: Run the last build
+    cmds:
+      - '"{{.BIN_DIR}}/{{.APP_NAME}}.exe"'
+
+  dev:frontend:
+    summary: Vite dev server for wails3 dev
+    deps: [install:frontend]
+    dir: frontend
+    cmds:
+      - npm run dev -- --port {{.VITE_PORT}} --strictPort
+
+  dev:
+    summary: Live development (Go + Vite)
+    cmds:
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  screenshots:
+    summary: Screenshots of every screen and state with sample data
+    deps: [build:frontend]
+    dir: frontend
+    cmds:
+      - npm run screenshots

@@ -5,7 +5,8 @@
 *.exe
 # Frontend
 node_modules/
-app/frontend/dist/
+app/frontend/dist/*
+!app/frontend/dist/.gitkeep
 # Test artefacts
 /tmp/
 *.test
@@ -23,3 +24,6 @@ desktop.ini
 # harness-subagent temp files
 /.harness-subagent-*
 /.claude/worktrees/
+*.syso
+.task/
+/app/screenshots/

@@ -1,0 +1,146 @@
+// Shared UI building blocks.
+
+import { h, icon, clear } from "./dom";
+import { errMsg } from "./api";
+import type { Tone } from "./text";
+
+export type Variant = "primary" | "secondary" | "link" | "text" | "amber" | "plain-link" | "inline-link";
+
+export function button(
+  label: string | Node | (string | Node)[],
+  onClick: (ev: MouseEvent) => void,
+  variant: Variant = "secondary",
+  attrs: Record<string, unknown> = {},
+): HTMLButtonElement {
+  const cls = ["btn", `btn--${variant}`, attrs.class].filter(Boolean).join(" ");
+  return h("button", { type: "button", ...attrs, class: cls, onClick }, ...(Array.isArray(label) ? label : [label]));
+}
+
+/** Runs an async action while the button shows a busy label. */
+export async function busy<T>(btn: HTMLButtonElement, busyLabel: string, fn: () => Promise<T>): Promise<T | undefined> {
+  const old = Array.from(btn.childNodes);
+  btn.disabled = true;
+  btn.setAttribute("aria-busy", "true");
+  btn.textContent = busyLabel;
+  try {
+    return await fn();
+  } catch (e) {
+    toast(errMsg(e), "error");
+    return undefined;
+  } finally {
+    if (btn.isConnected) {
+      btn.disabled = false;
+      btn.removeAttribute("aria-busy");
+      clear(btn);
+      old.forEach((n) => btn.appendChild(n));
+    }
+  }
+}
+
+const TONE_ICON: Record<Tone | "blue", string> = {
+  green: "check",
+  neutral: "info",
+  amber: "clock",
+  grey: "info",
+  red: "warn",
+  blue: "search",
+};
+
+/** A full-width notice box (Main screen banners). */
+export function banner(
+  tone: Tone | "blue",
+  label: string,
+  title: string,
+  text: string | Node | null,
+  action: Node | null = null,
+  iconName = TONE_ICON[tone],
+): HTMLElement {
+  return h(
+    "section",
+    { class: `banner banner--${tone}`, "aria-label": label },
+    icon(iconName, 20, tone === "green" ? 2.4 : 2.2, "banner__icon"),
+    h("span", { class: "banner__text" }, title ? h("strong", null, title) : null, title && text ? " " : null, text),
+    action,
+  );
+}
+
+let toastTimer = 0;
+
+/** Short message; errors use role=alert so screen readers announce them. */
+export function toast(message: string, kind: "error" | "ok" = "ok"): void {
+  const box = document.getElementById("toasts");
+  if (!box) return;
+  clear(box);
+  const el = h(
+    "div",
+    { class: `toast toast--${kind}`, role: kind === "error" ? "alert" : "status" },
+    icon(kind === "error" ? "warn" : "check", 18, 2.2),
+    h("span", null, message),
+    h("button", { type: "button", class: "toast__close", "aria-label": "Meldung schließen", onClick: () => clear(box) }, "×"),
+  );
+  box.appendChild(el);
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => clear(box), kind === "error" ? 12000 : 5000);
+}
+
+export interface DialogHandle {
+  el: HTMLDialogElement;
+  body: HTMLElement;
+  close: () => void;
+  /** While locked, Esc and backdrop do not close (e.g. during archiving). */
+  lock: (locked: boolean) => void;
+}
+
+/** Opens a modal native <dialog> (focus trap, Esc, aria-modal for free). */
+export function openDialog(labelledBy: string, width: "narrow" | "wide" = "narrow", onClose?: () => void): DialogHandle {
+  const body = h("div", { class: "dialog__body" });
+  const el = h("dialog", { class: `dialog dialog--${width}`, "aria-labelledby": labelledBy }, body);
+  let locked = false;
+  el.addEventListener("cancel", (ev) => {
+    if (locked) ev.preventDefault();
+  });
+  el.addEventListener("close", () => {
+    el.remove();
+    onClose?.();
+  });
+  document.body.appendChild(el);
+  el.showModal();
+  return {
+    el,
+    body,
+    close: () => el.close(),
+    lock: (l) => {
+      locked = l;
+    },
+  };
+}
+
+/** Sub-page header: "‹ Übersicht / Title". */
+export function subHeader(title: string, width: "detail" | "settings"): HTMLElement {
+  return h(
+    "header",
+    { class: "topbar" },
+    h(
+      "div",
+      { class: `topbar__inner topbar__inner--${width}` },
+      h("a", { href: "#/", class: "back-link" }, icon("back", 18, 2), "Übersicht"),
+      h("span", { class: "muted", "aria-hidden": "true" }, "/"),
+      h("h1", { class: "topbar__title" }, title),
+    ),
+  );
+}
+
+/** Read-only path box with a button next to it. */
+export function pathField(label: string, path: string, buttonEl: Node | null, id?: string): HTMLElement {
+  return h(
+    "div",
+    { class: "field" },
+    h("span", { class: "field__label", id }, label),
+    h(
+      "div",
+      { class: "path-row" },
+      h("span", { class: "path-box mono", "aria-labelledby": id }, path || "Noch nicht gewählt"),
+      buttonEl,
+    ),
+  );
+}
