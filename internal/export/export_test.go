@@ -208,3 +208,23 @@ func TestExportWithoutExecutableWarns(t *testing.T) {
 		t.Fatalf("%s", testenv.JSON(d))
 	}
 }
+
+// Without Options.Executable the export bundles the running program, which
+// is rechnungsarchiv.exe itself: CLI and GUI are one binary (ADR-0008).
+func TestExportBundlesRunningExecutable(t *testing.T) {
+	e := testenv.New(t)
+	e.Add(testenv.Incoming, archive.Options{})
+	o := options(e, "")
+	o.Executable = nil
+	dst := filepath.Join(t.TempDir(), "x")
+	res, err := export.Run(context.Background(), e.Dir, dst, o)
+	if err != nil || len(res.Warnings) != 0 {
+		t.Fatalf("%v %v", err, res.Warnings)
+	}
+	self, _ := os.Executable()
+	want, _ := os.ReadFile(self)
+	got, err := os.ReadFile(filepath.Join(dst, export.ExeName))
+	if err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("bundled %d bytes, running program %d bytes (%v)", len(got), len(want), err)
+	}
+}

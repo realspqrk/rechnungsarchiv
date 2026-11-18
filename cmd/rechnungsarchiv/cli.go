@@ -78,6 +78,9 @@ func run(ctx context.Context, args []string, e ioEnv) int {
 		// The flags did not parse; an explicit request for JSON still
 		// counts for the error object.
 		a.json = a.json || wantsJSON(args)
+		if len(args) > 0 && args[0] == "gui" && consoleAlone() {
+			alertError(err) // launcher or shortcut: nobody reads stderr
+		}
 		return a.fail(err)
 	}
 	a.inv = inv

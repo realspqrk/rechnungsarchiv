@@ -43,7 +43,9 @@ type Options struct {
 	// ExportTrust opens the trusted lists inside the export for its own
 	// verification. Default trust.Open (it is never refreshed).
 	ExportTrust func(exportDir string) (*trust.Store, error)
-	// Executable returns the verifier to bundle. Default os.Executable.
+	// Executable returns the verifier to bundle as ExeName. Default
+	// os.Executable: the running rechnungsarchiv.exe, which is CLI and GUI
+	// in one binary (ADR-0008), so the GUI bundles itself too.
 	Executable func() (string, error)
 	Now        func() time.Time
 	Version    string // for the Archivprotokolle; default archive.Version

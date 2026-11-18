@@ -1,7 +1,8 @@
 // Screenshots of every screen and state with sample data (RA_FAKE).
 //
-// Builds the app in Wails server mode (`-tags server`: same Go code and
-// fake service, served over HTTP instead of a window) and drives it with the
+// Builds rechnungsarchiv.exe in Wails server mode (`-tags server`: same Go
+// code and fake service; `gui` serves it over HTTP instead of a window) and
+// drives it with the
 // installed Microsoft Edge via playwright-core. Run after `npm run build`:
 //
 //   npm run screenshots            # writes ../screenshots/*.png
@@ -102,7 +103,7 @@ async function openExport(p) {
 }
 
 function startServer(scenario, port) {
-  const child = spawn(exe, [], {
+  const child = spawn(exe, ["gui"], {
     env: { ...process.env, RA_FAKE: scenario, RA_FAKE_DELAY_MS: "0", WAILS_SERVER_PORT: String(port) },
     stdio: "ignore",
   });
@@ -121,7 +122,7 @@ async function waitFor(url) {
 }
 
 async function main() {
-  execFileSync("go", ["build", "-tags", "server", "-o", exe, "."], { cwd: appDir, stdio: "inherit" });
+  execFileSync("go", ["build", "-tags", "server", "-o", exe, "./cmd/rechnungsarchiv"], { cwd: resolve(appDir, ".."), stdio: "inherit" });
   mkdirSync(outDir, { recursive: true });
   const browser = await chromium.launch({ channel: "msedge", headless: true });
   let port = 18700;

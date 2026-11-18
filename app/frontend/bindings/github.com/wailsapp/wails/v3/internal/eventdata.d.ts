@@ -7,13 +7,13 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as main$0 from "../../../../realspqrk/rechnungsarchiv/app/models.js";
+import type * as app$0 from "../../../../realspqrk/rechnungsarchiv/app/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
-            "ordner-abgelegt": main$0.FolderDrop;
-            "status-geaendert": main$0.StatusChanged;
+            "ordner-abgelegt": app$0.FolderDrop;
+            "status-geaendert": app$0.StatusChanged;
         }
     }
 }

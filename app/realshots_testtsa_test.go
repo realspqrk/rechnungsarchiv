@@ -1,6 +1,6 @@
 //go:build testtsa
 
-package main
+package app
 
 // Screenshots of the real service (not the fake) against a demo archive
 // built from testdata/demo with the test TSA. Run with
@@ -8,8 +8,9 @@ package main
 //	wails3 task screenshots:real     (or: RA_REAL_SHOTS=<folder> go test -tags testtsa -run TestRealScreenshots ./app)
 //
 // The test builds the archive in-process, then starts the GUI in Wails
-// server mode (-tags "server testtsa") pointed at the same test world
-// through RECHNUNGSARCHIV_TESTENV, and drives it with
+// server mode (rechnungsarchiv gui, built with -tags "server testtsa")
+// pointed at the same test world through RECHNUNGSARCHIV_TESTENV, and
+// drives it with
 // frontend/scripts/screenshots-real.mjs. The test TSA and the trusted-list
 // server live in this test process, so it stays up until the script ends.
 
@@ -67,17 +68,13 @@ func TestRealScreenshots(t *testing.T) {
 	}
 	t.Setenv("APPDATA", filepath.Join(root, "appdata"))
 	goBin := filepath.Join(runtime.GOROOT(), "bin", "go")
-	cli := filepath.Join(root, "bin", "rechnungsarchiv.exe")
-	gui := filepath.Join(root, "bin", "rechnungsarchiv-gui-server.exe")
-	build := func(dir string, args ...string) {
-		cmd := exec.Command(goBin, args...)
-		cmd.Dir, cmd.Stdout, cmd.Stderr = dir, os.Stdout, os.Stderr
-		if err := cmd.Run(); err != nil {
-			t.Fatalf("go %v: %v", args, err)
-		}
+	// The one binary (ADR-0008): its export bundles itself as the verifier.
+	exe := filepath.Join(root, "bin", "rechnungsarchiv.exe")
+	build := exec.Command(goBin, "build", "-tags", "server testtsa", "-o", exe, "./cmd/rechnungsarchiv")
+	build.Dir, build.Stdout, build.Stderr = repo, os.Stdout, os.Stderr
+	if err := build.Run(); err != nil {
+		t.Fatalf("go build: %v", err)
 	}
-	build(repo, "build", "-tags", "testtsa", "-o", cli, "./cmd/rechnungsarchiv")
-	build(appDir, "build", "-tags", "server testtsa", "-o", gui, ".")
 
 	cfg := testConfig{
 		Provider:   e.Provider,
@@ -86,7 +83,6 @@ func TestRealScreenshots(t *testing.T) {
 		ListsProxy: lists.URL,
 		CredsFile:  filepath.Join(root, "creds.json"),
 		Cache:      filepath.Join(root, "cache"),
-		Verifier:   cli,
 		Home:       home,
 	}
 	data, _ := json.Marshal(cfg)
@@ -117,7 +113,7 @@ func TestRealScreenshots(t *testing.T) {
 	port := 18790
 	logf, _ := os.Create(filepath.Join(root, "gui.log"))
 	defer logf.Close()
-	srv := exec.Command(gui)
+	srv := exec.Command(exe, "gui")
 	srv.Env = append(os.Environ(), testEnvVar+"="+cfgPath, fmt.Sprintf("WAILS_SERVER_PORT=%d", port))
 	srv.Stdout, srv.Stderr = logf, logf
 	if err := srv.Start(); err != nil {

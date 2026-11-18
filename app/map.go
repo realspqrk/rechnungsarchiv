@@ -1,4 +1,4 @@
-package main
+package app
 
 // Mapping of core results (verify.Report, stamp.Result, archive.Preview,
 // tsa.Provider, trust.Store) to the DTOs of service.go. Only renaming and

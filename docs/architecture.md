@@ -56,8 +56,9 @@ chain.json: each Ablage names its predecessor → gaps/forks detectable; proven 
 | `internal/verify` | **The only** verification engine → `Report` |
 | `internal/export` | Export for the tax audit (spec §8) |
 | `internal/report` | Archivprotokoll PDF per Ablage: factual statement and complete file list, rendered from `verify.Report` (spec §10) |
-| `cmd/rechnungsarchiv` | CLI for scripts and AI agents (ADR-0008): `status`, `init`, `archive`, `stamp`, `verify`, `export`, `providers`, `provider set/show`, `protocol`, `schema`; JSON + fixed exit codes |
-| `app/` | Wails v3 GUI, thin shell; credentials in Windows Credential Manager |
+| `cmd/rechnungsarchiv` | The one app binary (ADR-0008): CLI for people, scripts and AI agents (`status`, `init`, `archive`, `stamp`, `verify`, `export`, `providers`, `provider set/show`, `protocol`, `schema`; JSON + fixed exit codes) and the window (`gui`, or no arguments without a console) |
+| `cmd/rechnungsarchiv-gui` | Tiny Windows-subsystem launcher: starts `rechnungsarchiv.exe gui …` without a console flash; no logic |
+| `app/` | Wails v3 GUI library (package `app`, `Run`), thin shell; credentials in Windows Credential Manager |
 
 ## Status (one source of truth: `verify.Report`, spec §6)
 | UI | When |

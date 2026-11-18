@@ -187,7 +187,7 @@ func TestHelpSchemaVersion(t *testing.T) {
 	for _, c := range s["commands"].([]any) {
 		names = append(names, c.(map[string]any)["name"].(string))
 	}
-	for _, n := range []string{"status", "init", "archive", "stamp", "verify", "export", "providers", "provider set", "provider show", "schema", "protocol"} {
+	for _, n := range []string{"status", "init", "archive", "stamp", "verify", "export", "providers", "provider set", "provider show", "schema", "protocol", "gui"} {
 		if !strings.Contains(" "+strings.Join(names, " ; ")+" ", n) {
 			t.Fatalf("schema lacks %s: %v", n, names)
 		}

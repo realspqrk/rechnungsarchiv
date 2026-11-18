@@ -1,13 +1,20 @@
 # Rechnungsarchiv command line & AI agents
 
-`rechnungsarchiv` lets scripts and AI agents do what the window does: create an archive, archive a folder as a new Ablage, fetch timestamps, check an archive, and write an export for a tax audit. It is one binary on the same core as the GUI (ADR-0008). It is also the standalone verifier that every export contains, so an auditor can check an export without installing anything.
+`rechnungsarchiv` lets scripts and AI agents do what the window does: create an archive, archive a folder as a new Ablage, fetch timestamps, check an archive, and write an export for a tax audit. It is one binary for the command line and the window (ADR-0008), on the same core. It is also the standalone verifier that every export contains, so an auditor can check an export without installing anything.
+
+## CLI or window
+
+- `rechnungsarchiv gui [<ordner>]` opens the window. With a folder, the window offers it in the "Ordner archivieren" dialog. If the window is already open, it comes to the front and gets the folder. `gui` prints no data; `gui --json` and `gui --archiv` exit 2. Errors of a launch without a console (shortcut, launcher) also appear in a message box.
+- `rechnungsarchiv` without arguments opens the window only when Windows started it with a console of its own (Explorer, Start menu): the process is the only one attached to its console and stdout is that console. The console window is closed before the window opens. In a terminal, and whenever stdout is a pipe or file (scripts, agents), it is the CLI and prints help (exit 0).
+- Every other invocation is the CLI, unchanged.
+- `rechnungsarchiv-gui.exe`, next to `rechnungsarchiv.exe`, is a Windows-subsystem launcher without logic. It starts `rechnungsarchiv.exe gui <args…>` from its own folder without a console window and exits. Shortcuts point to it. It shows a message box if `rechnungsarchiv.exe` is missing. On other systems use `rechnungsarchiv gui`.
 
 The command writes only through the core: a new Ablage, its Nachweis, `rechnungsarchiv.json`, the trusted-list cache, an export folder, or an Archivprotokoll PDF. It never sends invoices, file names or per-file hashes anywhere. A timestamp request carries only the Prüfwert (plus the provider account name and the IP address).
 
 ## Get it
 
 - **Windows:** `rechnungsarchiv.exe` ships with the program (no release yet) and lies in every export folder. Call it with its full path, or put its folder on your PATH.
-- **From source:** `go build -o bin/rechnungsarchiv.exe ./cmd/rechnungsarchiv` (`bin/` is ignored by git). Set the version with `-ldflags "-X github.com/realspqrk/rechnungsarchiv/internal/archive.Version=1.0.0"`.
+- **From source:** `cd app && wails3 build` builds `bin/rechnungsarchiv.exe` (CLI and window) and the launcher `bin/rechnungsarchiv-gui.exe` (see [app/README.md](../app/README.md)). The CLI alone needs no frontend build: `go build -o bin/rechnungsarchiv.exe ./cmd/rechnungsarchiv` (`bin/` is ignored by git); its window then shows a "nicht gebaut" page. Linux or macOS builds without cgo need `-tags purego` (Wails). Set the version with `-ldflags "-X github.com/realspqrk/rechnungsarchiv/internal/archive.Version=1.0.0"`.
 
 There is no switch to turn it on. It runs with the rights of the Windows user who starts it, like any other program.
 
@@ -41,7 +48,7 @@ The same paths work inside a project (`.claude/skills/…`, `.agents/skills/…`
 - **Errors** are `{"error":{"code","message","hint","details"}}` on standard error. `message` and `hint` are German. `details` is optional and command-specific.
 - **Warnings** are `{"warning":"…"}` lines on standard error.
 - **Terminal:** German, aligned, short. Errors read `Fehler: …` and `Hinweis: …`.
-- `--help`, `-h` and `rechnungsarchiv help <command>` work on the program and on every command. With `--json` (or no terminal), help is `{"help":"…"}`. `rechnungsarchiv` without arguments prints help.
+- `--help`, `-h` and `rechnungsarchiv help <command>` work on the program and on every command. With `--json` (or no terminal), help is `{"help":"…"}`. `rechnungsarchiv` without arguments prints help (except when started from Explorer, see [CLI or window](#cli-or-window)). `--help` is the manual: the typical workflow (`init` → `provider set` → `archive --dry-run` → `archive` → `verify` → `export`, and `gui`), then the commands, archive resolution, output rules, exit codes, and the agent rules.
 - `--version` prints the version; JSON `{"version":"…"}`.
 - Error messages never repeat the value of an unknown flag or of an unexpected argument, since it could be a password.
 
@@ -94,6 +101,7 @@ Global flags on every command: `--archiv <ordner>`, `--json`, `--help`/`-h`. Fla
 | `provider set <id> [--user <name>] [--p12 <datei>] [--url <https-url>]` | yes | Stores the credentials in the Windows Credential Manager of this PC and the provider id in `rechnungsarchiv.json`. Secret from standard input only. `{archive, provider, credentials}`. |
 | `provider show` | no | `{archive, provider, credentials}`. `credentials` is `{stored, user, p12, url, password}`; `password` is only `true`/`false`. Never the secret. |
 | `protocol <ablage> [--out <datei.pdf>] [--online]` | new file | Saves the Archivprotokoll of one Ablage (spec §10). `<ablage>` is a number (`3`, `0003`) in the archive or the path of an Ablage ZIP. `{file, sequence, name, status, qualification, reason}`. |
+| `gui [<ordner>]` | via the window | Opens the window (see [CLI or window](#cli-or-window)) and returns when it closes. Writes only what the user does there; on start it fetches missing timestamps like `stamp`. No data output; exit 2 with `--json` or `--archiv`, or if `<ordner>` is not a folder (`NOT_FOUND`, `USAGE`). Agents open it only when the user wants to see the window. |
 | `schema --json` | no | Machine-readable definitions: commands, flags, exit codes, error codes, agent rules. |
 
 ### status

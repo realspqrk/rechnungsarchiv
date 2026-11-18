@@ -1,6 +1,6 @@
 //go:build testtsa
 
-package main
+package app
 
 import (
 	"archive/zip"

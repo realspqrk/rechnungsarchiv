@@ -10,56 +10,56 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 export function About(): $CancellablePromise<$models.AboutInfo> {
-    return $Call.ByID(858388535);
+    return $Call.ByID(3190027521);
 }
 
 export function Archive(opts: $models.ArchiveOptions): $CancellablePromise<$models.ArchiveResult> {
-    return $Call.ByID(702134588, opts);
+    return $Call.ByID(1057523410, opts);
 }
 
 export function CloseArchive(): $CancellablePromise<void> {
-    return $Call.ByID(377162288);
+    return $Call.ByID(4134976894);
 }
 
 export function CreateArchive(req: $models.CreateArchiveRequest): $CancellablePromise<$models.Status> {
-    return $Call.ByID(3091693120, req);
+    return $Call.ByID(256193174, req);
 }
 
 export function Disclaimer(): $CancellablePromise<$models.DisclaimerText> {
-    return $Call.ByID(767004057);
+    return $Call.ByID(485545595);
 }
 
 export function Export(opts: $models.ExportOptions): $CancellablePromise<$models.ExportResult> {
-    return $Call.ByID(1923609924, opts);
+    return $Call.ByID(1826719002, opts);
 }
 
 export function ExportPlan($from: number, to: number): $CancellablePromise<$models.ExportPlan> {
-    return $Call.ByID(417725719, $from, to);
+    return $Call.ByID(98515489, $from, to);
 }
 
 export function OpenArchive(dir: string, readOnly: boolean): $CancellablePromise<$models.Status> {
-    return $Call.ByID(4266218556, dir, readOnly);
+    return $Call.ByID(792415602, dir, readOnly);
 }
 
 /**
  * OpenFolder opens an existing folder (e.g. the export target) in Explorer.
  */
 export function OpenFolder(path: string): $CancellablePromise<void> {
-    return $Call.ByID(3461588814, path);
+    return $Call.ByID(1943002040, path);
 }
 
 /**
  * OpenPrices opens the price table in the README (prices are never in the app).
  */
 export function OpenPrices(): $CancellablePromise<void> {
-    return $Call.ByID(4042902836);
+    return $Call.ByID(3197192638);
 }
 
 /**
  * OpenProject opens the project page.
  */
 export function OpenProject(): $CancellablePromise<void> {
-    return $Call.ByID(3814448895);
+    return $Call.ByID(3088381345);
 }
 
 /**
@@ -67,7 +67,7 @@ export function OpenProject(): $CancellablePromise<void> {
  * Only URLs from the built-in provider list are opened.
  */
 export function OpenProviderWebsite(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3974647944, id);
+    return $Call.ByID(84782022, id);
 }
 
 /**
@@ -75,33 +75,33 @@ export function OpenProviderWebsite(id: string): $CancellablePromise<void> {
  * It returns "" when the user cancels.
  */
 export function PickFolder(purpose: string): $CancellablePromise<string> {
-    return $Call.ByID(990967339, purpose);
+    return $Call.ByID(780476125, purpose);
 }
 
 /**
  * PickP12 selects the PKCS#12 access certificate.
  */
 export function PickP12(): $CancellablePromise<string> {
-    return $Call.ByID(928878530);
+    return $Call.ByID(4206095960);
 }
 
 export function Preview(folder: string): $CancellablePromise<$models.Preview> {
-    return $Call.ByID(2244882962, folder);
+    return $Call.ByID(3402570216, folder);
 }
 
 export function Providers(): $CancellablePromise<$models.Provider[] | null> {
-    return $Call.ByID(4221209336);
+    return $Call.ByID(837040126);
 }
 
 export function RetentionUntil(belegjahr: number, years: number): $CancellablePromise<string> {
-    return $Call.ByID(3170569028, belegjahr, years);
+    return $Call.ByID(3410538926, belegjahr, years);
 }
 
 /**
  * RevealDeposit selects the Ablage ZIP in Windows Explorer.
  */
 export function RevealDeposit(seq: number): $CancellablePromise<void> {
-    return $Call.ByID(3479284359, seq);
+    return $Call.ByID(1636459145, seq);
 }
 
 /**
@@ -109,37 +109,46 @@ export function RevealDeposit(seq: number): $CancellablePromise<void> {
  * writes it. It returns the path, or "" when the user cancels.
  */
 export function SaveProtocol(seq: number): $CancellablePromise<string> {
-    return $Call.ByID(3832780447, seq);
+    return $Call.ByID(2567908881, seq);
 }
 
 export function SetCredentials(c: $models.Credentials): $CancellablePromise<$models.Settings> {
-    return $Call.ByID(418501376, c);
+    return $Call.ByID(1570811186, c);
 }
 
 export function SetSettings(u: $models.SettingsUpdate): $CancellablePromise<$models.Settings> {
-    return $Call.ByID(2085313523, u);
+    return $Call.ByID(2122237289, u);
 }
 
 export function Settings(): $CancellablePromise<$models.Settings> {
-    return $Call.ByID(1292320939);
+    return $Call.ByID(309036113);
 }
 
 export function StampPending(): $CancellablePromise<$models.StampResult> {
-    return $Call.ByID(3333673044);
+    return $Call.ByID(3498016682);
+}
+
+/**
+ * StartFolder returns the folder given on the command line
+ * (rechnungsarchiv gui <ordner>) on the first call, then an empty value.
+ * The frontend treats it like a dropped folder.
+ */
+export function StartFolder(): $CancellablePromise<$models.FolderDrop> {
+    return $Call.ByID(1152663332);
 }
 
 export function Status(): $CancellablePromise<$models.Status> {
-    return $Call.ByID(92615296);
+    return $Call.ByID(1781937110);
 }
 
 export function TakeOver(): $CancellablePromise<void> {
-    return $Call.ByID(391554847);
+    return $Call.ByID(3249291429);
 }
 
 export function Verify(): $CancellablePromise<$models.CheckSummary> {
-    return $Call.ByID(1893745663);
+    return $Call.ByID(3337814593);
 }
 
 export function VerifyDeposit(seq: number): $CancellablePromise<$models.DepositReport> {
-    return $Call.ByID(2369554619, seq);
+    return $Call.ByID(3251899785, seq);
 }

@@ -1,4 +1,4 @@
-package main
+package app
 
 // Shell is the single Wails-bound service. It forwards to Service and adds
 // the native parts (dialogs, Explorer, browser). No business logic here.
@@ -12,8 +12,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"github.com/realspqrk/rechnungsarchiv/internal/archive"
 )
 
 const (
@@ -23,14 +26,15 @@ const (
 	licenseID = "Apache-2.0"
 )
 
-// version is set at build time: -ldflags "-X main.version=1.0.0".
-var version = "0.1.0-dev"
-
 type Shell struct {
 	svc   Service
 	app   *application.App
 	fake  string // scenario name when the fake service is used
 	debug bool   // screenshot hooks (fake or test environment)
+	// start is the folder of `rechnungsarchiv gui <ordner>`, handed to the
+	// frontend once (StartFolder).
+	start *FolderDrop
+	mu    sync.Mutex
 }
 
 // AboutInfo is shown in the "Über" dialog.
@@ -57,7 +61,20 @@ type FolderDrop struct {
 }
 
 func (s *Shell) About() AboutInfo {
-	return AboutInfo{Version: version, License: licenseID, Fake: s.fake, Debug: s.debug}
+	return AboutInfo{Version: archive.Version, License: licenseID, Fake: s.fake, Debug: s.debug}
+}
+
+// StartFolder returns the folder given on the command line
+// (rechnungsarchiv gui <ordner>) on the first call, then an empty value.
+// The frontend treats it like a dropped folder.
+func (s *Shell) StartFolder() FolderDrop {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var d FolderDrop
+	if s.start != nil {
+		d, s.start = *s.start, nil
+	}
+	return d
 }
 
 // ServiceShutdown runs when the application quits (window closed): running

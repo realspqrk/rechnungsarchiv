@@ -1,4 +1,4 @@
-package main
+package app
 
 // Fake service with sample data for every UI state (P6a). Selected with
 // RA_FAKE=<scenario>; see fakeScenarios. It never touches the disk.

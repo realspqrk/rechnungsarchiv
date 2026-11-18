@@ -1,13 +1,16 @@
 # Tasks for the Wails v3 GUI (Windows). Run through the pinned CLI:
 #   go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
-#   wails3 build            # -> ../bin/rechnungsarchiv-gui.exe
+#   wails3 build            # -> ../bin/rechnungsarchiv.exe (CLI + GUI) + ../bin/rechnungsarchiv-gui.exe (launcher)
 #   wails3 dev              # live reload with Vite (build/config.yml)
 #   wails3 task screenshots # -> screenshots/*.png (sample data)
 #   wails3 task screenshots:real # -> screenshots/real-*.png (real service, test TSA)
 version: '3'
 
 vars:
-  APP_NAME: rechnungsarchiv-gui
+  # One app binary for CLI and GUI (ADR-0008); the package app is the GUI.
+  APP_NAME: rechnungsarchiv
+  MAIN_PKG: '{{.ROOT_DIR}}/../cmd/rechnungsarchiv'
+  LAUNCHER_PKG: '{{.ROOT_DIR}}/../cmd/rechnungsarchiv-gui'
   BIN_DIR: '{{.ROOT_DIR}}/../bin'
   VERSION: '{{.VERSION | default "0.1.0-dev"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
@@ -37,33 +40,37 @@ tasks:
       - npm run {{if eq .DEV "true"}}build:dev{{else}}build{{end}}
 
   syso:
-    summary: Windows resources (icon, manifest, version info)
+    summary: Windows resources (icon, manifest, version info) for both executables
     dir: build
     cmds:
-      - wails3 generate syso -arch {{ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../wails_windows_{{ARCH}}.syso
+      - wails3 generate syso -arch {{ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out "{{.MAIN_PKG}}/wails_windows_{{ARCH}}.syso"
+      - wails3 generate syso -arch {{ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out "{{.LAUNCHER_PKG}}/wails_windows_{{ARCH}}.syso"
 
   build:
-    summary: Build the GUI (DEV=true keeps the console and devtools)
+    summary: Build rechnungsarchiv.exe (CLI + GUI) and the launcher rechnungsarchiv-gui.exe (DEV=true keeps devtools)
     deps:
       - task: build:frontend
         vars: { DEV: '{{.DEV}}' }
     cmds:
       - task: syso
-      - go build {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" .
-      # The CLI next to the GUI: every export bundles it as the verifier.
-      - go build {{.CLI_FLAGS}} -o "{{.BIN_DIR}}/rechnungsarchiv.exe" ../cmd/rechnungsarchiv
-      - cmd: powershell -NoProfile -Command "Remove-Item -ErrorAction SilentlyContinue *.syso"
+      # A console program: the CLI. `gui`, or a start from Explorer without
+      # arguments, releases the console and opens the window. Every export
+      # bundles this binary as the verifier.
+      - go build {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" "{{.MAIN_PKG}}"
+      # The Windows-subsystem launcher for shortcuts: no console flash.
+      - go build -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o "{{.BIN_DIR}}/{{.APP_NAME}}-gui.exe" "{{.LAUNCHER_PKG}}"
+      - cmd: powershell -NoProfile -Command "Remove-Item -ErrorAction SilentlyContinue '{{.MAIN_PKG}}/*.syso','{{.LAUNCHER_PKG}}/*.syso'"
         platforms: [windows]
     vars:
-      CLI_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false{{else}}-trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
-      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l" -ldflags="-X main.version={{.VERSION}}"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui -X main.version={{.VERSION}}"{{end}}'
+      VERSION_FLAG: -X github.com/realspqrk/rechnungsarchiv/internal/archive.Version={{.VERSION}}
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l" -ldflags="{{.VERSION_FLAG}}"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s {{.VERSION_FLAG}}"{{end}}'
     env:
       CGO_ENABLED: 0
 
   run:
-    summary: Run the last build
+    summary: Open the window of the last build
     cmds:
-      - '"{{.BIN_DIR}}/{{.APP_NAME}}.exe"'
+      - '"{{.BIN_DIR}}/{{.APP_NAME}}.exe" gui'
 
   dev:frontend:
     summary: Vite dev server for wails3 dev

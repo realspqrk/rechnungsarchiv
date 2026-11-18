@@ -147,6 +147,10 @@ func TestRecipeEndToEnd(t *testing.T) {
 		t.Fatalf("audit %v", audit)
 	}
 	w.runIn(dst, filepath.Join(dst, export.ExeName), "", "verify", filepath.Join(dst, "0001_2026-10 Eingangsrechnungen.zip")).want(t, 0)
+	// The verifier is this very program, CLI and GUI in one (ADR-0008).
+	if a, b := sha(t, bin), sha(t, filepath.Join(dst, export.ExeName)); a != b {
+		t.Fatal("the export does not bundle the running program")
+	}
 
 	// Archivprotokoll for one Ablage.
 	pdf := filepath.Join(t.TempDir(), "protokoll.pdf")

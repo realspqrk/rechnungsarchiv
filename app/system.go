@@ -1,14 +1,10 @@
-package main
+package app
 
 import (
 	"crypto/x509"
-	"errors"
-	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/realspqrk/rechnungsarchiv/internal/creds"
-	"github.com/realspqrk/rechnungsarchiv/internal/export"
 	"github.com/realspqrk/rechnungsarchiv/internal/trust"
 )
 
@@ -27,7 +23,10 @@ type system struct {
 	// trustExport opens the lists inside a new export; nil: export default.
 	trustExport func(exportDir string) (*trust.Store, error)
 	rootCAs     *x509.CertPool // TLS roots for the provider; nil: system roots
-	// verifier is the command-line program bundled into every export.
+	// verifier is the program bundled into every export as
+	// rechnungsarchiv.exe. Nil: the export default, os.Executable, which is
+	// right because the GUI runs inside the one binary that is also the CLI
+	// (ADR-0008). Tests inject a stand-in.
 	verifier func() (string, error)
 	// home is where new archives and exports are suggested.
 	home func() (string, error)
@@ -40,35 +39,5 @@ var sys = system{
 	creds:     creds.System(),
 	trust:     trust.Open,
 	trustRead: trust.OpenReadOnly,
-	verifier:  bundledVerifier,
 	home:      os.UserHomeDir,
-}
-
-// bundledVerifier is rechnungsarchiv.exe next to the GUI executable: the
-// export ships the CLI (the standalone verifier), never the GUI itself.
-func bundledVerifier() (string, error) {
-	self, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	p := filepath.Join(filepath.Dir(self), export.ExeName)
-	if fi, err := os.Stat(p); err != nil || !fi.Mode().IsRegular() {
-		return "", fmt.Errorf("%s fehlt neben dem Programm (%s); bitte das Programm neu installieren", export.ExeName, filepath.Dir(self))
-	}
-	if same, _ := sameFile(p, self); same {
-		return "", errors.New(export.ExeName + " ist das Programm selbst, nicht das Prüfprogramm")
-	}
-	return p, nil
-}
-
-func sameFile(a, b string) (bool, error) {
-	fa, err := os.Stat(a)
-	if err != nil {
-		return false, err
-	}
-	fb, err := os.Stat(b)
-	if err != nil {
-		return false, err
-	}
-	return os.SameFile(fa, fb), nil
 }

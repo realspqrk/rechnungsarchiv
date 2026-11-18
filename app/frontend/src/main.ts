@@ -2,6 +2,7 @@ import "./fonts.css";
 import "./style.css";
 
 import { api, errMsg, Events, OrdnerAbgelegt, StatusGeaendert } from "./api";
+import type { FolderDrop } from "./api";
 import { clear, h } from "./dom";
 import { app, rerender, setRenderer } from "./state";
 import { toast } from "./ui";
@@ -57,13 +58,7 @@ async function boot(): Promise<void> {
   setRenderer(route);
   window.addEventListener("hashchange", () => void route());
 
-  Events.On(OrdnerAbgelegt, (ev) => {
-    const drop = ev.data;
-    // Read-only mode, or another PC holds the lock: nothing is archived.
-    if (!app.status?.hasArchive || app.status.archive.readOnly || app.status.lock) return;
-    if (drop.error) toast(drop.error, "error");
-    else openArchiveDialog(drop.folder);
-  });
+  Events.On(OrdnerAbgelegt, (ev) => onFolder(ev.data));
 
   // Background work in Go (stamping on start, trusted-list refresh).
   Events.On(StatusGeaendert, () => void onStatusChanged());
@@ -83,6 +78,17 @@ async function boot(): Promise<void> {
     };
   }
   await route();
+  // rechnungsarchiv gui <ordner>: the folder from the command line, once.
+  onFolder(await api.StartFolder());
+}
+
+/** A dropped folder, or the one given on the command line. */
+function onFolder(drop: FolderDrop): void {
+  if (!drop.folder && !drop.error) return;
+  // Read-only mode, or another PC holds the lock: nothing is archived.
+  if (!app.status?.hasArchive || app.status.archive.readOnly || app.status.lock) return;
+  if (drop.error) toast(drop.error, "error");
+  else openArchiveDialog(drop.folder);
 }
 
 void boot();

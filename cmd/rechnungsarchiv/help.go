@@ -105,7 +105,25 @@ func helpText(c *command) string {
 		return b.String()
 	}
 	b.WriteString("rechnungsarchiv " + archive.Version + " – Rechnungen als Ablagen mit qualifiziertem Zeitstempel archivieren und kontrollieren.\n\n")
-	b.WriteString("Aufruf: rechnungsarchiv <befehl> [optionen]   Hilfe zu einem Befehl: rechnungsarchiv <befehl> --help\n\nBefehle:\n")
+	b.WriteString("Aufruf: rechnungsarchiv <befehl> [optionen]   Hilfe zu einem Befehl: rechnungsarchiv <befehl> --help\n")
+	b.WriteString(`
+Typischer Ablauf:
+  1. Archiv anlegen (wird Standardarchiv):
+       rechnungsarchiv init "D:\Buchhaltung\Rechnungsarchiv" --firma "Musterfirma GmbH"
+  2. Zeitstempel-Dienst einrichten (Passwort über die Standardeingabe, nie als Argument):
+       rechnungsarchiv provider set mensatek --user musterfirma
+  3. Plan zeigen, nichts schreiben:
+       rechnungsarchiv archive --dry-run "D:\Scans\2026-11 Eingangsrechnungen"
+  4. Archivieren (endgültig, kostet einen Zeitstempel; --yes erst nach Zustimmung):
+       rechnungsarchiv archive "D:\Scans\2026-11 Eingangsrechnungen" --yes
+  5. Kontrollieren (schreibt nie):
+       rechnungsarchiv verify
+  6. Export für Betriebsprüfung in einen neuen Ordner:
+       rechnungsarchiv export --von 2026 --bis 2026 "E:\Betriebsprüfung 2026" --yes
+  Dasselbe im Fenster: rechnungsarchiv gui (Verknüpfung: rechnungsarchiv-gui.exe)
+
+Befehle:
+`)
 	for _, c := range commands {
 		head := c.Name
 		if c.Args != "" {
@@ -117,6 +135,8 @@ func helpText(c *command) string {
 	flagLines(&b, globalFlags)
 	fmt.Fprintf(&b, "  %-24s %s\n", "--version", "Version zeigen")
 	b.WriteString(`
+Archiv: --archiv, sonst der aktuelle Ordner, wenn er rechnungsarchiv.json enthält, sonst das zuletzt mit init angelegte Archiv.
+
 Ausgabe:
   Mit --json, und immer wenn die Standardausgabe kein Terminal ist, kommen nur Daten als JSON (ASCII) auf die
   Standardausgabe. Fehler: {"error":{"code","message","hint","details"}} auf der Fehlerausgabe. Hinweise: {"warning":"…"}.
@@ -127,18 +147,7 @@ Exit-Codes:
 	for _, e := range exitCodes {
 		fmt.Fprintf(&b, "  %d  %s\n", e.Code, e.Meaning)
 	}
-	b.WriteString(`
-Beispiel:
-  rechnungsarchiv init "D:\Buchhaltung\Rechnungsarchiv" --firma "Musterfirma GmbH"
-  rechnungsarchiv provider set mensatek --user musterfirma
-  rechnungsarchiv archive --dry-run "D:\Scans\2026-11 Eingangsrechnungen"
-  rechnungsarchiv archive "D:\Scans\2026-11 Eingangsrechnungen" --yes
-  rechnungsarchiv verify
-
-Archiv: --archiv, sonst der aktuelle Ordner, wenn er rechnungsarchiv.json enthält, sonst das zuletzt mit init angelegte Archiv.
-
-`)
-	b.WriteString(agentRules)
+	b.WriteString("\n" + agentRules)
 	return b.String()
 }
 

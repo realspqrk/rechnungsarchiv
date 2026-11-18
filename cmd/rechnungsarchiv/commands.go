@@ -100,6 +100,13 @@ func init() {
 			Help:    "<ablage> ist die Nummer im Archiv (z. B. 3 oder 0003) oder der Pfad einer Ablage-ZIP. Ohne --out: <NNNN>_<Name>.archivprotokoll.pdf im aktuellen Ordner. Nie in den Archivordner.",
 			Flags:   []flagSpec{{Name: "out", Kind: stringFlag, Arg: "<datei.pdf>", Help: "Zieldatei oder Zielordner"}, flagOnline},
 			run:     (*app).protocol},
+		{Name: "gui", Args: "[<ordner>]", MaxArgs: 1, Writes: true,
+			Summary: "Fenster öffnen; mit <ordner> gleich den Dialog „Ordner archivieren“ für diesen Ordner.",
+			Help: "Öffnet das zuletzt verwendete Archiv und endet, wenn das Fenster geschlossen wird. Archiviert wird nur nach Bestätigung im Fenster; beim Öffnen holt es fehlende Zeitstempel nach.\n" +
+				"Ohne Argumente aus dem Explorer oder Startmenü gestartet, öffnet rechnungsarchiv.exe ebenfalls das Fenster; im Terminal zeigt es die Hilfe. " +
+				"Verknüpfungen zeigen auf rechnungsarchiv-gui.exe: es startet rechnungsarchiv.exe gui ohne Konsolenfenster.\n" +
+				"gui gibt keine Daten aus (--json ist ein Aufruffehler). Agenten öffnen das Fenster nur, wenn der Benutzer es sehen will.",
+			run: (*app).gui},
 		{Name: "schema", Summary: "Maschinenlesbare Beschreibung aller Befehle (JSON).", run: (*app).schema},
 	}
 }

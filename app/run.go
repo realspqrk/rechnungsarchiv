@@ -1,12 +1,14 @@
-// Command app is the Rechnungsarchiv desktop GUI (Wails v3), a thin shell
-// over the core. Build with `wails3 build` in this directory (README.md).
-package main
+// Package app is the Rechnungsarchiv desktop GUI (Wails v3), a thin shell
+// over the core. It has no main package of its own: the one executable
+// rechnungsarchiv.exe opens it with `rechnungsarchiv gui` (ADR-0008,
+// cmd/rechnungsarchiv). Build with `wails3 build` in this directory
+// (README.md).
+package app
 
 import (
 	"context"
 	"embed"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
 
@@ -30,29 +32,65 @@ func init() {
 	application.RegisterEvent[StatusChanged]("status-geaendert")
 }
 
-func main() {
+// Options configures one window run.
+type Options struct {
+	// Folder, if set, is offered in the "Ordner archivieren" dialog once
+	// the window is ready (rechnungsarchiv gui <ordner>). Absolute path of
+	// an existing folder; the caller checks it.
+	Folder string
+	// SecondLaunch returns the folder of a later launch (its os.Args and
+	// working folder) while this window runs; "" if it names none. The
+	// later process exits and this window comes to the front. Nil: none.
+	SecondLaunch func(args []string, workingDir string) string
+}
+
+// Run opens the window and returns when it is closed. It must be called on
+// the main goroutine (Wails locks it to the main OS thread).
+func Run(opts Options) error {
 	// The real core is the default; RA_FAKE=<scenario> shows sample data
 	// (screenshots, UI review). See README.md.
 	shell := &Shell{debug: sys.debug}
+	if opts.Folder != "" {
+		start := handleDrop([]string{opts.Folder})
+		shell.start = &start
+	}
 	var real *realService
 	if scenario := os.Getenv("RA_FAKE"); scenario != "" {
 		f, err := newFakeService(scenario)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		shell.svc, shell.fake, shell.debug = f, f.scenario, true
 	} else {
 		real = newRealService(sys)
 		shell.svc = real
 	}
+	handler, err := assetHandler()
+	if err != nil {
+		return err
+	}
 
-	app := application.New(application.Options{
+	var app *application.App
+	var win *application.WebviewWindow
+	app = application.New(application.Options{
 		Name:        "Rechnungsarchiv",
 		Description: "Lokales Archiv für Rechnungen mit qualifiziertem Zeitstempel",
 		Services:    []application.Service{application.NewService(shell)},
-		Assets:      application.AssetOptions{Handler: assetHandler()},
+		Assets:      application.AssetOptions{Handler: handler},
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "at.rechnungsarchiv.gui",
+			OnSecondInstanceLaunch: func(d application.SecondInstanceData) {
+				if win == nil {
+					return
+				}
+				win.Restore()
+				win.Focus()
+				if opts.SecondLaunch != nil {
+					if folder := opts.SecondLaunch(d.Args, d.WorkingDir); folder != "" {
+						app.Event.Emit("ordner-abgelegt", handleDrop([]string{folder}))
+					}
+				}
+			},
 		},
 	})
 	shell.app = app
@@ -70,7 +108,7 @@ func main() {
 	if shell.fake != "" {
 		title += " – Beispieldaten (" + shell.fake + ")"
 	}
-	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	win = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            title,
 		Width:            1280,
 		Height:           860,
@@ -83,23 +121,20 @@ func main() {
 	win.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {
 		app.Event.Emit("ordner-abgelegt", handleDrop(e.Context().DroppedFiles()))
 	})
-
-	if err := app.Run(); err != nil {
-		log.Fatal(err)
-	}
+	return app.Run()
 }
 
-func assetHandler() http.Handler {
+func assetHandler() (http.Handler, error) {
 	dist, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	_, statErr := fs.Stat(dist, "index.html")
 	if statErr != nil && os.Getenv("FRONTEND_DEVSERVER_URL") == "" { // wails3 dev proxies to Vite
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_, _ = w.Write([]byte(notBuiltPage))
-		})
+		}), nil
 	}
-	return application.AssetFileServerFS(dist)
+	return application.AssetFileServerFS(dist), nil
 }

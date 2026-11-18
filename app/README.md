@@ -2,6 +2,14 @@
 
 Thin shell over the core (AGENTS.md): it renders data from `Service` and adds native dialogs, Explorer and the browser. No business logic lives here.
 
+This folder is the library package `app` (`app.Run`), not a program. The one executable `rechnungsarchiv.exe` (`cmd/rechnungsarchiv`) contains the CLI and this GUI (ADR-0008):
+
+- `rechnungsarchiv gui [<ordner>]` opens the window. A folder opens the "Ordner archivieren" dialog for it once the window is ready (`Shell.StartFolder`). A second launch while the window runs brings the window to the front and hands over its folder (Wails single instance).
+- No arguments, started from Explorer or the Start menu, also opens the window: the process is alone in its console (`GetConsoleProcessList`) and stdout is that console. The console is released first (`FreeConsole`).
+- Every other invocation is the CLI. In a terminal, `rechnungsarchiv` without arguments prints help.
+- `rechnungsarchiv-gui.exe` (`cmd/rechnungsarchiv-gui`, built with `-H windowsgui`, no Wails, no core) starts `rechnungsarchiv.exe gui <args…>` from its own folder with `CREATE_NO_WINDOW` and exits, so shortcuts flash no console. It shows a message box if `rechnungsarchiv.exe` is missing. Shortcuts point to it.
+- Exports bundle the running binary (`os.Executable`) as the verifier.
+
 ## Build and run
 
 Prerequisites: Go (the toolchain in `go.mod` is fetched automatically), Node.js 22+, WebView2 (part of Windows 11).
@@ -13,14 +21,17 @@ Prerequisites: Go (the toolchain in `go.mod` is fetched automatically), Node.js 
 GOTOOLCHAIN=go1.27.4 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
 
 cd app
-wails3 build                     # -> ../bin/rechnungsarchiv-gui.exe + ../bin/rechnungsarchiv.exe
-wails3 build DEV=true            # with console and devtools
+wails3 build                     # -> ../bin/rechnungsarchiv.exe (CLI + GUI) + ../bin/rechnungsarchiv-gui.exe (launcher)
+wails3 build DEV=true            # with devtools
+wails3 task run                  # ../bin/rechnungsarchiv.exe gui
 wails3 dev                       # live reload: Go rebuild + Vite dev server
 wails3 task screenshots          # -> screenshots/*.png, every screen and state (sample data)
 wails3 task screenshots:real     # -> screenshots/real-*.png (real service, demo archive, test TSA)
 ```
 
-`wails3 build` runs `Taskfile.yml`: `npm ci` → `wails3 generate bindings -clean=true -ts -i` → `tsc` + `vite build` into `frontend/dist` → Windows resources (`build/windows`) → `go build` of the GUI and of the CLI next to it. Every export bundles that `rechnungsarchiv.exe` as the verifier; without it the export warns "Prüfprogramm konnte nicht beigelegt werden".
+`wails3 build` runs `Taskfile.yml`: `npm ci` → `wails3 generate bindings -clean=true -ts -i` → `tsc` + `vite build` into `frontend/dist` → Windows resources (`build/windows`; one `.syso` in each `cmd/` package, removed after the build) → `go build -tags production` of `cmd/rechnungsarchiv` (a console program; the version goes into `internal/archive.Version`) → `go build -ldflags "-H windowsgui"` of the launcher `cmd/rechnungsarchiv-gui`.
+
+Without `wails3`: `npm run build` in `frontend/`, then `go build -o bin/rechnungsarchiv.exe ./cmd/rechnungsarchiv` at the repo root (no icon, devtools on).
 
 `go build ./...` and `go vet ./...` at the repo root work on a clean checkout: `frontend/dist/.gitkeep` is committed so the `go:embed` compiles, and the app then shows a "nicht gebaut" page.
 
@@ -57,25 +68,25 @@ Wails server mode serves the same Go code over HTTP:
 
 ```sh
 cd app/frontend && npm run build && cd ..
-RA_FAKE=zustaende WAILS_SERVER_PORT=8080 go run -tags server .
+RA_FAKE=zustaende WAILS_SERVER_PORT=8080 go run -tags server ../cmd/rechnungsarchiv gui
 # open http://localhost:8080 — native dialogs and drag & drop do not work there
 ```
 
-`npm run screenshots` (in `frontend/`) uses this mode with the installed Microsoft Edge (`playwright-core`, no browser download).
+`npm run screenshots` (in `frontend/`) builds `cmd/rechnungsarchiv` with `-tags server` and uses this mode with the installed Microsoft Edge (`playwright-core`, no browser download).
 
 ### Real service against the test TSA
 
-`wails3 task screenshots:real` runs `TestRealScreenshots` (`realshots_testtsa_test.go`, build tag `testtsa`): it builds a demo archive from `testdata/demo` through the real service with the test PKI, TSA and trusted lists of `internal/testenv`, starts the GUI in server mode with `-tags "server testtsa"` and `RECHNUNGSARCHIV_TESTENV` (`testhook_testtsa.go`), and runs `frontend/scripts/screenshots-real.mjs`. The demo lives in `../tmp/demo/` (git-ignored). Release builds contain neither the hook nor the test provider.
+`wails3 task screenshots:real` runs `TestRealScreenshots` (`realshots_testtsa_test.go`, build tag `testtsa`): it builds a demo archive from `testdata/demo` through the real service with the test PKI, TSA and trusted lists of `internal/testenv`, builds `cmd/rechnungsarchiv` with `-tags "server testtsa"`, starts `rechnungsarchiv.exe gui` with `RECHNUNGSARCHIV_TESTENV` (both `testhook_testtsa.go` files run: the CLI's registers the test provider, this package's points the GUI at the test world), and runs `frontend/scripts/screenshots-real.mjs`. The demo lives in `../tmp/demo/` (git-ignored). Release builds contain neither the hook nor the test provider.
 
 ## Layout
 
 | Path | Content |
 |---|---|
-| `main.go` | Wails setup, window, drag & drop event, embedded assets |
+| `run.go` | `Run(Options)`: Wails setup, window, single instance, drag & drop event, embedded assets |
 | `service.go` | `Service` interface and the JSON DTOs (spec §5–6 states, qualifiers, reasons) |
 | `real.go` | the real `Service` over `internal/*` (archive, stamp, verify, export, report, creds, trust, tsa) |
 | `map.go` | core results → DTOs (renaming and counting only) |
-| `system.go` | outside world: credential store, trusted-list stores, TLS roots, bundled verifier |
+| `system.go` | outside world: credential store, trusted-list stores, TLS roots, suggested folders |
 | `testhook_testtsa.go` | `-tags testtsa` only: `RECHNUNGSARCHIV_TESTENV` points the GUI at the test world |
 | `shell.go` | `Shell`, the only bound service: forwards to `Service`, plus dialogs, Explorer, browser (fixed URLs only) |
 | `fake.go` | sample data for every UI state (`RA_FAKE`) |

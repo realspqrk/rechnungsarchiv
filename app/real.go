@@ -1,4 +1,4 @@
-package main
+package app
 
 // The real Service: internal/archive, stamp, verify, export, report, creds,
 // trust and tsa, wired the way the CLI wires them (cmd/rechnungsarchiv).

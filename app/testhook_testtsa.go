@@ -1,13 +1,15 @@
 //go:build testtsa
 
-package main
+package app
 
 // Test builds only (-tags testtsa), like cmd/rechnungsarchiv/testhook_testtsa.go:
 // if RECHNUNGSARCHIV_TESTENV names a JSON file, the GUI trusts the test PKI
-// and the synthetic trusted lists of internal/testenv, registers the test
-// provider and keeps credentials in a file instead of the Windows Credential
-// Manager. The real-service screenshots (realshots_testtsa_test.go) use it.
-// Release builds do not contain this file.
+// and the synthetic trusted lists of internal/testenv and keeps credentials
+// in a file instead of the Windows Credential Manager. The test provider is
+// registered by the CLI's hook: both hooks run in the one binary
+// (ADR-0008), and registering it twice would list it twice. The
+// real-service screenshots (realshots_testtsa_test.go) use it. Release
+// builds do not contain this file.
 
 import (
 	"crypto/x509"
@@ -27,16 +29,15 @@ import (
 
 const testEnvVar = "RECHNUNGSARCHIV_TESTENV"
 
-// testConfig is the CLI's format plus the GUI's verifier and home folder.
+// testConfig is the CLI's format plus the GUI's home folder.
 type testConfig struct {
 	Provider   tsa.Provider `json:"provider"`
 	TLSRoots   string       `json:"tls_roots"`   // PEM: the test TSA's TLS certificate
 	LOTLPins   string       `json:"lotl_pins"`   // PEM: the synthetic LOTL signer
 	ListsProxy string       `json:"lists_proxy"` // serves trusted lists: GET <proxy>?u=<original URL>
 	CredsFile  string       `json:"creds_file"`
-	Cache      string       `json:"cache"`    // read-only trusted-list cache
-	Verifier   string       `json:"verifier"` // rechnungsarchiv.exe for exports
-	Home       string       `json:"home"`     // suggested folders
+	Cache      string       `json:"cache"` // read-only trusted-list cache
+	Home       string       `json:"home"`  // suggested folders
 }
 
 func init() {
@@ -48,7 +49,6 @@ func init() {
 	if err == nil {
 		var c testConfig
 		if err = json.Unmarshal(data, &c); err == nil {
-			tsa.RegisterTestProvider(c.Provider)
 			err = applyTestConfig(&sys, c)
 		}
 	}
@@ -59,7 +59,7 @@ func init() {
 }
 
 // applyTestConfig points s at the test world of c. The caller registers
-// c.Provider (once per process).
+// c.Provider (once per process; in the binary the CLI's hook does).
 func applyTestConfig(s *system, c testConfig) error {
 	pins, err := pemCerts(c.LOTLPins)
 	if err != nil {
@@ -88,9 +88,6 @@ func applyTestConfig(s *system, c testConfig) error {
 		return trust.OpenTest(trust.TestConfig{ReadDirs: []string{filepath.Join(dir, trust.DirName)}, Pins: pins, Client: &http.Client{Transport: proxy{}}})
 	}
 	s.creds = &fileCreds{path: c.CredsFile}
-	if c.Verifier != "" {
-		s.verifier = func() (string, error) { return c.Verifier, nil }
-	}
 	if c.Home != "" {
 		s.home = func() (string, error) { return c.Home, nil }
 	}
