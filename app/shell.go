@@ -27,9 +27,10 @@ const (
 var version = "0.1.0-dev"
 
 type Shell struct {
-	svc  Service
-	app  *application.App
-	fake string // scenario name when the fake service is used
+	svc   Service
+	app   *application.App
+	fake  string // scenario name when the fake service is used
+	debug bool   // screenshot hooks (fake or test environment)
 }
 
 // AboutInfo is shown in the "Über" dialog.
@@ -37,6 +38,15 @@ type AboutInfo struct {
 	Version string `json:"version"`
 	License string `json:"license"`
 	Fake    string `json:"fake"`
+	// Debug enables the frontend's screenshot hooks (sample data or the
+	// testtsa environment only).
+	Debug bool `json:"debug"`
+}
+
+// StatusChanged is emitted as event "status-geaendert" when background
+// work (stamping on start, trusted-list refresh) changed the status.
+type StatusChanged struct {
+	Busy string `json:"busy"`
 }
 
 // FolderDrop is emitted as event "ordner-abgelegt" when folders are dropped.
@@ -47,7 +57,16 @@ type FolderDrop struct {
 }
 
 func (s *Shell) About() AboutInfo {
-	return AboutInfo{Version: version, License: licenseID, Fake: s.fake}
+	return AboutInfo{Version: version, License: licenseID, Fake: s.fake, Debug: s.debug}
+}
+
+// ServiceShutdown runs when the application quits (window closed): running
+// operations and background work are cancelled.
+func (s *Shell) ServiceShutdown() error {
+	if c, ok := s.svc.(interface{ Shutdown() }); ok {
+		c.Shutdown()
+	}
+	return nil
 }
 
 // --- Service passthrough -------------------------------------------------
@@ -93,6 +112,20 @@ func (s *Shell) SetCredentials(ctx context.Context, c Credentials) (Settings, er
 func (s *Shell) Disclaimer(ctx context.Context) (DisclaimerText, error) {
 	return s.svc.Disclaimer(ctx)
 }
+func (s *Shell) TakeOver(ctx context.Context) error { return s.svc.TakeOver(ctx) }
+
+// deposit finds an Ablage of the open archive in the status (no check).
+func (s *Shell) deposit(ctx context.Context, seq int) (Status, Deposit, error) {
+	st, err := s.svc.Status(ctx)
+	if err != nil {
+		return st, Deposit{}, err
+	}
+	i := slices.IndexFunc(st.Deposits, func(d Deposit) bool { return d.Seq == seq })
+	if i < 0 {
+		return st, Deposit{}, fmt.Errorf("Ablage %04d ist nicht im Archiv.", seq)
+	}
+	return st, st.Deposits[i], nil
+}
 
 // --- Native dialogs ------------------------------------------------------
 
@@ -129,11 +162,11 @@ func (s *Shell) PickP12() (string, error) {
 // SaveProtocol asks where to save the Archivprotokoll of one Ablage and
 // writes it. It returns the path, or "" when the user cancels.
 func (s *Shell) SaveProtocol(ctx context.Context, seq int) (string, error) {
-	r, err := s.svc.VerifyDeposit(ctx, seq)
+	_, d, err := s.deposit(ctx, seq)
 	if err != nil {
 		return "", err
 	}
-	name := fmt.Sprintf("%04d_%s.archivprotokoll.pdf", r.Deposit.Seq, r.Deposit.Name)
+	name := fmt.Sprintf("%04d_%s.archivprotokoll.pdf", d.Seq, d.Name)
 	path, err := cancelIsEmpty(s.app.Dialog.SaveFile().
 		SetMessage("Archivprotokoll speichern").
 		SetFilename(name).
@@ -166,15 +199,16 @@ func cancelIsEmpty(path string, err error) (string, error) {
 
 // RevealDeposit selects the Ablage ZIP in Windows Explorer.
 func (s *Shell) RevealDeposit(ctx context.Context, seq int) error {
-	r, err := s.svc.VerifyDeposit(ctx, seq)
+	st, d, err := s.deposit(ctx, seq)
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(r.Path); err != nil {
-		return fmt.Errorf("Datei nicht gefunden: %s", r.Path)
+	path := filepath.Join(st.Archive.Dir, d.File)
+	if _, err := os.Stat(path); err != nil || d.File == "" {
+		return fmt.Errorf("Datei nicht gefunden: %s", path)
 	}
 	// explorer.exe exits with 1 even on success; only start errors count.
-	return exec.Command("explorer.exe", "/select,"+r.Path).Start()
+	return exec.Command("explorer.exe", "/select,"+path).Start()
 }
 
 // OpenFolder opens an existing folder (e.g. the export target) in Explorer.

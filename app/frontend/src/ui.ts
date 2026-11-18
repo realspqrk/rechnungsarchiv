@@ -115,8 +115,13 @@ export function openDialog(labelledBy: string, width: "narrow" | "wide" = "narro
   };
 }
 
-/** Sub-page header: "‹ Übersicht / Title". */
-export function subHeader(title: string, width: "detail" | "settings"): HTMLElement {
+/** Label of the read-only mode ("Archiv nur kontrollieren", spec §9). */
+export function readOnlyBadge(): HTMLElement {
+  return h("span", { class: "badge badge--blue" }, icon("search", 14, 2.2), "Nur kontrollieren");
+}
+
+/** Sub-page header: "‹ Übersicht / Title", with the read-only label if set. */
+export function subHeader(title: string, width: "detail" | "settings", readOnly = false): HTMLElement {
   return h(
     "header",
     { class: "topbar" },
@@ -126,8 +131,28 @@ export function subHeader(title: string, width: "detail" | "settings"): HTMLElem
       h("a", { href: "#/", class: "back-link" }, icon("back", 18, 2), "Übersicht"),
       h("span", { class: "muted", "aria-hidden": "true" }, "/"),
       h("h1", { class: "topbar__title" }, title),
+      readOnly ? readOnlyBadge() : null,
     ),
   );
+}
+
+/**
+ * Long dialog text: the content scrolls with a visible scrollbar, and the
+ * footer says "Weiteren Text durch Scrollen lesen" until the end is reached.
+ */
+export function scrollCue(content: HTMLElement, actions: HTMLElement): void {
+  const cue = h("span", { class: "scroll-cue", "aria-live": "polite" }, "Weiteren Text durch Scrollen lesen ", h("span", { "aria-hidden": "true" }, "↓"));
+  actions.classList.add("dialog__actions--cue");
+  actions.prepend(cue);
+  content.classList.add("dialog__content--scroll");
+  content.tabIndex = 0;
+  content.setAttribute("role", "region");
+  const update = () => {
+    cue.hidden = content.scrollTop + content.clientHeight >= content.scrollHeight - 4;
+  };
+  content.addEventListener("scroll", update, { passive: true });
+  window.addEventListener("resize", update);
+  requestAnimationFrame(update);
 }
 
 /** Read-only path box with a button next to it. */

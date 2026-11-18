@@ -4,10 +4,12 @@ import "context"
 
 // Service is the only way the GUI talks to the core. The shell (shell.go)
 // adds native dialogs, Explorer and browser on top and never decides
-// anything itself. P6a ships a fake (fake.go); P6b wires internal/*.
+// anything itself. real.go wires internal/*; fake.go serves sample data
+// (RA_FAKE) for screenshots and tests.
 //
 // Rules for implementations:
-//   - Errors carry a German, user-facing message (it is shown as is).
+//   - Errors carry a German, user-facing message (it is shown as is). A
+//     lock held by another writer is a *UIError with Code "gesperrt".
 //   - All state comes from verify.Report; the GUI only renders it.
 //   - Read-only mode never writes, locks or stamps (spec §9).
 type Service interface {
@@ -50,6 +52,30 @@ type Service interface {
 	SetCredentials(ctx context.Context, c Credentials) (Settings, error)
 	// Disclaimer returns the embedded docs/haftungsausschluss.md.
 	Disclaimer(ctx context.Context) (DisclaimerText, error)
+	// TakeOver removes the lock of another writer that the user saw
+	// (Status.Lock or a "gesperrt" error) after the user confirmed it
+	// (spec §1). A writer that is still running is never taken over.
+	TakeOver(ctx context.Context) error
+}
+
+// UIError is an error the frontend handles specially; it reaches
+// JavaScript as the "cause" of the rejected call.
+type UIError struct {
+	Code    string    `json:"code"` // "gesperrt"
+	Message string    `json:"message"`
+	Lock    *LockInfo `json:"lock,omitempty"`
+}
+
+func (e *UIError) Error() string { return e.Message }
+
+// CodeLocked: another writer holds the archive (spec §1).
+const CodeLocked = "gesperrt"
+
+// LockInfo is the content of the archive's .lock (spec §1).
+type LockInfo struct {
+	Host  string `json:"host"`
+	User  string `json:"user"`
+	Since string `json:"since"` // RFC 3339
 }
 
 // Deposit states (spec §6, precedence Ungültig > Verändert > Unbestimmt > Ausstehend > Zeitgestempelt).
@@ -68,7 +94,9 @@ const (
 	QualUnconfirmed  = "unbestaetigt"
 )
 
-// Pending reasons (spec §5). "pruefdaten" is the spec's "prüfdaten".
+// Pending reasons (spec §5). They map 1:1 to verify.Reason; only
+// "pruefdaten" is spelled in ASCII for the spec's "prüfdaten". "" means the
+// reason is not known yet (no stamping run in this session).
 const (
 	ReasonNoService = "kein-dienst"
 	ReasonOffline   = "offline"
@@ -97,6 +125,13 @@ type Status struct {
 	Findings  []Finding     `json:"findings"`
 	LastCheck *CheckSummary `json:"lastCheck"`
 	TrustList TrustListInfo `json:"trustList"`
+	// Busy names the background work in progress: "" | "stempeln"
+	// (pending timestamps are fetched) | "pruefen" (trusted lists are
+	// refreshed and the archive re-checked). The UI polls while it is set.
+	Busy string `json:"busy"`
+	// Lock is set when another writer holds the archive (seen by the last
+	// writing operation); the UI offers to take it over after confirmation.
+	Lock *LockInfo `json:"lock"`
 }
 
 type ArchiveInfo struct {
@@ -132,6 +167,8 @@ type Deposit struct {
 	// InheritedFrom is the successor whose token proves this Ablage (0 = none).
 	InheritedFrom int    `json:"inheritedFrom"`
 	Provider      string `json:"provider"`
+	// File is the ZIP's file name inside the archive folder.
+	File string `json:"file"`
 }
 
 type Counts struct {
@@ -145,11 +182,15 @@ type Counts struct {
 
 // Finding is an archive-level result such as a gap.
 type Finding struct {
-	Kind string `json:"kind"` // luecke | nummer-doppelt
+	// Kind: luecke | nummer-doppelt | befund (any other chain finding;
+	// Text describes it).
+	Kind string `json:"kind"`
 	// Seq is the missing (luecke) or duplicated (nummer-doppelt) number.
 	Seq int `json:"seq"`
 	// Successor is the Ablage that points to the missing one (luecke).
 	Successor int `json:"successor"`
+	// Text is the German description (internal/present).
+	Text string `json:"text"`
 }
 
 // CheckSummary is the result of "Archiv kontrollieren".
@@ -196,7 +237,9 @@ type Preview struct {
 
 type DuplicateHint struct {
 	Files int `json:"files"`
-	Seq   int `json:"seq"`
+	// Seq is the earlier Ablage; 0 means "in earlier Ablagen" (the core
+	// does not say which one).
+	Seq int `json:"seq"`
 }
 
 type YearCount struct {
@@ -225,6 +268,9 @@ type ArchiveOptions struct {
 
 type ArchiveResult struct {
 	Deposit Deposit `json:"deposit"`
+	// Warning: the Ablage is committed, but a later step failed (e.g.
+	// stamping could not start). Never archive again; stamp later.
+	Warning string `json:"warning"`
 }
 
 type StampResult struct {
@@ -303,8 +349,9 @@ type ExportOptions struct {
 }
 
 type ExportResult struct {
-	Target   string `json:"target"`
-	Deposits int    `json:"deposits"`
+	Target   string   `json:"target"`
+	Deposits int      `json:"deposits"`
+	Warnings []string `json:"warnings"` // German
 }
 
 type Settings struct {

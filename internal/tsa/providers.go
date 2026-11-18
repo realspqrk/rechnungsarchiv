@@ -29,6 +29,11 @@ type Provider struct {
 	ExpectedPolicies []string `json:"expected_policies,omitempty"`
 	Accuracy         string   `json:"accuracy,omitempty"`
 	TrustedList      string   `json:"trusted_list"` // EU trusted list country code
+
+	// Display fields for the GUI. No prices, ever (they live in the README).
+	ShortName   string `json:"short_name,omitempty"`  // e.g. "Mensatek"
+	Website     string `json:"website,omitempty"`     // official page where an account is opened
+	Recommended bool   `json:"recommended,omitempty"` // the README's recommendation
 }
 
 //go:embed providers.json

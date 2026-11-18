@@ -84,6 +84,7 @@ export async function openExportDialog(): Promise<void> {
           }
         }, "secondary", { class: "btn--on-green" }),
       );
+      for (const w of list(r.warnings)) doneBox.append(h("p", { class: "export-done__warn" }, w));
       doneBox.hidden = false;
       clear(actions);
       const done = button("Fertig", () => dlg.close(), "primary");

@@ -20,6 +20,7 @@ export const QUAL = {
 
 /** Short reason for tables: "Ausstehend · offline". */
 export const REASON_SHORT: Record<string, string> = {
+  "": "noch kein Zeitstempel",
   "kein-dienst": "kein Dienst eingerichtet",
   offline: "offline",
   zugang: "Zugangsdaten fehlen oder falsch",
@@ -30,6 +31,7 @@ export const REASON_SHORT: Record<string, string> = {
 
 /** Reason in a sentence: "Eigener Zeitstempel fehlt noch (keine Internetverbindung)." */
 export const REASON_LONG: Record<string, string> = {
+  "": "Grund wird beim nächsten Versuch ermittelt",
   "kein-dienst": "kein Zeitstempel-Dienst eingerichtet",
   offline: "keine Internetverbindung",
   zugang: "Zugangsdaten fehlen oder sind falsch",
@@ -95,6 +97,12 @@ export function depositTone(d: Deposit): Tone {
 }
 
 export function findingText(f: Finding): { title: string; text: string } {
+  if (f.kind === "befund") {
+    return {
+      title: `${f.text}.`,
+      text: "Die Ablagen passen nicht lückenlos zusammen. Kontrollieren Sie das Archiv und stellen Sie betroffene Ablagen aus der Sicherung wieder her.",
+    };
+  }
   if (f.kind === "nummer-doppelt") {
     return {
       title: `Nummer doppelt vergeben: Ablage ${seq(f.seq)}.`,

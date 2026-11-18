@@ -60,6 +60,15 @@ const shots = [
   ["32-ueber", "normal", async (p) => { await p.getByRole("button", { name: "Über" }).click(); await p.waitForSelector("dialog[open]"); }],
   ["33-haftungsausschluss", "normal", async (p) => { await p.getByRole("button", { name: "Haftungsausschluss" }).click(); await p.waitForSelector("dialog[open]"); }],
   ["34-fokus-tastatur", "normal", async (p) => { await p.keyboard.press("Tab"); await p.keyboard.press("Tab"); }],
+  ["35-main-gesperrt", "gesperrt", null],
+  ["36-sperre-uebernehmen", "gesperrt", async (p) => { await p.getByRole("button", { name: "Sperre übernehmen …" }).click(); await p.waitForSelector("dialog[open] #sperre-title"); }],
+  ["37-main-zeitstempel-werden-geholt", "nachholen", null],
+  ["38-haftungsausschluss-ende", "normal", async (p) => {
+    await p.getByRole("button", { name: "Haftungsausschluss" }).click();
+    await p.waitForSelector("dialog[open]");
+    await p.evaluate(() => { const c = document.querySelector("dialog[open] .dialog__content--scroll"); c.scrollTop = c.scrollHeight; });
+    await p.waitForTimeout(100);
+  }],
 ];
 
 async function openArchive(p) {

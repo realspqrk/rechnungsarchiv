@@ -5,19 +5,29 @@ import { h, icon } from "../dom";
 import { dateTimeShort, n, plural, seq, whenRelative } from "../fmt";
 import { app, navigate, rerender } from "../state";
 import { findingText, QUAL, QUAL_SHORT, REASON_SHORT, STATE, depositTone } from "../text";
-import { banner, busy, button } from "../ui";
-import { stampPending } from "../actions";
+import { banner, busy, button, readOnlyBadge } from "../ui";
+import { confirmTakeOver, onStatusChanged, stampPending } from "../actions";
 import { openArchiveDialog } from "../dialogs/archive";
 import { openExportDialog } from "../dialogs/export";
 import { openAboutDialog, openDisclaimerDialog } from "../dialogs/about";
 
 const FIRST_ROWS = 5;
+const POLL_MS = 1000;
+let pollTimer = 0;
+
+/** While Go works in the background (Status.busy), re-read the status. */
+function pollWhileBusy(s: Status): void {
+  window.clearTimeout(pollTimer);
+  if (!s.busy) return;
+  pollTimer = window.setTimeout(() => void onStatusChanged(), POLL_MS);
+}
 
 export function renderMain(): HTMLElement {
   const s = app.status as Status;
   const ro = s.archive.readOnly;
   const deposits = list(s.deposits);
   const findings = list(s.findings);
+  pollWhileBusy(s);
 
   const checkBtn = button("Archiv kontrollieren", () => {
     void busy(checkBtn, "Kontrolle läuft …", async () => {
@@ -34,7 +44,7 @@ export function renderMain(): HTMLElement {
       "div",
       { class: "topbar__inner topbar__inner--main" },
       h("div", { class: "brand" }, icon("logo", 26, 1.8, "brand__logo"), h("span", { class: "brand__name brand__name--small" }, "Rechnungsarchiv")),
-      h("div", { class: "topbar__archive" }, s.archive.company, " · ", h("span", { class: "mono mono--small" }, s.archive.dir)),
+      h("div", { class: "topbar__archive" }, s.archive.company, " · ", h("span", { class: "mono mono--small" }, s.archive.dir), ro ? [" ", readOnlyBadge()] : null),
       h(
         "nav",
         { class: "topbar__nav", "aria-label": "Aktionen" },
@@ -61,6 +71,27 @@ export function renderMain(): HTMLElement {
         }, "secondary", { class: "btn--on-banner" }),
       ),
     );
+  }
+  if (s.lock && !ro) {
+    const l = s.lock;
+    const since = dateTimeShort(l.since);
+    const takeBtn: HTMLButtonElement = button("Sperre übernehmen …", async () => {
+      const msg = `Das Archiv wird auf ${l.host} von ${l.user} verwendet (seit ${since}).`;
+      if (await confirmTakeOver(msg)) await stampPending(takeBtn);
+    }, "secondary", { class: "btn--on-banner" });
+    banners.push(
+      banner(
+        "amber",
+        "Sperre",
+        `Archiv ist auf ${l.host} gesperrt`,
+        `(Benutzer ${l.user}, seit ${since}). Solange die Sperre besteht, wird hier nichts archiviert und kein Zeitstempel geholt.`,
+        takeBtn,
+        "lock",
+      ),
+    );
+  }
+  if (s.busy === "stempeln") {
+    banners.push(banner("neutral", "Hintergrund", "", "Ausstehende Zeitstempel werden geholt …", null, "clock"));
   }
   if (s.trustList.stale) {
     banners.push(banner("amber", "Vertrauensliste", "", "Vertrauensliste veraltet – Internetverbindung prüfen oder Programm aktualisieren", null, "warn"));
@@ -307,7 +338,7 @@ function footer(): HTMLElement {
     "footer",
     { class: "footer" },
     icon("lock", 16, 1.8),
-    h("span", null, "Rechnungen bleiben auf diesem Computer. Zum Zeitstempel-Dienst geht nur eine Prüfsumme – kein Dateiname, kein Inhalt."),
+    h("span", { class: "footer__text" }, "Zum Zeitstempel-Dienst gehen der Prüfwert, Ihr Kontoname und Ihre IP-Adresse – keine Rechnung, kein Dateiname."),
     h(
       "span",
       { class: "footer__links" },

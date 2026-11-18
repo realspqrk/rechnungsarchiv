@@ -6,6 +6,7 @@ import { h } from "../dom";
 import { country, date } from "../fmt";
 import { app, navigate, rerender } from "../state";
 import { button, subHeader, toast } from "../ui";
+import { withLock } from "../actions";
 
 export async function renderSettings(): Promise<HTMLElement> {
   const [settings, providers] = await Promise.all([api.Settings(), api.Providers()]);
@@ -20,7 +21,7 @@ function build(s: Settings, providers: Provider[]): HTMLElement {
   };
   const save = async (fn: () => Promise<Settings>) => {
     try {
-      const next = await fn();
+      const next = await withLock(fn);
       flash();
       return next;
     } catch (e) {
@@ -93,13 +94,13 @@ function build(s: Settings, providers: Provider[]): HTMLElement {
     h(
       "p",
       { class: "muted small m0" },
-      "Jede Ablage erhält einen qualifizierten Zeitstempel (eIDAS): Nur dann gilt EU-weit die gesetzliche Vermutung, dass Zeitpunkt und Unversehrtheit stimmen (Art. 41 Abs. 2). Übertragen werden die Prüfsumme, Ihr Kontoname und Ihre IP-Adresse – keine Rechnung, kein Dateiname.",
+      "Jede Ablage erhält einen qualifizierten Zeitstempel (eIDAS): Nur dann gilt EU-weit die gesetzliche Vermutung, dass Zeitpunkt und Unversehrtheit stimmen (Art. 41 Abs. 2). Zum Dienst gehen der Prüfwert, Ihr Kontoname und Ihre IP-Adresse – keine Rechnung, kein Dateiname.",
     ),
     h(
       "div",
       { class: "provider-row" },
       h("div", { class: "field field--grow" }, h("label", { for: "tsa-anbieter", class: "field__label" }, "Anbieter"), select),
-      current
+      current?.website
         ? button(["Konto beim Anbieter anlegen ", h("span", { "aria-hidden": "true" }, "↗")], async () => {
             try {
               await api.OpenProviderWebsite(current.id);

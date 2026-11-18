@@ -13,6 +13,7 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "ordner-abgelegt": main$0.FolderDrop;
+            "status-geaendert": main$0.StatusChanged;
         }
     }
 }

@@ -43,6 +43,16 @@ func TestProvidersShippedList(t *testing.T) {
 		if _, ok := p.DeclaredAccuracy(); p.Accuracy != "" && !ok {
 			t.Errorf("%s: accuracy %q", p.ID, p.Accuracy)
 		}
+		// Display fields: the GUI's "Konto beim Anbieter anlegen" opens Website.
+		if p.ShortName == "" || len(p.ShortName) > len(p.Name) {
+			t.Errorf("%s: short_name %q", p.ID, p.ShortName)
+		}
+		if !strings.HasPrefix(p.Website, "https://") {
+			t.Errorf("%s: website must be an https URL", p.ID)
+		}
+		if p.Recommended != (p.ID == "mensatek") {
+			t.Errorf("%s: only mensatek is recommended (README)", p.ID)
+		}
 	}
 	if len(Providers()) != len(ps) {
 		t.Error("test providers leak into a normal build")

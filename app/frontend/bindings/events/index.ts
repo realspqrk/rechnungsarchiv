@@ -13,3 +13,8 @@ import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
  */
 export const OrdnerAbgelegt = "ordner-abgelegt";
 
+/**
+ * Name of the custom event "status-geaendert".
+ */
+export const StatusGeaendert = "status-geaendert";
+

@@ -6,7 +6,7 @@ import { bytes, date, dateTimeSeconds, n, plural, seq } from "../fmt";
 import { app, navigate } from "../state";
 import { PROBLEM_TEXT, QUAL, REASON_RESULT, REASON_SHORT, STATE } from "../text";
 import { button, openDialog, toast, type DialogHandle } from "../ui";
-import { refreshStatus } from "../actions";
+import { refreshStatus, withLock } from "../actions";
 
 let openNow = false;
 
@@ -75,8 +75,8 @@ function confirmStep(dlg: DialogHandle, p: Preview): void {
           "li",
           null,
           dup.files === 1
-            ? `1 Datei ist identisch mit einer Datei in Ablage ${seq(dup.seq)}. Prüfen Sie, ob sie doppelt abgelegt ist.`
-            : `${n(dup.files)} Dateien sind identisch mit Dateien in Ablage ${seq(dup.seq)}. Prüfen Sie, ob sie doppelt abgelegt sind.`,
+            ? `1 Datei ist identisch mit einer Datei ${where(dup.seq)}. Prüfen Sie, ob sie doppelt abgelegt ist.`
+            : `${n(dup.files)} Dateien sind identisch mit Dateien ${where(dup.seq)}. Prüfen Sie, ob sie doppelt abgelegt sind.`,
         ),
       );
     }
@@ -116,9 +116,9 @@ function confirmStep(dlg: DialogHandle, p: Preview): void {
     cancelBtn.disabled = true;
     archiveBtn.textContent = "Wird archiviert …";
     try {
-      const r = await api.Archive({ folder: p.folder, name: name.value.trim(), belegjahr: Number(year.value), retentionYears });
+      const r = await withLock(() => api.Archive({ folder: p.folder, name: name.value.trim(), belegjahr: Number(year.value), retentionYears }));
       dlg.lock(false);
-      resultStep(dlg, r.deposit);
+      resultStep(dlg, r.deposit, r.warning);
     } catch (e) {
       dlg.lock(false);
       archiveBtn.disabled = false;
@@ -164,9 +164,15 @@ function confirmStep(dlg: DialogHandle, p: Preview): void {
   (blocked ? cancelBtn : name).focus();
 }
 
-function resultStep(dlg: DialogHandle, d: Deposit): void {
+/** "in Ablage 0011", or "in früheren Ablagen" when the core does not say which. */
+function where(s: number): string {
+  return s > 0 ? `in Ablage ${seq(s)}` : "in früheren Ablagen";
+}
+
+function resultStep(dlg: DialogHandle, d: Deposit, warning = ""): void {
   const done = button("Fertig", () => dlg.close(), "primary");
   const sub = `Ablage ${seq(d.seq)} · ${d.name} · ${plural(d.files, "Datei", "Dateien")}`;
+  const warn = warning ? h("p", { class: "problem-box", role: "alert" }, warning) : null;
   clear(dlg.body);
 
   if (d.state === STATE.stamped) {
@@ -188,6 +194,7 @@ function resultStep(dlg: DialogHandle, d: Deposit): void {
           h("span", { class: "grow" }, `${qual} · ${d.provider}`),
           h("span", { class: "muted small" }, dateTimeSeconds(d.genTime)),
         ),
+        warn,
         h("p", { class: "muted small m0" }, "Tipp: Jetzt ist ein guter Zeitpunkt für die Sicherung des Archivordners."),
       ),
       h("div", { class: "dialog__actions dialog__actions--done" }, done),
@@ -208,7 +215,7 @@ function resultStep(dlg: DialogHandle, d: Deposit): void {
       retry.disabled = true;
       retry.textContent = "Wird geholt …";
       try {
-        const r = await api.StampPending();
+        const r = await withLock(() => api.StampPending());
         const st = await api.Status();
         app.status = st;
         const now = list(st.deposits).find((x) => x.seq === d.seq);
@@ -242,6 +249,7 @@ function resultStep(dlg: DialogHandle, d: Deposit): void {
         h("div", { class: "pending-box__text" }, t.text),
         h("div", { class: "mt10" }, action),
       ),
+      warn,
     ),
     h("div", { class: "dialog__actions dialog__actions--done" }, done),
   );

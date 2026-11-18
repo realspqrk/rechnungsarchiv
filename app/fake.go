@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/realspqrk/rechnungsarchiv"
+	"github.com/realspqrk/rechnungsarchiv/internal/tsa"
 )
 
 // fakeScenarios maps RA_FAKE values to a short description (shown by --help).
@@ -32,6 +33,8 @@ var fakeScenarios = map[string]string{
 	"zustaende":         "jede Ablage in einem anderen Zustand, Vertrauensliste veraltet",
 	"disig":             "Anbieter mit Client-Zertifikat und Adresse laut Vertrag",
 	"abgelehnt":         "Ordner mit Dateien, die nicht archiviert werden können",
+	"gesperrt":          "Archiv auf einem anderen PC in Verwendung (Sperre)",
+	"nachholen":         "beim Öffnen werden ausstehende Zeitstempel geholt",
 }
 
 type fakeService struct {
@@ -47,6 +50,8 @@ type fakeService struct {
 	lastCheck *CheckSummary
 	trust     TrustListInfo
 	variant   map[int]string // seq -> detail variant (zustaende)
+	lock      *LockInfo      // gesperrt
+	busyUntil time.Time      // nachholen
 }
 
 func newFakeService(scenario string) (*fakeService, error) {
@@ -93,7 +98,7 @@ func newFakeService(scenario string) (*fakeService, error) {
 		f.lastCheck = nil
 	case "luecke":
 		f.deposits = slices.DeleteFunc(f.deposits, func(d Deposit) bool { return d.Seq == 7 })
-		f.findings = []Finding{{Kind: FindingGap, Seq: 7, Successor: 8}}
+		f.findings = []Finding{{Kind: FindingGap, Seq: 7, Successor: 8, Text: "Lücke: Ablage 0007 fehlt"}}
 		f.lastCheck.Findings = f.findings
 		f.lastCheck.Deposits = len(f.deposits)
 		f.lastCheck.Files = totalFiles(f.deposits)
@@ -102,6 +107,10 @@ func newFakeService(scenario string) (*fakeService, error) {
 		f.trust.Stale = true
 		f.trust.Date = "2026-09-30"
 		f.lastCheck = nil
+	case "gesperrt":
+		f.lock = &LockInfo{Host: "BUERO-PC2", User: "maria", Since: time.Now().Add(-26 * time.Hour).Truncate(time.Minute).Format(time.RFC3339)}
+	case "nachholen":
+		f.busyUntil = time.Now().Add(4 * time.Second)
 	case "disig":
 		f.provider = "disig"
 		f.creds = CredentialState{P12Path: `C:\Zertifikate\disig-zugang.p12`, HasPassword: true, URL: "https://tsa.beispiel.invalid/musterfirma"}
@@ -146,7 +155,7 @@ func sampleDeposits() []Deposit {
 	out := make([]Deposit, 0, len(rows))
 	for i := len(rows) - 1; i >= 0; i-- {
 		r := rows[i]
-		d := Deposit{Seq: i + 1, Name: r.name, Belegjahr: r.year, Files: r.files, Bytes: int64(r.mb * 1024 * 1024)}
+		d := Deposit{Seq: i + 1, Name: r.name, Belegjahr: r.year, Files: r.files, Bytes: int64(r.mb * 1024 * 1024), File: fmt.Sprintf("%04d_%s.zip", i+1, r.name)}
 		if r.stamp == "" {
 			d = pendingDeposit(d, ReasonOffline)
 		} else {
@@ -222,33 +231,6 @@ func (f *fakeService) todayCheck() *CheckSummary {
 	return c
 }
 
-func totalFiles(ds []Deposit) int {
-	n := 0
-	for _, d := range ds {
-		n += d.Files
-	}
-	return n
-}
-
-func countStates(ds []Deposit) Counts {
-	c := Counts{Total: len(ds)}
-	for _, d := range ds {
-		switch d.State {
-		case StateStamped:
-			c.Stamped++
-		case StatePending:
-			c.Pending++
-		case StateIndeterminate:
-			c.Indeterminate++
-		case StateModified:
-			c.Modified++
-		case StateInvalid:
-			c.Invalid++
-		}
-	}
-	return c
-}
-
 func (f *fakeService) recount() {
 	if f.lastCheck != nil {
 		f.lastCheck.Counts = countStates(f.deposits)
@@ -271,9 +253,6 @@ func mustTime(s string) time.Time {
 	return t
 }
 
-var errNoArchive = errors.New("Kein Archiv geöffnet.")
-var errReadOnly = errors.New("Im Modus „nur kontrollieren“ wird nichts verändert.")
-
 func (f *fakeService) Status(ctx context.Context) (Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -286,6 +265,15 @@ func (f *fakeService) statusLocked() Status {
 		return s
 	}
 	s.Archive = f.archive
+	s.Lock = f.lock
+	if !f.busyUntil.IsZero() {
+		if time.Now().Before(f.busyUntil) {
+			s.Busy = "stempeln"
+		} else {
+			f.busyUntil = time.Time{}
+			f.stampAllLocked()
+		}
+	}
 	if p, ok := fakeProvider(f.provider); ok {
 		s.Provider = &ProviderRef{ID: p.ID, Name: p.Name, Country: p.Country}
 	}
@@ -388,15 +376,6 @@ func (f *fakeService) nextSeqLocked() int {
 	return f.deposits[0].Seq + 1
 }
 
-func retentionOptions() []RetentionOption {
-	return []RetentionOption{
-		{7, "7 Jahre (gesetzlich, § 132 BAO)"},
-		{10, "10 Jahre (freiwillig)"},
-		{12, "12 Jahre (WGG)"},
-		{22, "22 Jahre (Grundstücke)"},
-	}
-}
-
 func (f *fakeService) RetentionUntil(ctx context.Context, belegjahr, years int) (string, error) {
 	if belegjahr < 1900 || years <= 0 {
 		return "", errors.New("Ungültiges Belegjahr oder ungültige Frist.")
@@ -418,7 +397,11 @@ func (f *fakeService) Archive(ctx context.Context, opts ArchiveOptions) (Archive
 	if f.scenario == "abgelehnt" {
 		return ArchiveResult{}, errors.New("2 Dateien können nicht archiviert werden. Bitte beheben Sie das zuerst.")
 	}
+	if f.lock != nil {
+		return ArchiveResult{}, f.lockedErr()
+	}
 	d := Deposit{Seq: f.nextSeqLocked(), Name: strings.TrimSpace(opts.Name), Belegjahr: opts.Belegjahr, Files: 53, Bytes: 32925696}
+	d.File = fmt.Sprintf("%04d_%s.zip", d.Seq, d.Name)
 	switch {
 	case f.provider == "":
 		d = pendingDeposit(d, ReasonNoService)
@@ -446,6 +429,9 @@ func (f *fakeService) StampPending(ctx context.Context) (StampResult, error) {
 	defer f.mu.Unlock()
 	if f.archive.ReadOnly {
 		return StampResult{}, errReadOnly
+	}
+	if f.lock != nil {
+		return StampResult{}, f.lockedErr()
 	}
 	var r StampResult
 	for i := range f.deposits {
@@ -498,7 +484,7 @@ func (f *fakeService) VerifyDeposit(ctx context.Context, seq int) (DepositReport
 		Deposit:        d,
 		ReadOnly:       f.archive.ReadOnly,
 		CheckedAt:      time.Now().Format(time.RFC3339),
-		Path:           filepath.Join(f.archive.Dir, fmt.Sprintf("%04d_%s.zip", d.Seq, d.Name)),
+		Path:           filepath.Join(f.archive.Dir, d.File),
 		Root:           fakeRoot(d),
 		Files:          FileCounts{Unchanged: d.Files},
 		RetentionYears: 7,
@@ -677,20 +663,46 @@ func (f *fakeService) SetCredentials(ctx context.Context, c Credentials) (Settin
 	return f.settingsLocked()
 }
 
+// stampAllLocked ends the simulated background run of "nachholen".
+func (f *fakeService) stampAllLocked() {
+	for i := range f.deposits {
+		if f.deposits[i].State == StatePending {
+			f.deposits[i] = stampedDeposit(f.deposits[i], time.Now().Truncate(time.Second), QualQualified)
+		}
+	}
+	f.recount()
+}
+
+func (f *fakeService) lockedErr() error {
+	return &UIError{Code: CodeLocked, Lock: f.lock,
+		Message: "Archiv wird gerade auf " + f.lock.Host + " von " + f.lock.User + " verwendet (seit " + mustTime(f.lock.Since).Local().Format("02.01.2006 15:04") + "). Läuft das Programm dort nicht mehr (z. B. nach einem Absturz), können Sie die Sperre übernehmen."}
+}
+
+func (f *fakeService) TakeOver(ctx context.Context) error {
+	f.sleep(ctx)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.lock == nil {
+		return errors.New("Es gibt keine Sperre, die übernommen werden könnte.")
+	}
+	f.lock = nil
+	return nil
+}
+
 func (f *fakeService) Disclaimer(ctx context.Context) (DisclaimerText, error) {
 	d := rechnungsarchiv.ParseDisclaimer(rechnungsarchiv.DisclaimerMarkdown)
 	return DisclaimerText{Markdown: d.Markdown, Short: d.Short, Consent: d.Consent}, nil
 }
 
-// fakeProviders mirrors internal/tsa/providers.json plus the display fields
-// the GUI needs (short name, website, recommended). No prices.
-var fakeProviders = []Provider{
-	{ID: "mensatek", Name: "Mensatek", Country: "ES", Auth: "basic", Recommended: true, Website: "https://www.mensatek.com/"},
-	{ID: "disig", Name: "Disig", Country: "SK", Auth: "clientcert", URLFromContract: true, Website: "https://www.disig.sk/"},
-	{ID: "namirial", Name: "Namirial", Country: "IT", Auth: "basic", Website: "https://www.namirial.com/"},
-	{ID: "aruba", Name: "Aruba", Country: "IT", Auth: "basic", Website: "https://www.pec.it/"},
-	{ID: "globaltrust", Name: "GLOBALTRUST", Country: "AT", Auth: "basic", Website: "https://www.globaltrust.eu/"},
-}
+// fakeProviders is internal/tsa/providers.json as the real service maps it
+// (no prices).
+var fakeProviders = func() []Provider {
+	var out []Provider
+	for _, p := range tsa.Providers() {
+		out = append(out, providerOf(p))
+	}
+	return out
+}()
 
 func fakeProvider(id string) (Provider, bool) {
 	i := slices.IndexFunc(fakeProviders, func(p Provider) bool { return p.ID == id })

@@ -1,10 +1,11 @@
 import "./fonts.css";
 import "./style.css";
 
-import { api, errMsg, Events, OrdnerAbgelegt } from "./api";
+import { api, errMsg, Events, OrdnerAbgelegt, StatusGeaendert } from "./api";
 import { clear, h } from "./dom";
 import { app, rerender, setRenderer } from "./state";
 import { toast } from "./ui";
+import { onStatusChanged } from "./actions";
 import { renderStart } from "./views/start";
 import { renderMain } from "./views/overview";
 import { renderDeposit } from "./views/deposit";
@@ -63,14 +64,21 @@ async function boot(): Promise<void> {
     else openArchiveDialog(drop.folder);
   });
 
-  if (app.about.fake) {
-    // Hooks for screenshots with sample data (RA_FAKE); not present otherwise.
+  // Background work in Go (stamping on start, trusted-list refresh).
+  Events.On(StatusGeaendert, () => void onStatusChanged());
+
+  if (app.about.debug) {
+    // Hooks for screenshots (sample data or the testtsa environment); not present otherwise.
     (window as unknown as Record<string, unknown>).raDebug = {
       archiveFolder: openArchiveDialog,
       exportDialog: openExportDialog,
       about: openAboutDialog,
       disclaimer: openDisclaimerDialog,
-      rerender,
+      rerender: async () => {
+        app.status = await api.Status();
+        rerender();
+      },
+      status: () => api.Status(),
     };
   }
   await route();

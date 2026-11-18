@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"io/fs"
 	"log"
@@ -26,19 +27,24 @@ const notBuiltPage = `<!doctype html><html lang="de"><meta charset="utf-8"><titl
 
 func init() {
 	application.RegisterEvent[FolderDrop]("ordner-abgelegt")
+	application.RegisterEvent[StatusChanged]("status-geaendert")
 }
 
 func main() {
-	scenario := os.Getenv("RA_FAKE")
-	if scenario == "" {
-		// P6a has no real core wiring yet; P6b replaces this default.
-		scenario = "normal"
+	// The real core is the default; RA_FAKE=<scenario> shows sample data
+	// (screenshots, UI review). See README.md.
+	shell := &Shell{debug: sys.debug}
+	var real *realService
+	if scenario := os.Getenv("RA_FAKE"); scenario != "" {
+		f, err := newFakeService(scenario)
+		if err != nil {
+			log.Fatal(err)
+		}
+		shell.svc, shell.fake, shell.debug = f, f.scenario, true
+	} else {
+		real = newRealService(sys)
+		shell.svc = real
 	}
-	svc, err := newFakeService(scenario)
-	if err != nil {
-		log.Fatal(err)
-	}
-	shell := &Shell{svc: svc, fake: svc.scenario}
 
 	app := application.New(application.Options{
 		Name:        "Rechnungsarchiv",
@@ -50,6 +56,15 @@ func main() {
 		},
 	})
 	shell.app = app
+	if real != nil {
+		real.onChange = func() {
+			busy := ""
+			if st, err := real.Status(context.Background()); err == nil {
+				busy = st.Busy
+			}
+			app.Event.Emit("status-geaendert", StatusChanged{Busy: busy})
+		}
+	}
 
 	title := "Rechnungsarchiv"
 	if shell.fake != "" {

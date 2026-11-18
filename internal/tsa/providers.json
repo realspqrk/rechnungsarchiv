@@ -2,49 +2,60 @@
   {
     "id": "mensatek",
     "name": "Mensatek (ASETEC Ingeniería de Sistemas S.L.)",
+    "short_name": "Mensatek",
     "country": "ES",
     "url": "https://api.mensatek.com/tsaMENSATEK",
     "auth": "basic",
     "expected_policies": ["0.4.0.2023.1.1", "1.3.6.1.4.1.57863.1.1"],
     "accuracy": "1s",
-    "trusted_list": "ES"
+    "trusted_list": "ES",
+    "website": "https://www.mensatek.com/api-sellado-de-tiempo-en.html",
+    "recommended": true
   },
   {
     "id": "disig",
     "name": "Disig, a.s.",
+    "short_name": "Disig",
     "country": "SK",
     "url": "",
     "auth": "clientcert",
     "url_from_contract": true,
     "accuracy": "1s",
-    "trusted_list": "SK"
+    "trusted_list": "SK",
+    "website": "https://eidas.disig.sk/en/timestamp/"
   },
   {
     "id": "namirial",
     "name": "Namirial S.p.A.",
+    "short_name": "Namirial",
     "country": "IT",
     "url": "https://timestamp.namirialtsp.com",
     "auth": "basic",
     "accuracy": "1s",
-    "trusted_list": "IT"
+    "trusted_list": "IT",
+    "website": "https://www.namirial.global/?p=372"
   },
   {
     "id": "aruba",
     "name": "Aruba PEC S.p.A.",
+    "short_name": "Aruba",
     "country": "IT",
     "url": "https://servizi.arubapec.it/tsa/ngrequest.php",
     "auth": "basic",
     "expected_policies": ["0.4.0.2023.1.1"],
     "accuracy": "1s",
-    "trusted_list": "IT"
+    "trusted_list": "IT",
+    "website": "https://www.aruba.it/en/time-stamping-price-list.aspx"
   },
   {
     "id": "globaltrust",
     "name": "GLOBALTRUST (e-commerce monitoring GmbH)",
+    "short_name": "GLOBALTRUST",
     "country": "AT",
     "url": "https://timestamp.globaltrust.eu:10080",
     "auth": "basic",
     "accuracy": "1s",
-    "trusted_list": "AT"
+    "trusted_list": "AT",
+    "website": "https://globaltrust.eu/produkte/qualified-timestamp/"
   }
 ]

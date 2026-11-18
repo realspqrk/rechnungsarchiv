@@ -8,6 +8,12 @@ export interface AboutInfo {
     "version": string;
     "license": string;
     "fake": string;
+
+    /**
+     * Debug enables the frontend's screenshot hooks (sample data or the
+     * testtsa environment only).
+     */
+    "debug": boolean;
 }
 
 export interface ArchiveInfo {
@@ -27,6 +33,12 @@ export interface ArchiveOptions {
 
 export interface ArchiveResult {
     "deposit": Deposit;
+
+    /**
+     * Warning: the Ablage is committed, but a later step failed (e.g.
+     * stamping could not start). Never archive again; stamp later.
+     */
+    "warning": string;
 }
 
 /**
@@ -118,6 +130,11 @@ export interface Deposit {
      */
     "inheritedFrom": number;
     "provider": string;
+
+    /**
+     * File is the ZIP's file name inside the archive folder.
+     */
+    "file": string;
 }
 
 /**
@@ -182,6 +199,11 @@ export interface DisclaimerText {
 
 export interface DuplicateHint {
     "files": number;
+
+    /**
+     * Seq is the earlier Ablage; 0 means "in earlier Ablagen" (the core
+     * does not say which one).
+     */
     "seq": number;
 }
 
@@ -208,6 +230,11 @@ export interface ExportPlan {
 export interface ExportResult {
     "target": string;
     "deposits": number;
+
+    /**
+     * German
+     */
+    "warnings": string[] | null;
 }
 
 export interface FileCounts {
@@ -222,7 +249,8 @@ export interface FileCounts {
  */
 export interface Finding {
     /**
-     * luecke | nummer-doppelt
+     * Kind: luecke | nummer-doppelt | befund (any other chain finding;
+     * Text describes it).
      */
     "kind": string;
 
@@ -235,6 +263,11 @@ export interface Finding {
      * Successor is the Ablage that points to the missing one (luecke).
      */
     "successor": number;
+
+    /**
+     * Text is the German description (internal/present).
+     */
+    "text": string;
 }
 
 /**
@@ -253,6 +286,19 @@ export interface InheritedProof {
     "fromSeq": number;
     "provenLatest": string;
     "qualification": string;
+}
+
+/**
+ * LockInfo is the content of the archive's .lock (spec §1).
+ */
+export interface LockInfo {
+    "host": string;
+    "user": string;
+
+    /**
+     * RFC 3339
+     */
+    "since": string;
 }
 
 /**
@@ -428,6 +474,27 @@ export interface Status {
     "findings": Finding[] | null;
     "lastCheck": CheckSummary | null;
     "trustList": TrustListInfo;
+
+    /**
+     * Busy names the background work in progress: "" | "stempeln"
+     * (pending timestamps are fetched) | "pruefen" (trusted lists are
+     * refreshed and the archive re-checked). The UI polls while it is set.
+     */
+    "busy": string;
+
+    /**
+     * Lock is set when another writer holds the archive (seen by the last
+     * writing operation); the UI offers to take it over after confirmation.
+     */
+    "lock": LockInfo | null;
+}
+
+/**
+ * StatusChanged is emitted as event "status-geaendert" when background
+ * work (stamping on start, trusted-list refresh) changed the status.
+ */
+export interface StatusChanged {
+    "busy": string;
 }
 
 export interface TrustListInfo {

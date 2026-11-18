@@ -7,7 +7,8 @@
   --text-2: #3e4943;
   --muted: #55605a;
   --border: #dadfda;
-  --input: #c9d0ca;
+  /* Input and select borders: at least 3:1 against white (WCAG 1.4.11). */
+  --input: #89958c;
   --green: #1f5e46;
   --green-dark: #163f30;
   --amber: #7a4a00;
@@ -167,8 +168,9 @@ h1, h2, h3 { margin: 0; }
 .card--stack .card__h { margin: 0; }
 .card--form { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 .card--gap12 { gap: 12px; }
-.card--details { padding: 14px 20px; }
-.card--details summary { cursor: pointer; font-weight: 500; min-height: 28px; padding: 8px 0; margin: -8px 0; }
+.card--details { padding: 0 20px; }
+.card--details[open] { padding-bottom: 14px; }
+.card--details summary { cursor: pointer; font-weight: 500; min-height: 44px; padding: 10px 0; }
 .details__label { margin-top: 8px; font-size: 14px; color: var(--text-2); }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .actions--end { justify-content: flex-end; }
@@ -247,9 +249,9 @@ h1, h2, h3 { margin: 0; }
   text-align: left; color: var(--muted); font-size: 13px; padding: 12px 18px; font-weight: 500;
   border-bottom: 1px solid #e4e8e4;
 }
-.table td { padding: 14px 18px; border-bottom: 1px solid #eef1ee; vertical-align: middle; }
+.table td { padding: 6px 18px; border-bottom: 1px solid #eef1ee; vertical-align: middle; }
 .table td.mono { color: var(--muted); }
-.row-link { font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; min-height: 28px; }
+.row-link { font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; min-height: 44px; }
 .row-link:hover { text-decoration: underline; }
 .table__more { padding: 0 18px; }
 .table__more .btn { min-height: 44px; }
@@ -261,7 +263,15 @@ h1, h2, h3 { margin: 0; }
 /* ---------- footer ---------- */
 .footer { margin: 0; color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .footer > svg { flex: none; }
+.footer__text { flex: 1 1 320px; min-width: 0; }
 .footer__links { margin-left: auto; }
+
+/* ---------- badges ---------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; border: 1px solid; white-space: nowrap; vertical-align: middle;
+}
+.badge--blue { background: #eaf0f7; border-color: #b7c8dc; color: #1c3655; }
 
 /* ---------- detail ---------- */
 .result { border: 1px solid; border-radius: 14px; padding: 24px; display: flex; gap: 16px; align-items: flex-start; }
@@ -298,6 +308,21 @@ h1, h2, h3 { margin: 0; }
   border-radius: 16px; background: #fff; color: var(--text); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
   max-height: calc(100vh - 96px); overflow: auto;
 }
+/* Long text (Haftungsausschluss, Über): only the content scrolls, with a
+   visible scrollbar, so nothing hides behind the footer. */
+.dialog:has(.dialog__content--scroll)[open] { display: flex; flex-direction: column; overflow: hidden; }
+.dialog:has(.dialog__content--scroll) .dialog__body { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.dialog__content--scroll {
+  overflow-y: scroll; min-height: 0; flex: 1 1 auto; padding-bottom: 20px;
+  scrollbar-width: auto; scrollbar-color: #89958c #eef1ee;
+}
+.dialog__content--scroll:focus-visible { outline-offset: -3px; border-radius: 0; }
+.dialog__content--scroll::-webkit-scrollbar { width: 14px; }
+.dialog__content--scroll::-webkit-scrollbar-track { background: #eef1ee; }
+.dialog__content--scroll::-webkit-scrollbar-thumb { background: #89958c; border-radius: 7px; border: 3px solid #eef1ee; }
+.dialog__actions--cue { justify-content: space-between; align-items: center; }
+.scroll-cue { color: var(--text-2); font-size: 14px; font-weight: 500; }
+.scroll-cue[hidden] { display: inline !important; visibility: hidden; }
 .dialog--wide { max-width: 760px; }
 .dialog::backdrop { background: rgba(60, 69, 65, 0.92); }
 .dialog__content { padding: 28px 28px 8px; display: flex; flex-direction: column; gap: 18px; }
@@ -335,6 +360,7 @@ h1, h2, h3 { margin: 0; }
   display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
 }
 .export-done .grow { flex: 1 1 260px; }
+.export-done__warn { flex: 1 1 100%; margin: 0; font-size: 14px; color: #4a3410; }
 
 .provider-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .cred { display: flex; flex-direction: column; gap: 12px; }

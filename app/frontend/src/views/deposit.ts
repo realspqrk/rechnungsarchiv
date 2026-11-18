@@ -61,7 +61,7 @@ export async function renderDeposit(seqNo: number): Promise<HTMLElement> {
   return h(
     "div",
     { class: "screen" },
-    subHeader(`Ablage ${seq(d.seq)} · ${d.name}`, "detail"),
+    subHeader(`Ablage ${seq(d.seq)} · ${d.name}`, "detail", r.readOnly),
     h(
       "main",
       { class: "page page--detail" },
@@ -141,7 +141,8 @@ function describe(r: DepositReport): View {
   const files = plural(d.files, "Datei", "Dateien");
   const all = d.files === 1 ? "Die Datei stimmt" : `Alle ${files} stimmen`;
   const provider = st ? `${st.provider}, ${country(st.providerCountry)}` : "";
-  const T = dateTimeLong(d.provenLatest);
+  // Without a stated accuracy there is no "spätestens" time (spec §6 step 8).
+  const T = dateTimeLong(d.provenLatest || st?.genTime || d.genTime);
   const stampTime = st && st.genTime ? `${dateTimeLong(st.genTime)} (${accuracy(st.accuracyMs)})` : "";
   const revocation = st?.revocationSource ? `Zertifikat laut ${st.revocationSource} nicht gesperrt` : "";
   const joined = (...parts: string[]) => parts.filter(Boolean).join(" · ");

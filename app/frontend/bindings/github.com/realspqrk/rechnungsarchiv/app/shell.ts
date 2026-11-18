@@ -132,6 +132,10 @@ export function Status(): $CancellablePromise<$models.Status> {
     return $Call.ByID(92615296);
 }
 
+export function TakeOver(): $CancellablePromise<void> {
+    return $Call.ByID(391554847);
+}
+
 export function Verify(): $CancellablePromise<$models.CheckSummary> {
     return $Call.ByID(1893745663);
 }

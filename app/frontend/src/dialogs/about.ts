@@ -5,7 +5,7 @@ import { api, errMsg } from "../api";
 import { h } from "../dom";
 import { renderMarkdown } from "../markdown";
 import { app } from "../state";
-import { button, openDialog, toast } from "../ui";
+import { button, openDialog, scrollCue, toast } from "../ui";
 
 function splitTitle(md: string): { title: string; rest: string } {
   const m = md.replace(/\r\n/g, "\n").match(/^#\s+(.+)\n/);
@@ -16,10 +16,10 @@ export function openDisclaimerDialog(): void {
   const { title, rest } = splitTitle(app.disclaimer?.markdown ?? "");
   const dlg = openDialog("hinweis-title", "wide");
   const close = button("Schließen", () => dlg.close(), "primary");
-  dlg.body.append(
-    h("div", { class: "dialog__content" }, h("h1", { id: "hinweis-title", class: "dialog__title" }, title), renderMarkdown(rest, 0)),
-    h("div", { class: "dialog__actions" }, close),
-  );
+  const content = h("div", { class: "dialog__content", "aria-labelledby": "hinweis-title" }, h("h1", { id: "hinweis-title", class: "dialog__title" }, title), renderMarkdown(rest, 0));
+  const actions = h("div", { class: "dialog__actions" }, close);
+  dlg.body.append(content, actions);
+  scrollCue(content, actions);
   close.focus({ preventScroll: true });
 }
 
@@ -36,10 +36,9 @@ export function openAboutDialog(): void {
     }
   }, "link", { "aria-label": "Projektseite (öffnet den Browser)" });
 
-  dlg.body.append(
-    h(
+  const content = h(
       "div",
-      { class: "dialog__content" },
+      { class: "dialog__content", "aria-labelledby": "ueber-title" },
       h("h1", { id: "ueber-title", class: "dialog__title" }, "Über Rechnungsarchiv"),
       h(
         "dl",
@@ -61,8 +60,9 @@ export function openAboutDialog(): void {
       h("div", { class: "notice", role: "note" }, h("p", null, app.disclaimer?.short ?? "")),
       h("h2", { class: "card__h card__h--tight" }, title),
       renderMarkdown(rest, 1),
-    ),
-    h("div", { class: "dialog__actions" }, close),
-  );
+    );
+  const actions = h("div", { class: "dialog__actions" }, close);
+  dlg.body.append(content, actions);
+  scrollCue(content, actions);
   close.focus({ preventScroll: true });
 }

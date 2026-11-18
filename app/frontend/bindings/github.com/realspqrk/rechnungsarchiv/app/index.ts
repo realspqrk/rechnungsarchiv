@@ -27,6 +27,7 @@ export type {
     Finding,
     FolderDrop,
     InheritedProof,
+    LockInfo,
     Preview,
     PreviewProblem,
     Provider,
@@ -37,6 +38,7 @@ export type {
     StampInfo,
     StampResult,
     Status,
+    StatusChanged,
     TrustListInfo,
     YearCount
 } from "./models.js";

@@ -3,6 +3,7 @@
 #   wails3 build            # -> ../bin/rechnungsarchiv-gui.exe
 #   wails3 dev              # live reload with Vite (build/config.yml)
 #   wails3 task screenshots # -> screenshots/*.png (sample data)
+#   wails3 task screenshots:real # -> screenshots/real-*.png (real service, test TSA)
 version: '3'
 
 vars:
@@ -48,9 +49,12 @@ tasks:
     cmds:
       - task: syso
       - go build {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" .
+      # The CLI next to the GUI: every export bundles it as the verifier.
+      - go build {{.CLI_FLAGS}} -o "{{.BIN_DIR}}/rechnungsarchiv.exe" ../cmd/rechnungsarchiv
       - cmd: powershell -NoProfile -Command "Remove-Item -ErrorAction SilentlyContinue *.syso"
         platforms: [windows]
     vars:
+      CLI_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false{{else}}-trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
       BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l" -ldflags="-X main.version={{.VERSION}}"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui -X main.version={{.VERSION}}"{{end}}'
     env:
       CGO_ENABLED: 0
@@ -78,3 +82,12 @@ tasks:
     dir: frontend
     cmds:
       - npm run screenshots
+
+  screenshots:real:
+    summary: Screenshots of the real service against a demo archive and the test TSA (real-*.png)
+    deps: [build:frontend]
+    cmds:
+      - go test -tags testtsa -run TestRealScreenshots -count=1 -v .
+    env:
+      RA_REAL_SHOTS: '{{.ROOT_DIR}}/screenshots'
+
