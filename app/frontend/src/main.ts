@@ -4,7 +4,7 @@ import "./style.css";
 import { api, errMsg, Events, OrdnerWartet, StatusGeaendert } from "./api";
 import { FolderInbox, gateOf } from "./folders";
 import { clear, h } from "./dom";
-import { app, rerender, setRenderer } from "./state";
+import { app, rerender, setRenderer, SWITCH_ROUTE } from "./state";
 import { toast } from "./ui";
 import { onStatusChanged } from "./actions";
 import { renderStart } from "./views/start";
@@ -36,6 +36,7 @@ async function route(): Promise<void> {
       const hash = location.hash || "#/";
       const m = hash.match(/^#\/ablage\/(\d+)$/);
       if (m) next = await renderDeposit(Number(m[1]));
+      else if (hash === SWITCH_ROUTE) next = renderStart(true);
       else if (hash === "#/einstellungen" && !status.archive.readOnly) next = await renderSettings();
       else next = renderMain();
     }
@@ -109,7 +110,8 @@ async function offerFolders(): Promise<void> {
   offering = true;
   try {
     for (;;) {
-      const step = inbox.next(gateOf(app.status, archiveDialogOpen()));
+      // While another archive is being chosen, handed-over folders wait.
+      const step = inbox.next(gateOf(location.hash === SWITCH_ROUTE ? null : app.status, archiveDialogOpen()));
       if (!step) break;
       if (step.error) toast(step.error, "error");
       else if (step.note) toast(step.note);

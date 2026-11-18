@@ -4,7 +4,7 @@
 import { api, errMsg, list, type Provider, type Settings } from "../api";
 import { h } from "../dom";
 import { country, date } from "../fmt";
-import { app, navigate, rerender } from "../state";
+import { app, navigate, rerender, SWITCH_ROUTE } from "../state";
 import { button, pathText, setPath, subHeader, toast } from "../ui";
 import { withLock } from "../actions";
 
@@ -58,14 +58,10 @@ function build(s: Settings, providers: Provider[]): HTMLElement {
         "div",
         { class: "path-row" },
         h("span", { class: "path-box mono", "aria-labelledby": "l-ordner" }, pathText(s.archiveDir)),
-        button("Anderes Archiv öffnen …", async () => {
-          await api.CloseArchive();
-          app.status = await api.Status();
-          app.checked = null;
-          navigate("#/");
-        }),
+        // The open archive stays until another one is chosen (back link).
+        button("Anderes Archiv öffnen …", () => navigate(SWITCH_ROUTE)),
       ),
-      h("div", { class: "hint" }, "Sichern Sie diesen Ordner regelmäßig auf einen zweiten Datenträger – am besten nach jeder Archivierung. Der Zeitstempel macht Veränderungen an den Ablagen erkennbar; vor Verlust schützt er nicht."),
+      h("div", { class: "hint" }, "Hier liegen alle Ablagen. Sichern Sie diesen Ordner regelmäßig auf einen zweiten Datenträger – am besten nach jeder Archivierung. Der Zeitstempel macht Veränderungen an den Ablagen erkennbar; vor Verlust schützt er nicht."),
     ),
     h("div", { class: "field" }, h("label", { for: "frist", class: "field__label" }, "Aufbewahrung für neue Ablagen"), retention),
   );

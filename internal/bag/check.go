@@ -113,7 +113,7 @@ func Inspect(path string) (*Bag, error) {
 	}
 	b := res.Bag
 	if b.Root == "" || b.Chain == nil || b.Info == nil || b.Manifest == nil {
-		return nil, fmt.Errorf("%s: Steuerdateien fehlen", path)
+		return nil, fmt.Errorf("%s: Begleitdateien fehlen", path)
 	}
 	return b, nil
 }
@@ -148,7 +148,7 @@ func readTags(src *source, res *Result) error {
 	tags := map[string][]byte{}
 	for _, t := range tagFiles {
 		if src.files[t] == nil {
-			res.add(2, Changed, "Steuerdatei fehlt: %s", t)
+			res.add(2, Changed, "Begleitdatei fehlt: %s", t)
 			continue
 		}
 		data, crcOK, err := src.read(t, maxTagBytes)
@@ -156,7 +156,7 @@ func readTags(src *source, res *Result) error {
 			return err
 		}
 		if !crcOK {
-			res.add(2, Changed, "Steuerdatei beschädigt (CRC): %s", t)
+			res.add(2, Changed, "Begleitdatei beschädigt (CRC): %s", t)
 		}
 		tags[t] = data
 	}
@@ -217,7 +217,7 @@ func checkTagManifest(res *Result, tm []byte, tags map[string][]byte) {
 		}
 		sum := sha256.Sum256(data)
 		if hex.EncodeToString(sum[:]) != h {
-			res.add(2, Changed, "Steuerdatei verändert: %s", want)
+			res.add(2, Changed, "Begleitdatei verändert: %s", want)
 		}
 	}
 }

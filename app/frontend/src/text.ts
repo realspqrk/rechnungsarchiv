@@ -125,4 +125,5 @@ export const PROBLEM_TEXT: Record<string, string> = {
   collision: "Name kommt doppelt vor (Groß-/Kleinschreibung)",
   placeholder: "liegt nur in der Cloud, nicht auf diesem PC",
   link: "Verknüpfung, keine Datei",
+  ordnername: "Ordnername als Name der Ablage nicht verwendbar",
 };

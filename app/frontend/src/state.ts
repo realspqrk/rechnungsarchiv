@@ -20,6 +20,10 @@ export function setRenderer(r: Renderer): void {
   renderer = r;
 }
 
+/** Start screen while an archive is open ("Anderes Archiv öffnen …"): the
+ * open archive stays until another one is created or opened. */
+export const SWITCH_ROUTE = "#/archiv-wechseln";
+
 /** Re-renders the current route. */
 export function rerender(): void {
   void renderer();

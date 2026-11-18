@@ -281,7 +281,7 @@ func (s *Shell) RevealDeposit(ctx context.Context, seq int) error {
 		return fmt.Errorf("Datei nicht gefunden: %s", path)
 	}
 	// explorer.exe exits with 1 even on success; only start errors count.
-	return exec.Command("explorer.exe", "/select,"+path).Start()
+	return selectInExplorer(path).Start()
 }
 
 // OpenFolder opens an existing folder (e.g. the export target) in Explorer.

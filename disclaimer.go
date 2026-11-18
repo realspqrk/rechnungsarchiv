@@ -25,12 +25,13 @@ type Disclaimer struct {
 	Consent string `json:"consent"`
 }
 
-// ParseDisclaimer splits the embedded markdown. The first paragraph of
-// "## Kurzfassung" describes how the program shows the text and ends with
-// the consent sentence in „…“; the second paragraph is the short disclaimer.
+// ParseDisclaimer splits the embedded markdown. The section "## Kurzfassung"
+// starts with an HTML comment for maintainers that ends with the consent
+// sentence in „…“; the paragraph after it is the short disclaimer. Markdown
+// is the document without HTML comments, as readers see it.
 func ParseDisclaimer(md string) Disclaimer {
 	md = strings.ReplaceAll(md, "\r\n", "\n")
-	d := Disclaimer{Markdown: md}
+	d := Disclaimer{Markdown: stripComments(md)}
 	var paras []string
 	in := false
 	for _, block := range strings.Split(md, "\n\n") {
@@ -60,4 +61,19 @@ func ParseDisclaimer(md string) Disclaimer {
 		}
 	}
 	return d
+}
+
+// stripComments removes <!-- … --> blocks and the blank lines after them.
+func stripComments(md string) string {
+	for {
+		i := strings.Index(md, "<!--")
+		if i < 0 {
+			return md
+		}
+		j := strings.Index(md[i:], "-->")
+		if j < 0 {
+			return md
+		}
+		md = md[:i] + strings.TrimLeft(md[i+j+len("-->"):], "\n")
+	}
 }

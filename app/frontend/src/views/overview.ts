@@ -48,8 +48,7 @@ export function renderMain(): HTMLElement {
     h(
       "div",
       { class: "topbar__inner topbar__inner--main" },
-      h("div", { class: "brand" }, icon("logo", 26, 1.8, "brand__logo"), h("span", { class: "brand__name brand__name--small" }, "Rechnungsarchiv")),
-      h("div", { class: "topbar__archive" }, s.archive.company, " · ", h("span", { class: "mono mono--small" }, s.archive.dir), ro ? [" ", readOnlyBadge()] : null),
+      h("div", { class: "brand brand--grow" }, icon("logo", 26, 1.8, "brand__logo"), h("span", { class: "brand__name brand__name--small" }, "Rechnungsarchiv")),
       h(
         "nav",
         { class: "topbar__nav", "aria-label": "Aktionen" },
@@ -151,6 +150,7 @@ export function renderMain(): HTMLElement {
     h(
       "main",
       { class: "page page--main" },
+      archiveHead(s),
       ...banners,
       drop,
       tiles(s),
@@ -341,5 +341,15 @@ function footer(): HTMLElement {
       " · ",
       button("Über", () => openAboutDialog(), "inline-link"),
     ),
+  );
+}
+
+/** Which archive is open: the company, and the archive folder the Ablagen are written to. */
+function archiveHead(s: Status): HTMLElement {
+  return h(
+    "section",
+    { class: "archive-head", "aria-label": "Geöffnetes Archiv" },
+    h("h1", { class: "archive-head__title" }, s.archive.company, s.archive.readOnly ? [" ", readOnlyBadge()] : null),
+    h("div", { class: "archive-head__path" }, h("span", { class: "archive-head__label" }, "Archivordner"), h("span", { class: "mono mono--small break" }, s.archive.dir)),
   );
 }

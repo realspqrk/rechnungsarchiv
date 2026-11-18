@@ -45,7 +45,7 @@ async function main() {
     const page = await ctx.newPage();
     page.on("pageerror", (e) => console.error("page error:", e.message));
     await page.goto(url);
-    await page.waitForSelector(".topbar__archive");
+    await page.waitForSelector(".archive-head");
     await idle(page);
 
     // Ordner archivieren: commit, then a real timestamp from the test TSA.
@@ -72,7 +72,7 @@ async function main() {
     await shoot(page, "real-06-ablage-technische-details");
 
     await page.evaluate(() => (location.hash = "#/"));
-    await page.waitForSelector(".topbar__archive");
+    await page.waitForSelector(".archive-head");
     await page.getByRole("button", { name: "Export für Betriebsprüfung" }).click();
     await page.waitForSelector("dialog[open] #exp-title");
     await page.waitForFunction(() => /Inhalt: \d/.test(document.querySelector(".summary__title")?.textContent ?? ""));

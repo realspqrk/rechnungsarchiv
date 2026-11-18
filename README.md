@@ -16,7 +16,7 @@ Sie legen Rechnungen in einen Ordner. Rechnungsarchiv übernimmt die Dateien unv
 > **In Entwicklung, noch keine Veröffentlichung.** Es gibt noch kein Setup und keine Version zum Herunterladen. Rechnungsarchiv ist für Windows 10 und 11. Eine Frage oder ein Fehler: [Issue öffnen](https://github.com/realspqrk/rechnungsarchiv/issues).
 
 > [!IMPORTANT]
-> Rechnungsarchiv ist freie Open-Source-Software. Für Sach- und Vermögensschäden aus leichter Fahrlässigkeit – insbesondere Datenverlust, einen abgelehnten Vorsteuerabzug, eine Schätzung oder Strafen – wird nicht gehaftet. Die Haftung für Vorsatz, grobe Fahrlässigkeit und Personenschäden bleibt bestehen. Ein weitergehender Ausschluss besteht nicht. Die Hinweise in diesem Projekt geben die eigene Einschätzung der Autorinnen und Autoren wieder; sie sind keine Steuer- oder Rechtsberatung und wurden weder von der Finanzverwaltung noch von Rechtsanwältinnen oder Rechtsanwälten geprüft. Klären Sie die Verwendung vor dem Einsatz mit Ihrer Steuerberaterin oder Ihrem Steuerberater.
+> Rechnungsarchiv legt Dateien als unveränderliche Ablagen zur Langzeitaufbewahrung ab; spätere Veränderungen werden erkennbar. Die Software wird ohne Gewähr bereitgestellt, so wie sie ist. Die Haftung ist ausgeschlossen, soweit das Gesetz das zulässt. Ob die Software für die Aufbewahrung in Ihrem Unternehmen rechtlich genügt, liegt allein in Ihrer Verantwortung. Klären Sie das vor dem Einsatz mit Ihrer Steuerberatung oder Rechtsberatung.
 >
 > Vollständiger Text: [docs/haftungsausschluss.md](docs/haftungsausschluss.md).
 
@@ -230,8 +230,8 @@ Danke an die offenen Standards und Projekte, auf denen das hier aufbaut: BagIt (
 
 ## Lizenz & Rechtliches
 
-[Apache-2.0](LICENSE). Erstellt von [Gerhard Petermeir, SPQRK Web Solutions](https://github.com/realspqrk).
+[Apache-2.0](LICENSE). Erstellt von [Gerhard Petermeir, SPQRK IT-Dienstleistungen](https://github.com/realspqrk).
 
-**Haftung:** Für Sach- und Vermögensschäden aus leichter Fahrlässigkeit wird nicht gehaftet. Die Haftung für Vorsatz, grobe Fahrlässigkeit und Personenschäden bleibt bestehen. Keine Steuer- oder Rechtsberatung. Maßgeblich ist [docs/haftungsausschluss.md](docs/haftungsausschluss.md).
+**Haftung:** Ohne Gewähr, so wie sie ist; die Haftung ist ausgeschlossen, soweit das Gesetz das zulässt. Keine Steuer- oder Rechtsberatung. Maßgeblich ist [docs/haftungsausschluss.md](docs/haftungsausschluss.md).
 
-**Impressum:** SPQRK IT-Services · Gerhard Petermeir, BA MSc · Haag 8, 8344 Bad Gleichenberg, Austria · office@spqrk.net · UID ATU69739438.
+**Impressum:** SPQRK IT-Dienstleistungen · Gerhard Petermeir, BA MSc · Haag 8, 8344 Bad Gleichenberg, Österreich · office@spqrk.net · UID ATU69739438.

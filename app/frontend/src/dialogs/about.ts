@@ -25,7 +25,6 @@ export function openDisclaimerDialog(): void {
 
 export function openAboutDialog(): void {
   const about = app.about;
-  const { title, rest } = splitTitle(app.disclaimer?.markdown ?? "");
   const dlg = openDialog("ueber-title", "wide");
   const close = button("Schließen", () => dlg.close(), "primary");
   const project = button(["Projektseite ", h("span", { "aria-hidden": "true" }, "↗")], async () => {
@@ -57,10 +56,22 @@ export function openAboutDialog(): void {
         { class: "muted small m0" },
         "Danke an die offenen Standards und Projekte, auf denen das hier aufbaut: BagIt (Library of Congress, RFC 8493), RFC 3161, die EU-Vertrauenslisten der Europäischen Kommission und der Mitgliedstaaten, digitorus/timestamp (Go), Wails und GoBDify für die Anregung.",
       ),
-      // The Kurzfassung paragraph is shown unchanged here (docs/haftungsausschluss.md).
-      h("div", { class: "notice", role: "note" }, h("p", null, app.disclaimer?.short ?? "")),
-      h("h2", { class: "card__h card__h--tight" }, title),
-      renderMarkdown(rest, 1),
+      // The Kurzfassung paragraph is shown unchanged here (docs/haftungsausschluss.md);
+      // the full text opens in its own dialog instead of repeating it.
+      h(
+        "div",
+        { class: "notice", role: "note" },
+        h(
+          "p",
+          null,
+          app.disclaimer?.short ?? "",
+          " ",
+          button("Vollständiger Text", () => {
+            dlg.close();
+            openDisclaimerDialog();
+          }, "inline-link"),
+        ),
+      ),
     );
   const actions = h("div", { class: "dialog__actions" }, close);
   dlg.body.append(content, actions);

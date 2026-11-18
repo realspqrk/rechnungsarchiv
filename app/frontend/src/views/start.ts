@@ -6,7 +6,8 @@ import { app, navigate } from "../state";
 import { busy, button, pathText, setPath, toast } from "../ui";
 import { openDisclaimerDialog } from "../dialogs/about";
 
-export function renderStart(): HTMLElement {
+/** back: an archive is open; the screen offers the way back to it. */
+export function renderStart(back = false): HTMLElement {
   const status = app.status;
   let dir = status?.suggestedDir ?? "";
   const disclaimer = app.disclaimer;
@@ -52,6 +53,7 @@ export function renderStart(): HTMLElement {
     h(
       "div",
       { class: "start__inner" },
+      back ? h("a", { href: "#/", class: "back-link back-link--start" }, icon("back", 18, 2), "Zurück zum Archiv") : null,
       h("div", { class: "brand brand--large" }, icon("logo", 34, 1.8, "brand__logo"), h("h1", { class: "brand__name" }, "Rechnungsarchiv")),
       h("p", { class: "lead-muted" }, "Archiviert Rechnungsordner auf diesem Computer so, dass spätere Veränderungen an den Ablagen erkennbar sind. Ihre Rechnungen verlassen den Computer nicht."),
       h(
@@ -64,6 +66,7 @@ export function renderStart(): HTMLElement {
           { class: "field" },
           h("span", { class: "field__label", id: "archivordner-label" }, "Archivordner"),
           h("div", { class: "path-row" }, dirBox, change),
+          h("div", { class: "hint", id: "archivordner-hinweis" }, "Hierher kopiert das Programm jeden Ordner, den Sie archivieren, als Ablage (ZIP-Datei). Ihre Rechnungsordner bleiben, wo sie sind."),
         ),
         h(
           "div",

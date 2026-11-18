@@ -673,10 +673,15 @@ func (s *realService) Preview(ctx context.Context, folder string) (Preview, erro
 	if out.NextSeq, err = c.ar.NextSequence(); err != nil {
 		return Preview{}, s.uiErr(err)
 	}
+	// The GUI names the Ablage after the folder; a name the archive cannot
+	// use blocks it like a file problem (rename the folder).
+	if archive.NameProblem(out.SuggestedName) != "" {
+		out.Problems = append(out.Problems, PreviewProblem{Path: out.SuggestedName, Kind: "ordnername"})
+	}
 	p, err := c.ar.Preview(abs)
 	if err != nil {
 		if prob, ok := previewProblem(err); ok {
-			out.Problems = []PreviewProblem{prob}
+			out.Problems = append(out.Problems, prob)
 		} else if !errors.Is(err, bag.ErrEmpty) {
 			return Preview{}, s.uiErr(err)
 		}

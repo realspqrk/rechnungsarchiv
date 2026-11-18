@@ -248,36 +248,40 @@ The report is computed **only from evidence included in the export**. The export
 
 One generator, `internal/report`, renders `verify.Report` for **one Ablage** as `<NNNN>_<Name>.archivprotokoll.pdf`. It is produced on demand ("Archivprotokoll speichern") and for every Ablage in an export. An Ablage can cover any period (a week, a month, a quarter …), as the user chooses.
 
-The document is an **objective statement of fact**. It contains no disclaimers, no promotional wording and no assessments beyond the verification result.
+The document is an **objective statement of fact**. It contains no disclaimers, no explanations, no instructions (no commands, no reference to manuals), no promotional wording and no assessments beyond the verification result. Facts stand in tables, not in sentences.
 
 **Contents, in order:**
-1. **Header:**
-   - "Archivprotokoll";
-   - company;
-   - Ablage number and name;
-   - Belegjahr.
-2. **Feststellung** (statement, a short factual paragraph). Example:
+1. **Header:** "Archivprotokoll"; company; "Ablage NNNN „Name“ · Belegjahr JJJJ".
+2. **Feststellung** (statement): a label/value table. Example (Zeitgestempelt):
 
-   > Ablage 0011 „2026-10 Eingangsrechnungen" enthält 64 Dateien (31,4 MB). Ihr Prüfwert ist sha256:<64 hex>. Für diesen Prüfwert besteht ein Zeitstempel von Mensatek (Spanien) vom 05.11.2026, 09:14:22 Uhr MEZ (± 1 s); der Dienst ist laut EU-Vertrauensliste zu diesem Zeitpunkt ein qualifizierter Zeitstempeldienst nach der eIDAS-Verordnung. Bei der Kontrolle am 18.11.2026 stimmten alle 64 Dateien im Dateiverzeichnis mit dem Stand überein, den der Zeitstempel spätestens für den 05.11.2026, 09:14:23 Uhr MEZ belegt.
+   | | |
+   |---|---|
+   | Ergebnis | Zeitgestempelt · qualifiziert |
+   | Inhalt | 64 Dateien, 31,4 MB |
+   | Prüfwert | sha256:<64 hex> |
+   | Zeitstempel | Mensatek (Spanien), 05.11.2026, 09:14:22 Uhr MEZ (± 1 s) |
+   | Qualifikation | qualifizierter Zeitstempeldienst nach eIDAS zum Zeitpunkt des Zeitstempels (laut EU-Vertrauensliste) |
+   | Kontrolle | 18.11.2026: 64 von 64 Dateien stimmen mit dem Dateiverzeichnis überein |
+   | Belegt | Dateistand bestand spätestens am 05.11.2026, 09:14:23 Uhr MEZ (Zeitstempel) |
 
-   The wording follows the actual status (Ausstehend, Verändert, …) exactly. It never claims more than §6 established.
-3. **Angaben** (details):
-   - archive ID;
-   - sequence number and predecessor (number + **full** Prüfwert), stated neutrally (no "lückenlos");
+   The rows follow the actual status (Ausstehend, Verändert, …) exactly: an inherited proof adds "Verkettung" and the successor's timestamp; Verändert names the counts of changed, missing and added files; without a proven time "Belegt" says "kein Zeitpunkt belegt". It never claims more than §6 established.
+3. **Angaben** (details), a label/value table:
+   - archive ID and the Ablage file;
+   - predecessor (number + **full** Prüfwert), stated neutrally (no "lückenlos");
    - archived on / by (local assertion, labelled as such);
-   - chosen retention period and its ordinary end date ("Gewählte Frist: 7 Jahre, gewöhnliches Datum 31.12.2033");
-   - timestamp details: provider, serial number, policy OID, accuracy, signing certificate and its issuer, revocation evidence stated factually ("Zertifikat laut OCSP vom … nicht gesperrt");
-   - all times with time zone (local time + UTC offset);
-   - trusted-list version used.
-4. **Dateiverzeichnis** (file list), **complete**: running number, path, size, original modification date, **full SHA-256**. Sorted by path. Continues over as many pages as needed.
-5. **Unabhängige Kontrolle** (independent verification), described factually: the exact command for the bundled verifier with quoted paths (`.\rechnungsarchiv.exe verify '<datei>.zip'` (PowerShell single-quoted literal; `'` doubled), run in the export folder), and a reference to the complete manual procedure in `PRUEFANLEITUNG.txt` / `VERIFY.txt`.
-6. **Footer:** "Archivprotokoll Ablage NNNN · erstellt am … mit Rechnungsarchiv <version> · Seite x von y".
+   - chosen retention period and its ordinary end ("gewählte Frist 7 Jahre, gewöhnliches Ende 31.12.2033");
+   - the check (time, online or offline);
+   - sub-table **Zeitstempel**: provider, genTime as signed, accuracy and its source, serial number, policy OID, signing certificate, its serial number and issuer, revocation evidence stated factually ("nicht gesperrt · OCSP vom …"), qualification, trusted-list version used.
+   - All times with time zone (local time + UTC offset).
+4. **Dateiverzeichnis** (file list), **complete**, one table row per file: running number, size in bytes, original modification date, **full SHA-256**, path (last, so a long path wraps without moving the other columns). Sorted by path. The column header repeats on every page.
+5. **Footer:** "Archivprotokoll Ablage NNNN · erstellt am … mit Rechnungsarchiv <version>", and "Seite x von y" on the right.
 
 **Format:**
-- A4, embedded Unicode fonts, selectable text.
+- A4 landscape (the file table needs the width for one row per file), embedded Unicode fonts, selectable text.
+- Text extraction (`pdftotext -layout`) reads each table row on one line in order: labels are right-aligned next to their values.
 - SHOULD be PDF/A-2b (v1: not achieved; gopdf cannot produce PDF/A, see followup).
-- Past tense ("war … qualifiziert") wherever a sentence describes the state at genTime.
-- The PDF is derived from the verification result and is not itself evidence; `verify` remains authoritative.
+- Past tense wherever a value describes the state at genTime.
+- The PDF is derived from the verification result and is not itself evidence; `verify` remains authoritative. How to check an Ablage independently is described in `PRUEFANLEITUNG.txt` (export) and `VERIFY.txt` (Ablage), not in the PDF.
 
 ## 11. CLI
 

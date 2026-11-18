@@ -86,7 +86,8 @@ h1, h2, h3 { margin: 0; }
 .btn--primary { padding: 10px 22px; border: none; background: var(--green); color: #fff; font-weight: 600; }
 .btn--primary:hover:not(:disabled) { background: var(--green-dark); color: #fff; }
 .btn--amber { padding: 8px 16px; border: 1px solid #c9a864; background: #fff; color: #5c3800; font-weight: 600; }
-.btn--icon { width: 44px; height: 44px; padding: 0; }
+.btn--icon, .topbar__nav .btn--icon { width: 44px; height: 44px; padding: 0; }
+.btn--icon > svg { flex: none; }
 .btn--on-banner { background: #fff; padding: 8px 16px; }
 .btn--on-green { border-color: #a9c9b6; padding: 8px 16px; }
 
@@ -118,6 +119,7 @@ h1, h2, h3 { margin: 0; }
 .field--half { flex: 1 1 140px; }
 .field--name { flex: 3 1 260px; }
 .field--year { flex: 1 1 120px; }
+.field--year:only-child { flex: 0 1 200px; }
 .field-row { display: flex; flex-wrap: wrap; gap: 12px 16px; }
 .field-row--end { align-items: flex-end; }
 .input {
@@ -143,7 +145,11 @@ h1, h2, h3 { margin: 0; }
 .topbar__inner--main { max-width: 1160px; gap: 12px 20px; }
 .topbar__inner--detail { max-width: 960px; }
 .topbar__inner--settings { max-width: 820px; }
-.topbar__archive { color: var(--muted); font-size: 14px; flex: 1 1 260px; }
+.brand--grow { flex: 1 1 auto; }
+.archive-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: -8px; }
+.archive-head__title { font-size: 22px; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.archive-head__path { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; color: var(--muted); }
+.archive-head__label { font-size: 13px; }
 .topbar__nav { display: flex; gap: 8px; flex-wrap: wrap; }
 .topbar__nav .btn--secondary { padding: 8px 14px; }
 .topbar__title { font-size: 15px; font-weight: 600; }
@@ -183,6 +189,7 @@ h1, h2, h3 { margin: 0; }
 /* ---------- start ---------- */
 .start { min-height: 100vh; padding: 48px 16px; }
 .start__inner { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+.back-link--start { align-self: flex-start; margin: -28px 0 -8px; }
 .lead-muted { margin: 0; color: var(--text-2); }
 .card--start { border-radius: 14px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
 .notice {

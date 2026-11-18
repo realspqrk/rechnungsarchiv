@@ -107,7 +107,7 @@ func zipSource(f *os.File, size int64) (*source, error) {
 		}
 		r := entryRank(rel)
 		if r < rank || r == 0 && len(src.files) > 0 || rank == 3 {
-			return nil, bad("Reihenfolge der Einträge verletzt bei %q (erwartet: bagit.txt, Nutzdaten, Steuerdateien, tagmanifest-sha256.txt zuletzt)", e.name)
+			return nil, bad("Reihenfolge der Einträge verletzt bei %q (erwartet: bagit.txt, Nutzdaten, Begleitdateien, tagmanifest-sha256.txt zuletzt)", e.name)
 		}
 		rank = r
 		if strings.HasPrefix(rel, "data/") && !addBounded(&total, int64(e.size), totalLimit) {

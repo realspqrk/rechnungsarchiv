@@ -35,9 +35,9 @@ func dateien(n int) string {
 	return fmt.Sprintf("%d Dateien", n)
 }
 
-// issuer is "von <TSP> (<Land>)".
-func issuer(t *verify.Token) string {
-	s := "von " + nonEmpty(t.TSP, "einem Zeitstempeldienst")
+// tsp is "<TSP> (<Land>)".
+func tsp(t *verify.Token) string {
+	s := nonEmpty(t.TSP, "unbekannter Zeitstempeldienst")
 	if c := country(t); c != "" {
 		s += " (" + c + ")"
 	}
@@ -51,104 +51,122 @@ func nonEmpty(s, alt string) string {
 	return s
 }
 
-// tokenSentence states the token and its qualification (spec §6 step 6).
-func tokenSentence(t *verify.Token, subject string) string {
-	s := fmt.Sprintf("Für %s besteht ein Zeitstempel %s vom %s (%s); ", subject, issuer(t), present.Exact(t.GenTime), present.Accuracy(t.AccuracyMS))
+// tokenValue is "Mensatek (Spanien), 05.11.2026, 09:14:22 Uhr MEZ (± 1 s)".
+func tokenValue(t *verify.Token) string {
+	return fmt.Sprintf("%s, %s (%s)", tsp(t), present.Exact(t.GenTime), present.Accuracy(t.AccuracyMS))
+}
+
+// qualificationValue states the trusted-list result at genTime (spec §6
+// step 6), in the past tense.
+func qualificationValue(t *verify.Token) string {
 	switch t.Qualification {
 	case verify.Qualified:
-		s += "der Dienst war laut EU-Vertrauensliste zu diesem Zeitpunkt ein qualifizierter Zeitstempeldienst nach der eIDAS-Verordnung."
+		return "qualifizierter Zeitstempeldienst nach eIDAS zum Zeitpunkt des Zeitstempels (laut EU-Vertrauensliste)"
 	case verify.NotQualified:
-		s += "der Dienst war laut EU-Vertrauensliste zu diesem Zeitpunkt nicht als qualifizierter Zeitstempeldienst nach der eIDAS-Verordnung eingetragen."
-	default:
-		s += "ob der Dienst zu diesem Zeitpunkt ein qualifizierter Zeitstempeldienst nach der eIDAS-Verordnung war, ist mit den vorliegenden EU-Vertrauenslisten nicht festgestellt, weil keine nach dem Zeitstempel ausgestellte oder bei der Kontrolle abgerufene Liste vorliegt."
+		return "zum Zeitpunkt des Zeitstempels nicht als qualifizierter Zeitstempeldienst nach eIDAS eingetragen (laut EU-Vertrauensliste)"
 	}
-	return s
+	return "nicht festgestellt: keine nach dem Zeitstempel ausgestellte oder bei der Kontrolle abgerufene EU-Vertrauensliste"
 }
 
-// matchedSentence is the result of the file check against a proven time.
-func matchedSentence(rep *verify.Report, d *verify.Deposit, p *verify.Proven, which string) string {
-	s := fmt.Sprintf("Bei der Kontrolle am %s stimmten alle %s im Dateiverzeichnis mit dem Stand überein, ", present.Date(rep.CheckedAt), dateien(d.Counts.Files))
+// checkValue is the file check: "18.11.2026: 64 von 64 Dateien stimmen …".
+func checkValue(rep *verify.Report, d *verify.Deposit) string {
+	return fmt.Sprintf("%s: %d von %s stimmen mit dem Dateiverzeichnis überein", present.Date(rep.CheckedAt), d.Counts.Matched, dateien(d.Counts.Files))
+}
+
+// provenValue is what the timestamp proves for the checked files.
+func provenValue(p *verify.Proven, via string) string {
 	if p.At != nil {
-		return s + fmt.Sprintf("den %s spätestens für den %s belegt.", which, present.Time(*p.At))
+		return fmt.Sprintf("Dateistand bestand spätestens am %s (%s)", present.Time(*p.At), via)
 	}
-	return s + fmt.Sprintf("für den %s den %s angibt; eine Genauigkeit ist nicht angegeben, ein spätester Zeitpunkt wird daher nicht genannt.", which, present.Exact(p.GenTime))
+	return fmt.Sprintf("Dateistand laut %s vom %s; ohne Angabe der Genauigkeit kein spätester Zeitpunkt", via, present.Exact(p.GenTime))
 }
 
-// Statement is the Feststellung (spec §10): a factual paragraph that says
-// exactly what the verification established and nothing more.
-func Statement(rep *verify.Report, d *verify.Deposit) string {
-	var b []string
-	intact := d.Status != verify.StatusChanged && d.Status != verify.StatusInvalid
-	head := fmt.Sprintf("Ablage %s „%s“", present.Number(d.Sequence), d.Name)
-	if intact {
-		b = append(b, fmt.Sprintf("%s enthält %s (%s).", head, dateien(d.Counts.Files), present.Size(d.Counts.Bytes)))
-	} else {
-		b = append(b, fmt.Sprintf("Das Dateiverzeichnis der %s nennt %s (%s).", head, dateien(d.Counts.Files), present.Size(d.Counts.Bytes)))
+const noTime = "kein Zeitpunkt belegt"
+
+// Statement is the Feststellung (spec §10): short facts that say exactly
+// what the verification established and nothing more.
+func Statement(rep *verify.Report, d *verify.Deposit) []row {
+	rs := []row{{"Ergebnis", present.Label(*d)}}
+	add := func(k, v string) { rs = append(rs, row{k, v}) }
+	content := fmt.Sprintf("%s, %s", dateien(d.Counts.Files), present.Size(d.Counts.Bytes))
+	switch d.Status {
+	case verify.StatusChanged, verify.StatusInvalid:
+		add("Inhalt laut Dateiverzeichnis", content)
+	default:
+		add("Inhalt", content)
 	}
 	if d.Root != "" {
-		b = append(b, "Ihr Prüfwert ist "+d.Root+".")
+		add("Prüfwert", d.Root)
 	}
-	checked := fmt.Sprintf("Bei der Kontrolle am %s stimmten alle %s im Dateiverzeichnis mit dem Inhalt der Ablage überein.", present.Date(rep.CheckedAt), dateien(d.Counts.Files))
+	// inherited states the successor's timestamp that covers this Ablage.
+	inherited := func(p *verify.Proven) {
+		via := "Zeitstempel der Ablage " + present.Number(p.Via)
+		add("Verkettung", fmt.Sprintf("Ablage %s schließt diesen Prüfwert ein", present.Number(p.Via)))
+		if succ := find(rep, p.Via); succ != nil && succ.Token != nil {
+			add("Zeitstempel der Ablage "+present.Number(p.Via), tokenValue(succ.Token))
+			add("Qualifikation", qualificationValue(succ.Token))
+		}
+		add("Kontrolle", checkValue(rep, d))
+		add("Belegt", provenValue(p, via))
+	}
 
 	switch d.Status {
 	case verify.StatusTimestamped:
-		b = append(b, tokenSentence(d.Token, "diesen Prüfwert"))
-		b = append(b, matchedSentence(rep, d, d.Proven, "der Zeitstempel"))
+		add("Zeitstempel", tokenValue(d.Token))
+		add("Qualifikation", qualificationValue(d.Token))
+		add("Kontrolle", checkValue(rep, d))
+		add("Belegt", provenValue(d.Proven, "Zeitstempel"))
 
 	case verify.StatusPending:
-		s := "Für diesen Prüfwert liegt noch kein gültiger Zeitstempel vor"
+		v := "kein gültiger"
 		if d.Reason != "" {
-			s += " (Grund: " + present.Reason(d.Reason) + ")"
+			v += " (Grund: " + present.Reason(d.Reason) + ")"
 		}
-		b = append(b, s+".")
+		add("Zeitstempel", v)
 		if p := d.Proven; p != nil && p.Via != 0 {
-			succ := find(rep, p.Via)
-			b = append(b, fmt.Sprintf("Über die Verkettung der Ablagen schließt Ablage %s diesen Prüfwert ein.", present.Number(p.Via)))
-			if succ != nil && succ.Token != nil {
-				b = append(b, tokenSentence(succ.Token, "Ablage "+present.Number(p.Via)))
-			}
-			b = append(b, matchedSentence(rep, d, p, "der Zeitstempel der Ablage "+present.Number(p.Via)))
+			inherited(p)
 		} else {
-			b = append(b, checked, "Einen Zeitpunkt belegt diese Kontrolle nicht.")
+			add("Kontrolle", checkValue(rep, d))
+			add("Belegt", noTime)
 		}
 
 	case verify.StatusIndeterminate:
 		if t := d.Token; t != nil && t.Compromised {
-			b = append(b, fmt.Sprintf("Für diesen Prüfwert besteht ein Zeitstempel %s vom %s.", issuer(t), present.Exact(t.GenTime)))
-			b = append(b, fmt.Sprintf("Laut Sperrinformation ist das Zertifikat des Dienstes oder einer übergeordneten Zertifizierungsstelle widerrufen (Grund: %s). Damit ist nicht ausgeschlossen, dass der Zeitstempel nachträglich erstellt wurde; sein Zeitpunkt ist nicht belegt.", revocationReason(t)))
+			add("Zeitstempel", fmt.Sprintf("%s, %s", tsp(t), present.Exact(t.GenTime)))
+			add("Sperrstatus", fmt.Sprintf("Zertifikat des Dienstes oder einer übergeordneten Zertifizierungsstelle widerrufen (Grund: %s); nachträgliche Erstellung des Zeitstempels nicht ausgeschlossen", revocationReason(t)))
 		} else {
-			b = append(b, "Für diesen Prüfwert liegt ein Zeitstempel vor, der mangels geprüfter EU-Vertrauensliste nicht geprüft werden konnte; sein Zeitpunkt ist nicht belegt.")
+			add("Zeitstempel", "vorhanden, nicht geprüft (keine geprüfte EU-Vertrauensliste)")
 		}
 		if p := d.Proven; p != nil && p.Via != 0 {
-			b = append(b, fmt.Sprintf("Über die Verkettung der Ablagen schließt Ablage %s diesen Prüfwert ein.", present.Number(p.Via)))
-			b = append(b, matchedSentence(rep, d, p, "der Zeitstempel der Ablage "+present.Number(p.Via)))
+			inherited(p)
 		} else {
-			b = append(b, checked)
+			add("Kontrolle", checkValue(rep, d))
+			add("Belegt", noTime)
 		}
 
 	case verify.StatusChanged:
+		v := checkValue(rep, d)
 		var parts []string
 		if n := d.Counts.Changed; n > 0 {
-			parts = append(parts, fmt.Sprintf("%s verändert", dateien(n)))
+			parts = append(parts, dateien(n)+" verändert")
 		}
 		if n := d.Counts.Missing; n > 0 {
-			parts = append(parts, fmt.Sprintf("%s fehlen", dateien(n)))
+			parts = append(parts, dateien(n)+plural(n, " fehlt", " fehlen"))
 		}
 		if n := d.Counts.Added; n > 0 {
-			parts = append(parts, fmt.Sprintf("%s hinzugekommen", dateien(n)))
+			parts = append(parts, dateien(n)+" hinzugekommen")
 		}
-		s := fmt.Sprintf("Bei der Kontrolle am %s stimmten %d von %s im Dateiverzeichnis mit dem Inhalt der Ablage überein", present.Date(rep.CheckedAt), d.Counts.Matched, dateien(d.Counts.Files))
 		if len(parts) > 0 {
-			s += "; " + strings.Join(parts, ", ")
+			v += "; " + strings.Join(parts, ", ")
 		}
-		b = append(b, s+".")
+		add("Kontrolle", v)
 		for _, p := range d.Problems {
 			if p.Step == 2 {
-				b = append(b, "Die Steuerdateien der Ablage weichen von ihrem Prüfwert-Verzeichnis ab.")
+				add("Begleitdateien", "weichen vom Prüfwert-Verzeichnis ab")
 				break
 			}
 		}
-		b = append(b, "Für den vorliegenden Stand der Ablage ist kein Zeitpunkt belegt.")
+		add("Belegt", noTime+" (für den vorliegenden Stand)")
 
 	case verify.StatusInvalid:
 		msg := ""
@@ -159,13 +177,20 @@ func Statement(rep *verify.Report, d *verify.Deposit) string {
 			}
 		}
 		if msg != "" {
-			b = append(b, "Die Ablage ist ungültig: "+strings.TrimSuffix(msg, ".")+".")
+			add("Befund", strings.TrimSuffix(msg, "."))
 		} else {
-			b = append(b, "Der gespeicherte Zeitstempel zu diesem Prüfwert besteht die kryptografische Prüfung nicht.")
+			add("Zeitstempel", "besteht die kryptografische Prüfung nicht")
 		}
-		b = append(b, "Ein Zeitpunkt ist nicht belegt.")
+		add("Belegt", noTime)
 	}
-	return strings.Join(b, " ")
+	return rs
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 func revocationReason(t *verify.Token) string {

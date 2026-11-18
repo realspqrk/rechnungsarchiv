@@ -40,6 +40,16 @@ func (a *Archive) NextSequence() (int, error) {
 	return seq, err
 }
 
+// NameProblem says why name cannot be an Ablage name, or "" if it can. It
+// checks the name and the longest file name derived from it.
+func NameProblem(name string) string {
+	why := bag.ValidateComponent(name)
+	if why == "" {
+		why = bag.ValidateComponent("0000_" + name + ".nachweis")
+	}
+	return why
+}
+
 // Resolve applies the defaults and the checks of Archive to opts without
 // reading the folder or writing anything: the Ablage name (default: the
 // folder name), the Belegjahr (default: the year in the name) and the
@@ -50,12 +60,7 @@ func (a *Archive) Resolve(folder string, opts Options) (Options, error) {
 	if name == "" {
 		name = filepath.Base(filepath.Clean(folder))
 	}
-	// Check the name and the longest file name derived from it.
-	why := bag.ValidateComponent(name)
-	if why == "" {
-		why = bag.ValidateComponent("0000_" + name + ".nachweis")
-	}
-	if why != "" {
+	if why := NameProblem(name); why != "" {
 		return Options{}, fmt.Errorf("Name der Ablage ungültig: %q (%s)", name, why)
 	}
 	year := opts.Belegjahr

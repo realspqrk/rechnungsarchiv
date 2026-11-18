@@ -1,7 +1,8 @@
 // Package report renders the Archivprotokoll (spec §10): one PDF per Ablage,
-// derived only from verify.Report. It contains no disclaimer and no
-// assessment beyond the verification result. Output is deterministic for
-// a given Report (no creation date, fixed fonts).
+// derived only from verify.Report, in A4 landscape. It is a statement of
+// facts in tables: no disclaimer, no explanations, no instructions, and no
+// assessment beyond the verification result. Output is deterministic for a
+// given Report (no creation date, fixed fonts).
 package report
 
 import (
@@ -37,7 +38,8 @@ func PDF(rep *verify.Report, d *verify.Deposit, o Options) ([]byte, error) {
 }
 
 // Text returns the lines the PDF shows, page by page in reading order. The
-// PDF stores glyph ids, so tests and reviews read the content here.
+// PDF stores glyph ids, so tests and reviews read the content here. A table
+// row reads "Label: Wert".
 func Text(rep *verify.Report, d *verify.Deposit, o Options) ([]string, error) {
 	_, lines, err := render(rep, d, o)
 	return lines, err
@@ -47,14 +49,19 @@ func render(rep *verify.Report, d *verify.Deposit, o Options) ([]byte, []string,
 	if o.Version == "" {
 		o.Version = archive.Version
 	}
-	blocks := build(rep, d)
+	secs := build(rep, d)
+	header := []string{
+		"Archivprotokoll",
+		nonEmpty(d.Company, rep.Company),
+		fmt.Sprintf("Ablage %s „%s“ · Belegjahr %d", present.Number(d.Sequence), d.Name, d.Belegjahr),
+	}
 	footer := fmt.Sprintf("Archivprotokoll Ablage %s · erstellt am %s mit Rechnungsarchiv %s", present.Number(d.Sequence), present.Time(rep.CheckedAt), o.Version)
 	// Two passes: the first counts the pages for "Seite x von y".
-	l, err := layout(blocks, footer, 0)
+	l, err := layout(header, secs, footer, 0)
 	if err != nil {
 		return nil, nil, err
 	}
-	l, err = layout(blocks, footer, l.page)
+	l, err = layout(header, secs, footer, l.page)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -65,56 +72,43 @@ func render(rep *verify.Report, d *verify.Deposit, o Options) ([]byte, []string,
 	return buf.Bytes(), l.lines, nil
 }
 
-type kind int
+// row is one table row: label and value.
+type row struct{ key, val string }
 
-const (
-	kTitle kind = iota
-	kSubtitle
-	kHeading
-	kPara
-	kSub  // small heading inside a section
-	kKV   // "key: value", one column in reading order
-	kFile // one Dateiverzeichnis entry
-	kMono
-)
-
-type block struct {
-	kind kind
-	text string
-	key  string
-	file []string // nr, path, size, mtime, sha256, state
+// section is a heading with a label/value table (and an optional
+// sub-table), or the file table.
+type section struct {
+	title string
+	rows  []row
+	sub   string // sub-heading of more
+	more  []row
+	files [][]string // Dateiverzeichnis: nr, path, bytes, mtime, sha256
 }
 
-func build(rep *verify.Report, d *verify.Deposit) []block {
-	bs := []block{
-		{kind: kTitle, text: "Archivprotokoll"},
-		{kind: kSubtitle, text: nonEmpty(d.Company, rep.Company)},
-		{kind: kSubtitle, text: fmt.Sprintf("Ablage %s „%s“ · Belegjahr %d", present.Number(d.Sequence), d.Name, d.Belegjahr)},
-		{kind: kHeading, text: "Feststellung"},
-		{kind: kPara, text: Statement(rep, d)},
-		{kind: kHeading, text: "Angaben"},
-	}
+func build(rep *verify.Report, d *verify.Deposit) []section {
+	var rows []row
 	kv := func(k, v string) {
 		if v != "" {
-			bs = append(bs, block{kind: kKV, key: k, text: v})
+			rows = append(rows, row{k, v})
 		}
 	}
-	kv("Ergebnis", present.Label(*d))
 	kv("Archiv-ID", d.ArchiveID)
-	kv("Ablage", present.Number(d.Sequence)+" „"+d.Name+"“, Datei "+d.File)
+	kv("Datei", d.File)
 	switch {
 	case d.Previous != nil:
-		kv("Vorgänger", "Ablage "+present.Number(d.Sequence-1))
-		kv("Prüfwert des Vorgängers", *d.Previous)
+		kv("Vorgänger", "Ablage "+present.Number(d.Sequence-1)+", Prüfwert "+*d.Previous)
 	case d.ArchiveID != "":
 		kv("Vorgänger", "keiner (erste Ablage des Archivs)")
 	}
-	kv("Prüfwert", d.Root)
 	if d.BaggingDate != "" || d.ArchivedBy != "" {
-		kv("Archiviert am / von", present.ISODate(d.BaggingDate)+" / "+d.ArchivedBy+" (Angabe des archivierenden PCs)")
+		v := present.ISODate(d.BaggingDate)
+		if d.ArchivedBy != "" {
+			v = strings.TrimSpace(v + " von " + d.ArchivedBy)
+		}
+		kv("Archiviert", v+" (lokale Angabe des archivierenden PCs)")
 	}
 	if d.RetentionYears > 0 {
-		kv("Aufbewahrung", fmt.Sprintf("Gewählte Frist: %d Jahre, gewöhnliches Datum %s", d.RetentionYears, present.ISODate(d.RetentionUntil)))
+		kv("Aufbewahrung", fmt.Sprintf("gewählte Frist %d Jahre, gewöhnliches Ende %s", d.RetentionYears, present.ISODate(d.RetentionUntil)))
 	}
 	kv("Kontrolle", present.TimeFull(rep.CheckedAt)+onlineText(rep.Online))
 	if len(rep.TrustLists) > 0 && d.Token == nil {
@@ -124,8 +118,10 @@ func build(rep *verify.Report, d *verify.Deposit) []block {
 		}
 		kv("Vertrauenslisten", strings.Join(ls, "; "))
 	}
+	details := section{title: "Angaben", rows: rows}
+
 	if t := d.Token; t != nil {
-		bs = append(bs, block{kind: kSub, text: "Zeitstempel"})
+		rows = nil
 		kv("Anbieter", strings.TrimSpace(t.TSP+" "+paren(t.Service)))
 		kv("Zeitpunkt", present.ExactFull(t.GenTime)) // as signed, with its fraction
 		acc := present.Accuracy(t.AccuracyMS)
@@ -138,7 +134,8 @@ func build(rep *verify.Report, d *verify.Deposit) []block {
 		kv("Genauigkeit", acc)
 		kv("Seriennummer", t.Serial)
 		kv("Policy-OID", t.Policy)
-		kv("Signaturzertifikat", t.Signer+", Seriennummer "+t.SignerSerial)
+		kv("Signaturzertifikat", t.Signer)
+		kv("Zertifikat-Seriennummer", t.SignerSerial)
 		kv("Aussteller", t.Issuer)
 		for _, r := range t.Revocation {
 			kv("Sperrstatus", revocationText(r))
@@ -149,37 +146,24 @@ func build(rep *verify.Report, d *verify.Deposit) []block {
 		} else {
 			kv("Vertrauensliste", "keine Liste nennt den Dienst")
 		}
-	}
-	if p := d.Proven; p != nil {
-		kv("Belegt", present.Proven(p))
+		details.sub, details.more = "Zeitstempel", rows
 	}
 
-	bs = append(bs, block{kind: kHeading, text: "Dateiverzeichnis"})
-	bs = append(bs, block{kind: kPara, text: fmt.Sprintf("%s, sortiert nach Pfad (unter data/). Je Datei: Nummer, Pfad, Größe, ursprüngliches Änderungsdatum und SHA-256.", dateien(len(d.Files)))})
+	files := section{title: "Dateiverzeichnis (" + dateien(len(d.Files)) + ")"}
 	for i, f := range d.Files {
-		state := ""
+		path := strings.TrimPrefix(f.Path, "data/")
 		switch f.State {
 		case verify.FileChanged:
-			state = "verändert"
+			path += " [verändert]"
 		case verify.FileMissing:
-			state = "fehlt"
+			path += " [fehlt]"
 		}
-		bs = append(bs, block{kind: kFile, file: []string{
-			fmt.Sprintf("%d", i+1), strings.TrimPrefix(f.Path, "data/"), sizeText(f.Size), mtimeText(f.MTime), f.SHA256, state,
-		}})
+		files.files = append(files.files, []string{fmt.Sprintf("%d", i+1), path, byteCount(f.Size), mtimeText(f.MTime), f.SHA256})
 	}
 	for _, a := range d.Added {
-		bs = append(bs, block{kind: kPara, text: "Nicht im Dateiverzeichnis, aber vorhanden: " + strings.TrimPrefix(a, "data/")})
+		files.rows = append(files.rows, row{"Zusätzlich vorhanden", strings.TrimPrefix(a, "data/") + " (nicht im Dateiverzeichnis)"})
 	}
-
-	bs = append(bs,
-		block{kind: kHeading, text: "Unabhängige Kontrolle"},
-		block{kind: kPara, text: "Das Prüfprogramm liegt dem Export für die Betriebsprüfung bei. Im Exportordner in PowerShell:"},
-		// A single-quoted literal: a name like "0011_$(…).zip" is never run.
-		block{kind: kMono, text: `.\rechnungsarchiv.exe verify ` + present.PSQuote(d.File)},
-		block{kind: kPara, text: "Die Kontrolle ohne dieses Programm (mit sha256sum und openssl) beschreiben PRUEFANLEITUNG.txt im Exportordner und VERIFY.txt in der Ablage vollständig. Maßgeblich ist das Ergebnis der Prüfung; dieses Protokoll gibt es wieder."},
-	)
-	return bs
+	return []section{{title: "Feststellung", rows: Statement(rep, d)}, details, files}
 }
 
 func paren(s string) string {
@@ -191,9 +175,9 @@ func paren(s string) string {
 
 func onlineText(online bool) string {
 	if online {
-		return ", mit Internetverbindung (Vertrauenslisten und Sperrstatus abgerufen)"
+		return ", online (Vertrauenslisten und Sperrstatus abgerufen)"
 	}
-	return ", ohne Internetverbindung (gespeicherte Nachweise)"
+	return ", offline (gespeicherte Nachweise)"
 }
 
 func trustListText(tl verify.TrustList) string {
@@ -204,31 +188,35 @@ func trustListText(tl verify.TrustList) string {
 	return s
 }
 
+// revocationText is "nicht gesperrt · OCSP vom … · CN=…".
 func revocationText(r verify.Revocation) string {
 	kind := "OCSP"
 	if r.Kind == "crl" {
 		kind = "Sperrliste (CRL)"
 	}
-	s := fmt.Sprintf("%s laut %s vom %s ", r.Subject, kind, present.TimeFull(r.ThisUpdate))
+	var s string
 	switch r.Status {
 	case "good":
-		s += "nicht gesperrt"
+		s = "nicht gesperrt"
 	case "revoked":
-		s += "gesperrt seit " + present.TimeFull(r.RevokedAt)
+		s = "gesperrt seit " + present.TimeFull(r.RevokedAt)
 	default:
-		s += "mit unbekanntem Status"
+		s = "Status unbekannt"
 	}
+	s += " · " + kind + " vom " + present.TimeFull(r.ThisUpdate)
 	if r.Source == "online" {
-		s += " (bei dieser Kontrolle abgerufen)"
+		s += ", bei dieser Kontrolle abgerufen"
 	}
-	return s
+	return s + " · " + r.Subject
 }
 
-func sizeText(n int64) string {
-	if n < 1024 {
-		return present.Size(n)
+// byteCount is the exact size with a thousands separator: "23.413".
+func byteCount(n int64) string {
+	s := fmt.Sprintf("%d", n)
+	for i := len(s) - 3; i > 0 && s[i-1] != '-'; i -= 3 {
+		s = s[:i] + "." + s[i:]
 	}
-	return fmt.Sprintf("%s (%d Byte)", present.Size(n), n)
+	return s
 }
 
 func mtimeText(s string) string {
@@ -239,13 +227,49 @@ func mtimeText(s string) string {
 	return present.Time(t)
 }
 
-// Page geometry (A4, points).
+// Page geometry (A4 landscape, points). Landscape gives every file one
+// table row: path, size, date and the full SHA-256 side by side.
 const (
-	pageW, pageH = 595.28, 841.89
-	marginX      = 50.0
-	marginTop    = 50.0
-	bodyBottom   = pageH - 60
+	pageW, pageH = 841.89, 595.28
+	marginX      = 40.0
+	marginTop    = 40.0
+	bodyBottom   = pageH - 50
 	textW        = pageW - 2*marginX
+	keyW         = 150.0 // label column of the tables
+	keyGap       = 10.0  // labels end this far left of their value
+
+	tableSize = 9.0
+	tableLead = 12.0
+	cellPad   = 4.0
+)
+
+// fileCols are the Dateiverzeichnis columns: x offset from marginX, width,
+// and the field of a file row. The path comes last: with a wide gap before
+// a column, text extraction (pdftotext -layout) moved the path column out
+// of line with the hashes, so a copied row could pair a file with the
+// SHA-256 of another one.
+var fileCols = []struct {
+	title string
+	x, w  float64
+	right bool
+	field int // index into a file row: nr, path, bytes, mtime, sha256
+}{
+	{"Nr.", 0, 24, true, 0},
+	{"Byte", 30, 50, true, 2},
+	{"Änderungsdatum", 90, 130, false, 3},
+	{"SHA-256", 226, 270, false, 4}, // 64 mono glyphs at 7 pt: 268.8 pt
+	{"Datei (unter data/)", 504, textW - 504, false, 1},
+}
+
+const pathCol = 4
+
+type rgb [3]uint8
+
+var (
+	black  = rgb{0, 0, 0}
+	gray   = rgb{95, 99, 104}
+	rule   = rgb{214, 217, 214}
+	stripe = rgb{243, 245, 243}
 )
 
 type layouter struct {
@@ -255,14 +279,15 @@ type layouter struct {
 	total  int
 	footer string
 	lines  []string
+	cont   string // heading of the table in progress, repeated on a new page
 
 	curFont string
 	curSize float64
 }
 
-func layout(blocks []block, footer string, total int) (*layouter, error) {
+func layout(header []string, secs []section, footer string, total int) (*layouter, error) {
 	pdf := &gopdf.GoPdf{}
-	pdf.Start(gopdf.Config{PageSize: *gopdf.PageSizeA4, Unit: gopdf.UnitPT})
+	pdf.Start(gopdf.Config{PageSize: gopdf.Rect{W: pageW, H: pageH}, Unit: gopdf.UnitPT})
 	pdf.SetInfo(gopdf.PdfInfo{Title: "Archivprotokoll", Creator: "Rechnungsarchiv"}) // no CreationDate: deterministic
 	for _, f := range []struct {
 		name string
@@ -274,8 +299,11 @@ func layout(blocks []block, footer string, total int) (*layouter, error) {
 	}
 	l := &layouter{pdf: pdf, total: total, footer: footer}
 	l.newPage()
-	for _, b := range blocks {
-		if err := l.block(b); err != nil {
+	if err := l.header(header); err != nil {
+		return nil, err
+	}
+	for _, s := range secs {
+		if err := l.section(s); err != nil {
 			return nil, err
 		}
 	}
@@ -290,21 +318,31 @@ func (l *layouter) newPage() {
 	l.pdf.AddPage()
 	l.page++
 	l.y = marginTop
+	if l.cont != "" {
+		name, size := l.curFont, l.curSize
+		l.font("bold", 10)
+		l.y += 10
+		l.text(marginX, l.y, l.cont+" – Fortsetzung")
+		l.y += 5
+		l.font(name, size)
+	}
 }
 
+// pageFooter: a rule, then the footer text left and "Seite x von y" right.
 func (l *layouter) pageFooter() {
 	name, size := l.curFont, l.curSize
 	defer l.font(name, size) // the caller continues in its font on the next page
+	y := pageH - 28.0
+	l.line(marginX, y-11, marginX+textW, y-11, rule)
 	l.font("regular", 7.5)
-	l.pdf.SetTextColor(90, 90, 90)
-	text := fmt.Sprintf("%s · Seite %d von %d", l.footer, l.page, max(l.total, l.page))
-	lines, _ := l.wrap(text, textW)
-	y := pageH - 40.0
-	for _, s := range lines {
-		l.text(marginX, y, s)
-		y += 9
+	l.color(gray)
+	page := fmt.Sprintf("Seite %d von %d", l.page, max(l.total, l.page))
+	l.draw(marginX, y, l.footer)
+	if w, err := l.pdf.MeasureTextWidth(page); err == nil {
+		l.draw(marginX+textW-w, y, page)
 	}
-	l.pdf.SetTextColor(0, 0, 0)
+	l.lines = append(l.lines, l.footer+" · "+page)
+	l.color(black)
 }
 
 func (l *layouter) font(name string, size float64) {
@@ -315,13 +353,26 @@ func (l *layouter) font(name string, size float64) {
 	l.pdf.SetFont(name, "", size)
 }
 
+func (l *layouter) color(c rgb) { l.pdf.SetTextColor(c[0], c[1], c[2]) }
+
+func (l *layouter) line(x1, y1, x2, y2 float64, c rgb) {
+	l.pdf.SetStrokeColor(c[0], c[1], c[2])
+	l.pdf.SetLineWidth(0.5)
+	l.pdf.Line(x1, y1, x2, y2)
+}
+
+func (l *layouter) fill(x, y, w, h float64, c rgb) {
+	l.pdf.SetFillColor(c[0], c[1], c[2])
+	l.pdf.RectFromUpperLeftWithStyle(x, y, w, h, "F")
+}
+
 // text draws s and records it as one line of Text.
 func (l *layouter) text(x, y float64, s string) {
 	l.draw(x, y, s)
 	l.lines = append(l.lines, s)
 }
 
-// draw draws s without recording it (part of a line keyValue records).
+// draw draws s without recording it (part of a line a caller records).
 func (l *layouter) draw(x, y float64, s string) {
 	l.pdf.SetXY(x, y)
 	l.pdf.Text(s)
@@ -334,130 +385,185 @@ func (l *layouter) wrap(s string, w float64) ([]string, error) {
 	return l.pdf.SplitTextWithWordWrap(s, w)
 }
 
-// ensure starts a new page unless h more points fit.
-func (l *layouter) ensure(h float64) {
+// ensure starts a new page unless h more points fit; it reports whether it
+// did.
+func (l *layouter) ensure(h float64) bool {
 	if l.y+h > bodyBottom {
 		l.newPage()
+		return true
 	}
+	return false
 }
 
-func (l *layouter) para(font string, size, lead, x, w float64, s string) error {
-	l.font(font, size)
-	lines, err := l.wrap(s, w)
-	if err != nil {
-		return err
-	}
-	for _, ln := range lines {
-		l.ensure(lead)
-		l.y += lead
-		l.text(x, l.y, ln)
-	}
-	return nil
-}
-
-func (l *layouter) block(b block) error {
-	switch b.kind {
-	case kTitle:
-		l.y += 10
-		return l.para("bold", 20, 24, marginX, textW, b.text)
-	case kSubtitle:
-		return l.para("regular", 12, 16, marginX, textW, b.text)
-	case kHeading:
-		l.ensure(50)
-		l.y += 14
-		return l.para("bold", 12.5, 16, marginX, textW, b.text)
-	case kPara:
-		l.y += 3
-		return l.para("regular", 10, 13.5, marginX, textW, b.text)
-	case kMono:
-		l.y += 3
-		return l.para("mono", 9, 12.5, marginX+10, textW-10, b.text)
-	case kSub:
-		l.ensure(40)
-		l.y += 6
-		return l.para("bold", 10, 14, marginX, textW, b.text)
-	case kKV:
-		return l.keyValue(b.key+": ", b.text)
-	case kFile:
-		return l.file(b.file)
-	}
-	return nil
-}
-
-// keyValue lays out "Label: Wert" as one column in reading order: the bold
-// label, then the value on the same baseline; continuation lines hang
-// indented. Text extraction (pdftotext -layout) then reads label before
-// value, which a two-column layout did not guarantee.
-func (l *layouter) keyValue(label, value string) error {
-	const size, lead, indent = 9.5, 13.0, 14.0
-	l.font("bold", size)
-	labelW, err := l.pdf.MeasureTextWidth(label)
-	if err != nil {
-		return err
-	}
-	l.font("regular", size)
-	first, err := l.wrap(value, textW-labelW)
-	if err != nil {
-		return err
-	}
-	lines := first[:1]
-	if rest := strings.TrimLeft(strings.TrimPrefix(value, first[0]), " "); len(first) > 1 && strings.HasPrefix(value, first[0]) {
-		more, err := l.wrap(rest, textW-indent)
+// header: the title, then company and Ablage (wrapped: an Ablage name may
+// be 240 characters, a company name has no limit), then a rule.
+func (l *layouter) header(h []string) error {
+	l.font("bold", 18)
+	l.y += 18
+	l.text(marginX, l.y, h[0])
+	l.font("regular", 11)
+	for _, s := range h[1:] {
+		lines, err := l.wrap(s, textW)
 		if err != nil {
 			return err
 		}
-		lines = append(lines, more...)
-	} else {
-		lines = first
-	}
-	l.ensure(lead * float64(min(len(lines), 3)))
-	for i, ln := range lines {
-		l.ensure(lead)
-		l.y += lead
-		if i > 0 {
-			l.text(marginX+indent, l.y, ln)
-			continue
+		for _, ln := range lines {
+			l.ensure(15)
+			l.y += 15
+			l.text(marginX, l.y, ln)
 		}
-		l.font("bold", size)
-		l.draw(marginX, l.y, label)
-		l.font("regular", size)
-		l.draw(marginX+labelW, l.y, ln)
-		l.lines = append(l.lines, label+ln)
+	}
+	l.y += 10
+	l.line(marginX, l.y, marginX+textW, l.y, rule)
+	return nil
+}
+
+// heading starts a table; a table that runs onto a new page repeats it
+// there as "… – Fortsetzung".
+func (l *layouter) heading(s string, size float64) {
+	l.cont = ""
+	l.ensure(size + 18 + 3*tableLead)
+	l.y += size + 12
+	l.font("bold", size)
+	l.text(marginX, l.y, s)
+	l.y += 5
+	l.cont = s
+}
+
+func (l *layouter) section(s section) error {
+	l.heading(s.title, 12)
+	if s.files != nil {
+		if err := l.fileTable(s.files); err != nil {
+			return err
+		}
+	}
+	if err := l.table(s.rows); err != nil {
+		return err
+	}
+	if s.sub != "" {
+		l.heading(s.sub, 10)
+		return l.table(s.more)
 	}
 	return nil
 }
 
-// file lays out one Dateiverzeichnis entry: number, path (wrapped) and
-// size, then the modification date and the full SHA-256 on their own line.
-func (l *layouter) file(f []string) error {
-	const nrW, metaW = 30.0, 170.0
-	pathW := textW - nrW - metaW
-	metaX := marginX + nrW + pathW + 5
-	l.font("regular", 8.5)
-	path := f[1]
-	if f[5] != "" {
-		path += " [" + f[5] + "]"
-	}
-	lines, err := l.wrap(path, pathW)
-	if err != nil {
-		return err
-	}
-	l.ensure(11*float64(len(lines)) + 14)
-	l.y += 3
-	for i, ln := range lines {
-		l.y += 11
-		if i == 0 {
-			l.text(marginX, l.y, f[0])
+// table lays out label/value rows: the label right-aligned in the left
+// column, the value wrapped in the right one, a rule under each row. Label
+// and value share a baseline with a narrow gap, so text extraction
+// (pdftotext -layout) reads them as one line, label first; with a wide gap
+// it split the labels into a column of their own. Text records the row as
+// "Label: Wert" and continuation lines on their own.
+func (l *layouter) table(rows []row) error {
+	for _, r := range rows {
+		l.font("regular", tableSize)
+		vals, err := l.wrap(r.val, textW-keyW)
+		if err != nil {
+			return err
 		}
-		l.text(marginX+nrW, l.y, ln)
-		if i == 0 {
-			l.text(metaX, l.y, f[2])
+		keys, err := l.wrap(r.key, keyW-keyGap)
+		if err != nil {
+			return err
 		}
+		n := max(len(vals), len(keys))
+		l.ensure(float64(min(n, 3))*tableLead + 2*cellPad)
+		l.y += cellPad
+		for i := 0; i < n; i++ {
+			if i > 0 {
+				l.ensure(tableLead)
+			}
+			base := l.y + tableLead - 3
+			var k, v string
+			if i < len(keys) {
+				k = keys[i]
+			}
+			if i < len(vals) {
+				v = vals[i]
+			}
+			l.font("regular", tableSize)
+			l.color(gray)
+			l.cell(0, keyW-keyGap, true, base, k)
+			l.color(black)
+			if r.key == "Ergebnis" {
+				l.font("bold", tableSize)
+			}
+			l.draw(marginX+keyW, base, v)
+			switch {
+			case i == 0:
+				l.lines = append(l.lines, k+": "+v)
+			case k != "":
+				l.lines = append(l.lines, k+" "+v)
+			default:
+				l.lines = append(l.lines, v)
+			}
+			l.y += tableLead
+		}
+		l.y += cellPad
+		l.line(marginX, l.y, marginX+textW, l.y, rule)
 	}
-	l.y += 10.5
-	l.font("mono", 7.5)
-	l.text(marginX+nrW, l.y, f[4])
-	l.font("regular", 8.5)
-	l.text(metaX, l.y, f[3])
 	return nil
+}
+
+// fileTable lays out the Dateiverzeichnis, one row per file (a long path
+// wraps inside the last column), with the column header on every page.
+func (l *layouter) fileTable(files [][]string) error {
+	const size, lead = 8.0, 10.5
+	head := func() {
+		l.fill(marginX, l.y, textW, lead+2*cellPad, stripe)
+		l.font("bold", size)
+		base := l.y + cellPad + lead - 2.5
+		var names []string
+		for _, c := range fileCols {
+			l.cell(c.x, c.w, c.right, base, c.title)
+			names = append(names, c.title)
+		}
+		l.lines = append(l.lines, strings.Join(names, " | "))
+		l.y += lead + 2*cellPad
+		l.line(marginX, l.y, marginX+textW, l.y, rule)
+	}
+	l.ensure(3 * (lead + 2*cellPad))
+	head()
+	for _, f := range files {
+		l.font("regular", size)
+		paths, err := l.wrap(f[1], fileCols[pathCol].w)
+		if err != nil {
+			return err
+		}
+		h := float64(len(paths))*lead + 2*cellPad
+		if l.ensure(h) {
+			head()
+		}
+		base := l.y + cellPad + lead - 2.5
+		var cells []string
+		for _, c := range fileCols {
+			v := f[c.field]
+			if c.field == 1 {
+				v = paths[0]
+			}
+			l.font("regular", size)
+			if c.field == 4 {
+				l.font("mono", 7)
+			}
+			l.cell(c.x, c.w, c.right, base, v)
+			cells = append(cells, v)
+		}
+		l.lines = append(l.lines, strings.Join(cells, " | "))
+		l.font("regular", size)
+		for i, p := range paths[1:] {
+			l.cell(fileCols[pathCol].x, fileCols[pathCol].w, false, base+float64(i+1)*lead, p)
+			l.lines = append(l.lines, p)
+		}
+		l.y += h
+		l.line(marginX, l.y, marginX+textW, l.y, rule)
+	}
+	return nil
+}
+
+// cell draws s in a column (x relative to marginX), right-aligned if asked.
+func (l *layouter) cell(x, w float64, right bool, y float64, s string) {
+	if right {
+		if sw, err := l.pdf.MeasureTextWidth(s); err == nil {
+			x += w - sw
+		}
+	}
+	l.draw(marginX+x, y, s)
 }

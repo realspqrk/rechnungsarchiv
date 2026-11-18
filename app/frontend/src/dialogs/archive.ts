@@ -37,7 +37,6 @@ function confirmStep(dlg: DialogHandle, p: Preview): void {
   const problems = list(p.problems);
   let retentionYears = p.retentionDefault;
 
-  const name = h("input", { id: "ablage-name", type: "text", class: "input", value: p.suggestedName, required: true });
   const year = h("select", { id: "belegjahr", class: "input input--select" }, ...years.map((y) => h("option", { value: String(y), selected: y === p.suggestedYear }, String(y))));
 
   const retentionText = h("span", { class: "strong-text" });
@@ -111,17 +110,12 @@ function confirmStep(dlg: DialogHandle, p: Preview): void {
   const cancelBtn = button("Abbrechen", () => dlg.close());
 
   const run = async () => {
-    if (!name.value.trim()) {
-      toast("Bitte geben Sie der Ablage einen Namen.", "error");
-      name.focus();
-      return;
-    }
     dlg.lock(true);
     archiveBtn.disabled = true;
     cancelBtn.disabled = true;
     archiveBtn.textContent = "Wird archiviert …";
     try {
-      const r = await withLock(() => api.Archive({ folder: p.folder, name: name.value.trim(), belegjahr: Number(year.value), retentionYears }));
+      const r = await withLock(() => api.Archive({ folder: p.folder, name: p.suggestedName, belegjahr: Number(year.value), retentionYears }));
       dlg.lock(false);
       resultStep(dlg, r.deposit, r.warning);
     } catch (e) {
@@ -138,7 +132,14 @@ function confirmStep(dlg: DialogHandle, p: Preview): void {
     h(
       "div",
       { class: "dialog__content" },
-      h("div", null, h("h1", { id: "dlg-title", class: "dialog__title" }, "Ordner archivieren"), h("div", { class: "mono mono--small muted mt4 break" }, pathText(p.folder))),
+      h(
+        "div",
+        null,
+        h("h1", { id: "dlg-title", class: "dialog__title" }, "Ordner archivieren"),
+        h("div", { class: "mono mono--small muted mt4 break" }, pathText(p.folder)),
+        // "gespeichert" only while archiving is possible; next to a problem it would be false.
+        h("div", { class: "mt4" }, blocked ? `Ablage ${seq(p.nextSeq)} „${p.suggestedName}“` : `Wird als Ablage ${seq(p.nextSeq)} „${p.suggestedName}“ gespeichert.`),
+      ),
       h(
         "div",
         { class: "mini-tiles" },
@@ -152,21 +153,20 @@ function confirmStep(dlg: DialogHandle, p: Preview): void {
             { class: "problem-box", role: "alert" },
             h("strong", null, `${plural(problems.length, "Datei kann", "Dateien können")} nicht archiviert werden:`),
             h("ul", null, ...problems.map((x) => h("li", null, h("span", { class: "mono mono--small" }, x.path), ` – ${PROBLEM_TEXT[x.kind] ?? x.kind}`))),
-            h("div", null, "Benennen Sie die Dateien um oder speichern Sie sie auf diesem PC und wählen Sie den Ordner dann erneut."),
+            h("div", null, "Benennen Sie die Dateien oder den Ordner um oder speichern Sie die Dateien auf diesem PC und wählen Sie den Ordner dann erneut."),
           )
         : null,
       hints,
       h(
         "div",
         { class: "field-row" },
-        h("div", { class: "field field--name" }, h("label", { for: "ablage-name", class: "field__label" }, "Name der Ablage"), name),
         h("div", { class: "field field--year" }, h("label", { for: "belegjahr", class: "field__label" }, "Belegjahr"), year),
       ),
       h("div", { class: "retention" }, h("span", null, "Aufbewahrung: ", retentionText), changeBtn, retentionEdit),
     ),
     h("div", { class: "dialog__actions" }, cancelBtn, archiveBtn),
   );
-  (blocked ? cancelBtn : name).focus();
+  (blocked ? cancelBtn : year).focus();
 }
 
 /** "in Ablage 0011", or "in früheren Ablagen" when the core does not say which. */

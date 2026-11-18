@@ -276,7 +276,8 @@ type YearCount struct {
 type PreviewProblem struct {
 	Path string `json:"path"`
 	// Kind: name (invalid on Windows), collision (same name after case fold),
-	// placeholder (cloud file not on disk), link (symlink/reparse point).
+	// placeholder (cloud file not on disk), link (symlink/reparse point),
+	// ordnername (the folder name cannot name the Ablage).
 	Kind string `json:"kind"`
 }
 

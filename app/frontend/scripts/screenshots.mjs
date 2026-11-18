@@ -54,6 +54,7 @@ const shots = [
   ["25-ablage-ungueltig", "zustaende", async (p) => { await gotoDeposit(p, 6); }],
   ["26-ablage-technische-details", "normal", async (p) => { await gotoDeposit(p, 11); await p.click("summary"); }],
   ["27-einstellungen-basic", "normal", async (p) => { await gotoSettings(p); }],
+  ["41-archiv-wechseln", "normal", async (p) => { await gotoSettings(p); await p.getByRole("button", { name: "Anderes Archiv öffnen …" }).click(); await p.waitForSelector(".back-link--start"); }],
   ["28-einstellungen-clientcert", "disig", async (p) => { await gotoSettings(p); }],
   ["29-einstellungen-kein-dienst", "kein-dienst", async (p) => { await gotoSettings(p); }],
   ["30-export", "normal", async (p) => { await openExport(p); }],
