@@ -3,11 +3,13 @@
 package archive
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -143,24 +145,49 @@ func open(dir string, readOnly bool) (*Archive, error) {
 
 // readConfig reads and checks rechnungsarchiv.json.
 func readConfig(dir string) (Config, error) {
-	var c Config
 	data, err := os.ReadFile(filepath.Join(dir, configFile))
 	if errors.Is(err, os.ErrNotExist) {
-		return c, ErrNoArchive
+		return Config{}, ErrNoArchive
 	}
 	if err != nil {
-		return c, err
+		return Config{}, err
 	}
-	d := json.NewDecoder(strings.NewReader(string(data)))
+	return parseConfig(data)
+}
+
+var reUUID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+
+// parseConfig accepts exactly one JSON object in the canonical form this
+// program writes (spec §1: JCS), with every required field valid and
+// nothing before or after it. Anything else is ErrBadConfig, so a setter
+// never rewrites a damaged or hand-edited file.
+func parseConfig(data []byte) (Config, error) {
+	var c Config
+	var probe struct {
+		Format *int `json:"format"`
+	}
+	if json.Unmarshal(data, &probe) == nil && probe.Format != nil && *probe.Format != bag.FormatVersion {
+		return c, badConfig(fmt.Sprintf("rechnungsarchiv.json: Format %d wird nicht unterstützt", *probe.Format))
+	}
+	d := json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 	if err := d.Decode(&c); err != nil {
 		return c, badConfig(fmt.Sprintf("rechnungsarchiv.json ist beschädigt: %v", err))
 	}
+	if _, err := d.Token(); err != io.EOF {
+		return c, badConfig("rechnungsarchiv.json ist beschädigt: weitere Daten nach dem JSON-Objekt")
+	}
 	if c.Format != bag.FormatVersion {
 		return c, badConfig(fmt.Sprintf("rechnungsarchiv.json: Format %d wird nicht unterstützt", c.Format))
 	}
-	if c.ArchiveID == "" || !validRetention(c.RetentionDefault) {
+	company, err := checkCompany(c.Company)
+	if !reUUID.MatchString(c.ArchiveID) || !validRetention(c.RetentionDefault) || err != nil || company != c.Company ||
+		(c.TSA != nil && *c.TSA == "") {
 		return c, badConfig("rechnungsarchiv.json ist unvollständig")
+	}
+	canon, err := c.render()
+	if err != nil || !bytes.Equal(canon, data) {
+		return c, badConfig("rechnungsarchiv.json ist nicht in der Form, die dieses Programm schreibt (von Hand bearbeitet?)")
 	}
 	return c, nil
 }

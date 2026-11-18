@@ -73,19 +73,15 @@ type app struct {
 
 func run(ctx context.Context, args []string, e ioEnv) int {
 	a := &app{ioEnv: e, ctx: ctx, json: !e.stdoutTTY, in: bufio.NewReader(e.stdin)}
-	for _, s := range args {
-		if s == "--" {
-			break
-		}
-		if s == "--json" {
-			a.json = true
-		}
-	}
 	inv, err := parse(args)
 	if err != nil {
+		// The flags did not parse; an explicit request for JSON still
+		// counts for the error object.
+		a.json = a.json || wantsJSON(args)
 		return a.fail(err)
 	}
 	a.inv = inv
+	a.json = !e.stdoutTTY || inv.flag("json")
 	switch {
 	case inv.version:
 		a.emit(map[string]string{"version": archive.Version}, func(w io.Writer) {
@@ -101,6 +97,23 @@ func run(ctx context.Context, args []string, e ioEnv) int {
 		return a.fail(err)
 	}
 	return a.exit
+}
+
+// wantsJSON scans the raw arguments for --json or --json=true, for an
+// error before the flags parsed. The last occurrence wins.
+func wantsJSON(args []string) bool {
+	on := false
+	for _, s := range args {
+		switch s {
+		case "--":
+			return on
+		case "--json", "-json", "--json=true", "-json=true":
+			on = true
+		case "--json=false", "-json=false":
+			on = false
+		}
+	}
+	return on
 }
 
 // interactive reports whether a person can be asked: stdin is a terminal

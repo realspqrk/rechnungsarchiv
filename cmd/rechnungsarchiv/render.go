@@ -65,7 +65,11 @@ func renderStatus(w io.Writer, s *statusOut) {
 	}
 	fmt.Fprintln(t, ")")
 	for _, d := range s.Pending {
-		fmt.Fprintf(t, "  ausstehend\t%s %s\n", present.Number(d.Sequence), d.Name)
+		label := "ausstehend"
+		if d.Status == verify.StatusIndeterminate {
+			label = "unbestimmt (Schlüssel kompromittiert)"
+		}
+		fmt.Fprintf(t, "  %s\t%s %s\n", label, present.Number(d.Sequence), d.Name)
 	}
 	for _, d := range s.Unreadable {
 		fmt.Fprintf(t, "  nicht lesbar\t%s: %s\n", d.File, d.Error)
@@ -107,7 +111,15 @@ func renderPlan(w io.Writer, p *planOut) {
 	for _, n := range p.Notes {
 		fmt.Fprintln(w, "Hinweis: "+n)
 	}
-	fmt.Fprintln(w, "Archivieren mit: rechnungsarchiv archive "+present.PSQuote(p.Folder)+" --yes")
+	fmt.Fprintln(w, "Archivieren mit: "+archiveCommand(p))
+}
+
+// archiveCommand is the command that archives exactly this plan: the
+// resolved archive and every resolved option, quoted for PowerShell, so a
+// different current folder or default archive cannot change it.
+func archiveCommand(p *planOut) string {
+	return fmt.Sprintf("rechnungsarchiv archive %s --archiv %s --name %s --belegjahr %d --aufbewahrung %d --yes",
+		present.PSQuote(p.Folder), present.PSQuote(p.Archive), present.PSQuote(p.Name), p.Belegjahr, p.RetentionYears)
 }
 
 func renderArchived(w io.Writer, o *archiveOut) {

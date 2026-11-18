@@ -37,7 +37,7 @@ The same paths work inside a project (`.claude/skills/…`, `.agents/skills/…`
 
 ## Output
 
-- **JSON mode** is `--json`, or any run whose standard output is not a terminal. Success prints the data only, as one line of JSON on standard output. JSON is pure ASCII: every non-ASCII character is `\uXXXX`, so Windows PowerShell 5.1 reads it intact. JSON keys are English.
+- **JSON mode** is `--json` (also `--json=true`; `--json=false` turns it off in a terminal), or any run whose standard output is not a terminal. Success prints the data only, as one line of JSON on standard output. JSON is pure ASCII: every non-ASCII character is `\uXXXX`, so Windows PowerShell 5.1 reads it intact. JSON keys are English.
 - **Errors** are `{"error":{"code","message","hint","details"}}` on standard error. `message` and `hint` are German. `details` is optional and command-specific.
 - **Warnings** are `{"warning":"…"}` lines on standard error.
 - **Terminal:** German, aligned, short. Errors read `Fehler: …` and `Hinweis: …`.
@@ -78,13 +78,13 @@ Global flags on every command: `--archiv <ordner>`, `--json`, `--help`/`-h`. Fla
 - `archive`: `{path, source, archive_id, company, retention_default, provider}` (`provider` is the id in `rechnungsarchiv.json`, or null).
 - `provider`: the provider entry, or null. `credentials`: whether this PC has credentials for it (null if no provider or the store cannot be read).
 - `lock`: the content of `.lock` (`{host, user, pid, since}`), or null. A lock left by a crash shows up here too.
-- `deposits`: `{total, timestamped, pending, unreadable}`. `pending` lists Ablagen without a stored valid timestamp (`reason` `kein-dienst` when no provider is set). This is the same test `stamp` uses. It is fast and does not hash the invoices; `verify` is the full check.
+- `deposits`: `{total, timestamped, pending, unreadable}`. `pending` lists Ablagen without a stored valid timestamp, each with `status` `pending` (`reason` `kein-dienst` when no provider is set) or `indeterminate` (the signing key was revoked for key compromise; the evidence of every Ablage counts, spec §6 step 7). This is the same test `stamp` uses. It is fast and does not hash the invoices; `verify` is the full check.
 - `trust_lists` and `trust_list_issued` (issue date of the newest national list).
 - `next`: German hints for the next step.
 
 ### archive
 
-`--dry-run` reads only and prints the plan: `{dry_run, archive, folder, sequence, name, file, belegjahr, retention_years, retention_until, provider, count, bytes, files[{path,size,mtime}], skipped, known, years, notes}`. `known` lists files whose content is already in an earlier Ablage; they are archived anyway (no deduplication). `notes` are German hints (several modification years, known files, no provider).
+`--dry-run` reads only and prints the plan (in a terminal it ends with the command that archives exactly this plan, with `--archiv` and every resolved option): `{dry_run, archive, folder, sequence, name, file, belegjahr, retention_years, retention_until, provider, count, bytes, files[{path,size,mtime}], skipped, known, years, notes}`. `known` lists files whose content is already in an earlier Ablage; they are archived anyway (no deduplication). `notes` are German hints (several modification years, known files, no provider).
 
 The name defaults to the folder name, the Belegjahr to the first year in the name (`2026-11 Eingangsrechnungen` → 2026). Without a year in the name, exit 2 `BELEGJAHR_MISSING`. The retention defaults to the archive setting (7 years).
 
@@ -104,7 +104,7 @@ In each of these cases the Ablage exists. Never run `archive` on the same folder
 
 ### stamp
 
-`stamp` sends one request per Ablage without a valid timestamp, to the configured provider only (never a fallback). After the first provider error (offline, access, quota, other) it sends no further requests in that run. Exit codes as for `archive` after the commit: 0, 3 `NO_PROVIDER`, 5, 6, 7 `PROVIDER_ERROR`. `reason` is one of `kein-dienst`, `offline`, `zugang`, `guthaben`, `prüfdaten`, `anbieter` (spec §5).
+`stamp` sends one request per Ablage without a valid timestamp, to the configured provider only (never a fallback). After the first provider error (offline, access, quota, other) it sends no further requests in that run. A changed, invalid or unreadable Ablage is never stamped; it is an outcome with `stamped: false` and no `reason`, and the run exits 5. Exit codes as for `archive` after the commit: 0, 3 `NO_PROVIDER`, 5, 6, 7 `PROVIDER_ERROR`. `reason` is one of `kein-dienst`, `offline`, `zugang`, `guthaben`, `prüfdaten`, `anbieter` (spec §5).
 
 ### verify
 
@@ -140,7 +140,7 @@ Windows PowerShell 5.1 pipes text to programs in ASCII by default, so a password
 
 ### protocol
 
-`protocol 3 --out "D:\Prüfung\0003.pdf"` checks the archive (read-only), then saves the Archivprotokoll of Ablage 3. Without `--out` the file is `<NNNN>_<Name>.archivprotokoll.pdf` in the current folder; an existing folder as `--out` gets that name inside it. Existing files are never overwritten (exit 1 `EXISTS`). The PDF is never written into the archive folder (exit 2). Exit 0 once written, whatever the Ablage's status; the PDF and `status` state it.
+`protocol 3 --out "D:\Prüfung\0003.pdf"` checks the archive (read-only), then saves the Archivprotokoll of Ablage 3. Without `--out` the file is `<NNNN>_<Name>.archivprotokoll.pdf` in the current folder; an existing folder as `--out` gets that name inside it. Existing files are never overwritten (exit 1 `EXISTS`). The PDF is never written into the archive folder (exit 2), also not through a junction or link that leads there. `<ablage>` is only a number or the path of an Ablage ZIP or extracted Ablage; an archive or export folder exits 2. Exit 0 once written, whatever the Ablage's status; the PDF and `status` state it.
 
 ## Exit codes
 

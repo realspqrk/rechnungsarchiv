@@ -34,6 +34,7 @@
 - `go test -race` fails here (`-race requires cgo`; there is no C toolchain). Concurrency tests must be deterministic without it: gate the fake HTTP transport on channels (`gatedWeb` in `internal/trust/store_synth_test.go`), or repeat a barrier-started race many times.
 - `golang.org/x/sys/windows` has `GetFinalPathNameByHandle` but no `VOLUME_NAME_DOS` constant (it is 0). The result carries a `\\?\` or `\\?\UNC\` prefix; strip it before comparing paths (`internal/export/target_windows.go`).
 - `x509.UnknownAuthorityError.Cert` is the topmost certificate path building reached, not necessarily the leaf: for signer → intermediate with the root missing it is the intermediate; for a foreign PKI with its self-signed root in the bag it is that root. `internal/verify` uses it to tell missing path material (Ausstehend·prüfdaten) from a demonstrated failure (Ungültig).
+- The Write tool turns `\uXXXX` escapes into the literal character even inside Go raw strings (a JSON test input `M\u00fcller` arrived as `Müller`), so a test of escaped JSON silently tested the unescaped form. Build the backslash at run time (`string(rune(92))`).
 
 ## Research hygiene
 - Prices: always confirm on the provider's *current product/order page*, not dated blog/news articles. GLOBALTRUST's EUR 20/100-stamp tier exists only in 2022/23 articles; the product page starts at EUR 185/1,000 (checked 2026-11-18).
@@ -43,6 +44,7 @@
 - `spawn.sh --resume-id` with a fresh run dir fails with `resume unavailable: ... session-id: No such file`. Copy `session-id` and `session.json` from the previous run dir into the new one first.
 - `--resume-id` also requires the SAME `--effort` as the original session, else `identity mismatch: effort`.
 - Grok headless runs can stall on `permission required: Execute ...` (it tries to write a session-title file via shell). Add to the brief: "use only file tools, run no shell commands".
+- Python `Path.write_text` translates `\n` to CRLF on Windows. Use `write_bytes(text.encode())` or `open(..., newline='')` for repo files.
 - Python patch scripts containing quotes: write them to a .py file with the Write tool and run it; inline heredocs with `'` break bash.
 - Artifact publishes are intermittently denied by the auto-mode classifier ("Unsanctioned Communication"). Retry once with `file_path` = `project/canvas.json` and the changed files in `files`; that form has always gone through.
 
@@ -82,6 +84,7 @@
 - Crafting bad ZIPs: `zip.Writer.SetOffset(n)` after writing n junk bytes gives data in front of the first entry with consistent offsets. For an archive comment, append bytes and patch the last 2 bytes of the EOCD. To swap the central order but not the physical order, rewrite the CD records by hand (`swapCentral` in `internal/bag/hardening_test.go`).
 - Archive recovery deletes only `*.tmp` (a suffix). Every temp file inside the archive must therefore end in `.tmp`. `tsa.WriteNew` names them `.<name>.<random>.tmp`; until 2026-11-18 it used `.tmp-*`, and recovery never cleaned those up.
 - `Archive.Lock` is the real OS-level writer lock; pass it as `stamp.Options.Lock` (the CLI and `internal/testenv` do). Settings go through `SetProvider`, `SetCompany` and `SetRetentionDefault`: they re-read `rechnungsarchiv.json` under the lock and replace it canonically. Never write the file by hand.
+- `json.Decoder.Decode` reads one value and ignores what follows (`{…}{"tsa":"x"}` or `{…}garbage` decoded fine), and `DisallowUnknownFields` lets duplicate keys through (last wins). `parseConfig` therefore requires `Token() == io.EOF` after the value and compares the bytes with `Config.render()`: the file must be exactly the canonical JCS this program writes. A hand-edited file is `ErrBadConfig`, which also stops the setters from rewriting it.
 
 ## RFC 3161 / ASN.1 (internal/tsa)
 - `encoding/asn1` Unmarshal: a RawValue tagged `explicit,tag:0` comes back still wrapped; unwrap it by hand.
@@ -108,6 +111,13 @@
 - Screenshots: `go build -tags server` serves the app over HTTP (`WAILS_SERVER_PORT`), so Playwright can shoot it (installed Edge, no download). Use viewport shots for modal dialogs. Native capture of WebView2 needs `PrintWindow(h, hdc, 2)`.
 - A worktree without its own go.mod silently uses the parent repo's module.
 - Markdown files written by tools may get CRLF. Embedded text parsers must normalize, and tests must not double-convert.
+- A Go error returned by a bound method reaches JavaScript as `RuntimeError` whose `cause` is `json.Marshal(err)`. An error struct with exported JSON fields (`app.UIError`: `code`, `lock`) therefore arrives structured; the frontend reads `e.cause.code` (`isLocked` in `api.ts`).
+- `.dialog { display: flex }` overrides the UA rule `dialog:not([open]) { display: none }`, so a closed dialog would show. Scope layout rules to `dialog[open]`.
+- `export.Options.Executable` defaults to `os.Executable`, which in the GUI is the GUI itself. The GUI passes `rechnungsarchiv.exe` next to it (`system.verifier`); `wails3 build` builds the CLI into `bin/` for that reason.
+- The writer lock is per handle, also inside one process, and a lock naming our own pid is never "stale". Two writing calls of the real service at once (background stamping on start + "Archivieren") would lock each other out, so `realService.write` serializes every operation that takes the lock.
+- Every Ablage detail view, Archivprotokoll and archive operation re-runs `verify.Archive` on the whole archive: inherited proof and key compromise are only decided across all Ablagen. Fine for SME archives; very large archives make the detail view slow (followup if it matters).
+- `internal/testenv` helpers (`TrustAt`, `Add`) call `T.Fatal`, so call them only on the test goroutine. The real service opens its trust store in the calling goroutine and the background work reuses that store.
+- NTFS updates a folder's times in its parent's directory index lazily, and `fs.DirEntry.Info` reads that copy. A "read-only mode writes nothing" test must compare files (via `os.Stat`), not folder times.
 
 ## CLI (cmd/rechnungsarchiv)
 - The tests build the real binary in `TestMain` with `runtime.GOROOT()/bin/go` (the auto-downloaded toolchain) and run it as a child process. Under `-tags testtsa`, `e2e_test.go` sets `testTags`, so the binary is built with the tag too.
@@ -120,6 +130,8 @@
 - Error messages must never repeat an unknown flag's value or an unexpected argument: it may be a password. `safeWord` repeats only `[a-z0-9-]{1,24}`, and `--password`, `--pin` and similar get a fixed hint.
 - Trusted lists carry second precision. `PublishLists(time.Now())` right after a stamp can be issued in the same second as genTime, so an offline check still says `unbestätigt`. Assert `qualified` only after `verify --online` in the same run.
 - Several agents share the main working tree. `gofmt -l internal` then lists other agents' half-done files, and `go test ./...` fails in their packages; format only your own files and judge only your packages.
+- JSON mode comes from the parsed flags (`inv.flag("json")`), not from scanning the arguments for the literal `--json`: the scan missed `--json=true`. Only a parse failure falls back to a raw scan, so its error object is JSON too.
+- `protocol` compares paths physically (`export.Physical`): a lexical `filepath.Rel` check let `--out <junction-to-archive>\p.pdf` write into the archive. As a path it accepts only an Ablage ZIP or an extracted bag (`bagit.txt`), because `verify.Path` happily verifies a whole archive folder that holds a single Ablage.
 
 ## Verification, stamping, export (internal/verify, internal/stamp, internal/export)
 - Nachweise pair with Ablagen by the imprint of `n.tsq`, not by folder name (spec §1). `verify.Nachweise` indexes every `*.nachweis` folder of the scope; `verify.Evidence` (stamping) and `export` use it. A deposit's `archive.Deposit.EvidenceDir` is only the file-name hint.
@@ -128,3 +140,4 @@
 - `tsa.ReadAttempts` keeps one evidence file per CertKey (directory order: `.ocsp` wins over `.crl`), and evidence files are never replaced. A stored but unacceptable `.ocsp` therefore shadows a later good `.crl` for the same certificate, and a fresh OCSP answer cannot replace a stale one; stamping then reports `prüfdaten` for that piece until the 24 h window ends.
 - Stamping completes one certificate's evidence at a time by calling `Fetcher.Collect` on a synthetic token whose `Chain` is just `[cert, issuer]`: `Collect` returns no raw evidence at all when any piece fails, so a whole-token call would lose the pieces fetched in time.
 - Export target checks: `filepath.EvalSymlinks`/`os.Stat` are not enough on Windows (junctions). `internal/export` resolves the deepest existing ancestor with `GetFinalPathNameByHandle`, refuses any reparse point in the target path, creates every folder inside the export with `os.Mkdir` (never `MkdirAll`, which follows a planted junction) and re-checks before writing.
+- `verify.Attempts` evaluates one Prüfwert alone and so misses key-compromise evidence stored with other Ablagen. Anything that lists several Ablagen (`status`, `stamp`) must call `verify.Evidence` once with all roots; `status` once called `Attempts` per Ablage and showed a compromised Ablage as zeitgestempelt.

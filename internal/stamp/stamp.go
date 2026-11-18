@@ -117,12 +117,14 @@ func Run(ctx context.Context, a *archive.Archive, opts Options) (*Result, error)
 		return nil, err
 	}
 	if len(todo) == 0 {
+		sortOutcomes(res)
 		return res, nil
 	}
 	if prov.ID == "" {
 		for _, p := range todo {
 			res.Outcomes = append(res.Outcomes, outcome(p, verify.ReasonNoProvider, "Kein Zeitstempel-Dienst eingerichtet"))
 		}
+		sortOutcomes(res)
 		return res, nil
 	}
 
@@ -152,7 +154,14 @@ func Run(ctx context.Context, a *archive.Archive, opts Options) (*Result, error)
 			res.Warnings = append(res.Warnings, "Vertrauenslisten konnten nach dem Zeitstempel nicht aktualisiert werden: "+err.Error())
 		}
 	}
+	sortOutcomes(res)
 	return res, nil
+}
+
+// sortOutcomes orders the outcomes by Ablage number: failed checks are
+// found before the requests are sent.
+func sortOutcomes(res *Result) {
+	slices.SortStableFunc(res.Outcomes, func(a, b Outcome) int { return a.Sequence - b.Sequence })
 }
 
 // findPending returns the Ablagen whose bag is intact and that have no
@@ -179,7 +188,9 @@ func findPending(ctx context.Context, a *archive.Archive, opts Options, res *Res
 	var out []pending
 	for _, d := range deps {
 		if d.Err != nil {
-			res.Warnings = append(res.Warnings, fmt.Sprintf("Ablage %04d %s ist nicht lesbar: %v", d.Sequence, d.Name, d.Err))
+			// Never stamped; a failed outcome like a changed Ablage, so the
+			// run does not look complete (verify reports it as Ungültig).
+			res.Outcomes = append(res.Outcomes, outcome(pending{dep: d}, "", fmt.Sprintf("Ablage ist nicht lesbar – kein Zeitstempel angefordert: %v", d.Err)))
 			continue
 		}
 		atts := ev[d.Bag.Root]

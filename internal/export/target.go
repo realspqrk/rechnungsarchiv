@@ -67,6 +67,12 @@ func within(p, dir string) bool {
 	return err == nil && (rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))))
 }
 
+// Physical is where the absolute path p physically leads: its deepest
+// existing ancestor resolved through links and junctions (on Windows with
+// GetFinalPathNameByHandle), with the rest appended. The CLI uses it to
+// keep an Archivprotokoll out of the archive.
+func Physical(p string) (string, error) { return physical(p) }
+
 // physical resolves the deepest existing ancestor of the absolute path p
 // through links and junctions and appends the rest.
 func physical(p string) (string, error) {

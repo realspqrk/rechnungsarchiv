@@ -118,7 +118,7 @@ rechnungsarchiv archive --dry-run "D:\Scans\2026-11 Eingangsrechnungen"
 rechnungsarchiv archive "D:\Scans\2026-11 Eingangsrechnungen" --yes
 ```
 
-Alternative mit Client-Zertifikat (z. B. Disig): `rechnungsarchiv provider set disig --p12 "C:\Pfad\zertifikat.p12"` (Zertifikatspasswort über die Standardeingabe).
+Alternative mit Client-Zertifikat (z. B. Disig): `rechnungsarchiv provider set disig --p12 "C:\Pfad\zertifikat.p12" --url "https://…"` (die Adresse erhalten Sie mit dem Zugangszertifikat; das Zertifikatspasswort kommt über die Standardeingabe).
 
 Zuerst `status --json`. Mit `--json`, und immer wenn die Ausgabe kein Terminal ist, kommt nur JSON auf die Standardausgabe. `archive --dry-run` zeigt den Plan und schreibt nichts. `archive` und `export` ohne Terminal brauchen `--yes`. Beides ist endgültig oder kostet einen Zeitstempel. Zugangsdaten gehören in den Anmeldeinformationsspeicher, nicht in den Aufruf.
 

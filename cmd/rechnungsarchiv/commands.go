@@ -83,7 +83,8 @@ func init() {
 		{Name: "provider set", Args: "<id>", MinArgs: 1, MaxArgs: 1, Writes: true,
 			Summary: "Zeitstempel-Dienst für dieses Archiv einrichten. Passwort nur über die Standardeingabe.",
 			Help: "Benutzer/Passwort (basic): --user; das Passwort kommt als erste Zeile über die Standardeingabe oder wird im Terminal verdeckt abgefragt.\n" +
-				"Client-Zertifikat (clientcert): --p12; das Zertifikatspasswort ebenso. Gespeichert wird im Anmeldeinformationsspeicher dieses PCs, nie im Archiv.",
+				"Client-Zertifikat (clientcert): --p12; das Zertifikatspasswort ebenso. Gespeichert wird im Anmeldeinformationsspeicher dieses PCs, nie im Archiv.\n" +
+				"Adresse laut Vertrag (url_from_contract, z. B. Disig): zusätzlich --url <https-Adresse>, etwa rechnungsarchiv provider set disig --p12 \"<datei.p12>\" --url \"https://…\".",
 			Flags: []flagSpec{
 				{Name: "user", Kind: stringFlag, Arg: "<name>", Help: "Benutzername (Zugang basic)"},
 				{Name: "p12", Kind: stringFlag, Arg: "<datei>", Help: "PKCS#12-Datei (Zugang clientcert)"},
@@ -141,6 +142,7 @@ type statusDeposit struct {
 	Name     string        `json:"name"`
 	File     string        `json:"file"`
 	Root     string        `json:"root,omitempty"`
+	Status   verify.Status `json:"status,omitempty"` // pending entries: "pending" or "indeterminate" (key compromise)
 	Reason   verify.Reason `json:"reason,omitempty"`
 	Error    string        `json:"error,omitempty"`
 }
@@ -216,6 +218,20 @@ func (a *app) status(inv *invocation) error {
 	if err != nil {
 		return err
 	}
+	// One evaluation over the whole archive, as stamp and verify do: pairing
+	// by imprint across all Nachweise and key compromise pooled (spec §6).
+	var roots []string
+	hints := map[string]string{}
+	for _, d := range deps {
+		if d.Err == nil {
+			roots = append(roots, d.Bag.Root)
+			hints[d.Bag.Root] = filepath.Base(d.EvidenceDir)
+		}
+	}
+	ev, err := verify.Evidence(a.ctx, ar.Dir, roots, hints, verify.Options{Trust: ts, Provider: provID})
+	if err != nil {
+		return err
+	}
 	for _, d := range deps {
 		sd := statusDeposit{Sequence: d.Sequence, Name: d.Name, File: filepath.Base(d.Path)}
 		out.Counts.Total++
@@ -226,17 +242,18 @@ func (a *app) status(inv *invocation) error {
 			continue
 		}
 		sd.Root = d.Bag.Root
-		atts, err := verify.Attempts(a.ctx, d.EvidenceDir, d.Bag.Root, verify.Options{Trust: ts, Provider: provID})
-		if err != nil {
-			return err
-		}
+		atts := ev[d.Bag.Root]
 		last := sd
 		out.Last = &last
 		if slices.ContainsFunc(atts, func(x verify.Attempt) bool { return x.Outcome == verify.OutcomeValid }) {
 			out.Counts.Timestamped++
 			continue
 		}
-		if provID == "" {
+		sd.Status = verify.StatusPending
+		switch {
+		case slices.ContainsFunc(atts, func(x verify.Attempt) bool { return x.Outcome == verify.OutcomeCompromised }):
+			sd.Status = verify.StatusIndeterminate // spec §6 step 7
+		case provID == "":
 			sd.Reason = verify.ReasonNoProvider
 		}
 		out.Pending = append(out.Pending, sd)
@@ -541,7 +558,7 @@ func (a *app) stampExit(res *stamp.Result, committed bool) {
 	}
 	switch {
 	case len(changed) > 0:
-		a.warn(fmt.Sprintf("Ablage(n) %s verändert oder ungültig: kein Zeitstempel angefordert. rechnungsarchiv verify ausführen.", numbers(changed)))
+		a.warn(fmt.Sprintf("Ablage(n) %s verändert, ungültig oder nicht lesbar: kein Zeitstempel angefordert. rechnungsarchiv verify ausführen.", numbers(changed)))
 		a.exit = exitFound
 	case len(provider) > 0:
 		a.report(&cliError{Code: "PROVIDER_ERROR", exit: exitProvider, Message: "Zeitstempel ausstehend (" + present.Reason(reason) + "): " + msg,
@@ -830,18 +847,22 @@ func (a *app) protocol(inv *invocation) error {
 		if err != nil {
 			return err
 		}
-		if _, err := os.Stat(p); err != nil {
+		fi, err := os.Stat(p)
+		if err != nil {
 			return err
+		}
+		if !isAblagePath(p, fi) {
+			return usageErr("protocol: <ablage> ist eine Nummer im Archiv oder der Pfad einer Ablage-ZIP (oder einer entpackten Ablage)", "rechnungsarchiv protocol --help")
 		}
 		if rep, err = a.runVerify(p, inv.flag("online")); err != nil {
 			return err
 		}
-		if len(rep.Deposits) != 1 {
-			return usageErr("protocol: <ablage> ist eine Nummer oder der Pfad einer einzelnen Ablage", "")
+		if rep.Mode != verify.ModeDeposit || len(rep.Deposits) != 1 {
+			return usageErr("protocol: <ablage> ist eine Nummer im Archiv oder der Pfad einer einzelnen Ablage", "rechnungsarchiv protocol --help")
 		}
 		dep = &rep.Deposits[0]
-		if parent := filepath.Dir(p); isArchive(parent) {
-			archiveDir = parent
+		if archiveDir, err = enclosingArchive(p); err != nil {
+			return err
 		}
 	}
 	out := inv.str("out")
@@ -854,14 +875,15 @@ func (a *app) protocol(inv *invocation) error {
 	if err != nil {
 		return err
 	}
-	if archiveDir != "" && within(out, archiveDir) {
-		return usageErr("das Archivprotokoll wird nie in den Archivordner geschrieben", "--out <datei.pdf> außerhalb des Archivs angeben")
+	guard := func() error { return outsideArchive(out, archiveDir) }
+	if err := guard(); err != nil {
+		return err
 	}
 	pdf, err := report.PDF(rep, dep, report.Options{})
 	if err != nil {
 		return err
 	}
-	if err := writeNewFile(out, pdf); err != nil {
+	if err := writeNewFile(out, pdf, guard); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return &cliError{Code: "EXISTS", exit: exitError, Message: "Datei existiert bereits: " + out, Hint: "anderen Namen mit --out angeben; vorhandene Dateien werden nie überschrieben."}
 		}
@@ -889,9 +911,70 @@ func parseNumber(s string) (int, bool) {
 	return n, n > 0
 }
 
-func writeNewFile(path string, data []byte) error {
+// isAblagePath reports whether p is one of protocol's documented inputs: an
+// Ablage ZIP, or an extracted Ablage (a folder with bagit.txt). An archive
+// or export folder is neither.
+func isAblagePath(p string, fi os.FileInfo) bool {
+	if fi.Mode().IsRegular() {
+		return strings.EqualFold(filepath.Ext(p), ".zip")
+	}
+	if !fi.IsDir() || isArchive(p) {
+		return false
+	}
+	b, err := os.Stat(filepath.Join(p, "bagit.txt"))
+	return err == nil && b.Mode().IsRegular()
+}
+
+// enclosingArchive returns the archive folder that physically contains p
+// (followed through links and junctions), or "" if there is none.
+func enclosingArchive(p string) (string, error) {
+	phys, err := export.Physical(p)
+	if err != nil {
+		return "", err
+	}
+	for dir := filepath.Dir(phys); ; dir = filepath.Dir(dir) {
+		if isArchive(dir) {
+			return dir, nil
+		}
+		if filepath.Dir(dir) == dir {
+			return "", nil
+		}
+	}
+}
+
+// outsideArchive refuses a target inside archiveDir, compared both as
+// written and where the paths physically lead, so a junction or link to
+// the archive cannot smuggle the file in. archiveDir "" allows any target.
+func outsideArchive(target, archiveDir string) error {
+	if archiveDir == "" {
+		return nil
+	}
+	refuse := usageErr("das Archivprotokoll wird nie in den Archivordner geschrieben", "--out <datei.pdf> außerhalb des Archivs angeben")
+	if within(target, archiveDir) {
+		return refuse
+	}
+	pt, err1 := export.Physical(target)
+	pa, err2 := export.Physical(archiveDir)
+	if err := errors.Join(err1, err2); err != nil {
+		return err
+	}
+	if within(pt, pa) {
+		return refuse
+	}
+	return nil
+}
+
+// writeNewFile creates path (never replacing a file) and writes data.
+// check runs again on the created file before anything is written, so a
+// junction swapped in meanwhile is caught; the empty file is removed.
+func writeNewFile(path string, data []byte, check func() error) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
+		return err
+	}
+	if err := check(); err != nil {
+		f.Close()
+		os.Remove(path)
 		return err
 	}
 	_, err = f.Write(data)
