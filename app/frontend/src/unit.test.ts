@@ -2,8 +2,9 @@
 // `npm test` (scripts/unit.mjs bundles this file with rolldown and runs it
 // in Node). Not part of the app bundle.
 
-import type { CheckSummary, DepositReport } from "./api";
+import type { CheckSummary, DepositReport, FolderDrop } from "./api";
 import { CONTENT, describe, MEANING, predecessorText, TOKEN } from "./describe";
+import { FolderInbox, gateOf } from "./folders";
 import { dateTimeExact } from "./fmt";
 import { checkSummary, lastCheckText } from "./summary";
 
@@ -124,6 +125,48 @@ check("modified: red",checkSummary(summary({ deviations: 1, counts: { total: 2, 
 }
 check("empty last check", lastCheckText(summary({ deposits: 0, firstSeq: 0, lastSeq: 0 }), 0) === "Noch keine Ablage kontrolliert");
 check("never checked", lastCheckText(null, 3) === "Noch nicht kontrolliert");
+
+// Findings 1 and 4: handed-over folders wait until an archive is open for
+// writing, then each is offered once; read-only mode drops them with a note.
+{
+  type S = Parameters<typeof gateOf>[0];
+  const st = (over: { hasArchive?: boolean; readOnly?: boolean; lock?: boolean }): S =>
+    ({ hasArchive: over.hasArchive ?? true, archive: { readOnly: over.readOnly ?? false }, lock: over.lock ? { host: "PC2" } : null }) as unknown as S;
+  const drop = (folder: string, error = "") => ({ folder, error }) as FolderDrop;
+  const inbox = new FolderInbox();
+  inbox.add([drop("D:\\Scans\\2026-11")]);
+  check("no status yet: waits", inbox.next(gateOf(null, false)) === null && inbox.size === 1);
+  check("start screen: waits", inbox.next(gateOf(st({ hasArchive: false }), false)) === null && inbox.size === 1);
+  check("locked: waits", inbox.next(gateOf(st({ lock: true }), false)) === null && inbox.size === 1);
+  check("dialog open: waits", inbox.next(gateOf(st({}), true)) === null && inbox.size === 1);
+  // "Archiv anlegen" → writable: offered once.
+  const step = inbox.next(gateOf(st({}), false));
+  check("after Archiv anlegen: offered", step?.folder === "D:\\Scans\\2026-11", step);
+  check("offered once", inbox.next(gateOf(st({}), false)) === null && inbox.size === 0);
+
+  // The same folder twice (start + second launch) is one offer; order kept.
+  inbox.add([drop("A"), drop("B")]);
+  inbox.add(null);
+  inbox.add([drop("A")]);
+  check("deduplicated", inbox.size === 2);
+  check("fifo A", inbox.next(gateOf(st({}), false))?.folder === "A");
+  check("fifo B", inbox.next(gateOf(st({}), false))?.folder === "B");
+
+  // Read-only ("nur kontrollieren"): not offered, dropped with one short note.
+  inbox.add([drop("A"), drop("B")]);
+  const ro = inbox.next(gateOf(st({ readOnly: true }), false));
+  check("read-only: note, no dialog", !!ro?.note && !ro.folder && has(ro.note, "nicht archiviert"), ro);
+  check("read-only: dropped", inbox.size === 0 && inbox.next(gateOf(st({}), false)) === null);
+
+  // A drop error is shown when it can matter, never later on another screen.
+  inbox.add([drop("", "Bitte ziehen Sie genau einen Ordner hierher.")]);
+  check("error shown when writable", inbox.next(gateOf(st({}), false))?.error === "Bitte ziehen Sie genau einen Ordner hierher.");
+  inbox.add([drop("", "x"), drop("C")]);
+  check("start screen: errors dropped, folder kept", inbox.next(gateOf(st({ hasArchive: false }), false)) === null && inbox.size === 1);
+  check("then the folder", inbox.next(gateOf(st({}), false))?.folder === "C");
+  inbox.add([drop("", "x")]);
+  check("read-only: error alone gives no note", inbox.next(gateOf(st({ readOnly: true }), false)) === null && inbox.size === 0);
+}
 
 if (failed) throw new Error(`${failed} check(s) failed`);
 console.log("frontend unit checks: ok");

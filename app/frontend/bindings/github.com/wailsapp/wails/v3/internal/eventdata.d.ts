@@ -12,7 +12,7 @@ import type * as app$0 from "../../../../realspqrk/rechnungsarchiv/app/models.js
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
-            "ordner-abgelegt": app$0.FolderDrop;
+            "ordner-wartet": void;
             "status-geaendert": app$0.StatusChanged;
         }
     }

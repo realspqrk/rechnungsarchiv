@@ -33,7 +33,10 @@ type command struct {
 	Flags   []flagSpec
 	Writes  bool // changes the archive or writes files
 	Consent bool // needs --yes without a terminal (exit 8)
-	run     func(a *app, inv *invocation) error
+	// NotGlobal are global flags this command refuses (gui: --archiv,
+	// --json). Its help leaves them out; the schema names them.
+	NotGlobal []string
+	run       func(a *app, inv *invocation) error
 }
 
 var (
@@ -106,7 +109,8 @@ func init() {
 				"Ohne Argumente aus dem Explorer oder Startmenü gestartet, öffnet rechnungsarchiv.exe ebenfalls das Fenster; im Terminal zeigt es die Hilfe. " +
 				"Verknüpfungen zeigen auf rechnungsarchiv-gui.exe: es startet rechnungsarchiv.exe gui ohne Konsolenfenster.\n" +
 				"gui gibt keine Daten aus (--json ist ein Aufruffehler). Agenten öffnen das Fenster nur, wenn der Benutzer es sehen will.",
-			run: (*app).gui},
+			NotGlobal: []string{"archiv", "json"},
+			run:       (*app).gui},
 		{Name: "schema", Summary: "Maschinenlesbare Beschreibung aller Befehle (JSON).", run: (*app).schema},
 	}
 }

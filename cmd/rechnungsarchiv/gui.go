@@ -7,7 +7,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 
 	gui "github.com/realspqrk/rechnungsarchiv/app"
 )
@@ -60,7 +59,8 @@ func (a *app) gui(inv *invocation) error {
 		}
 		opts.Folder = dir
 	}
-	opts.SecondLaunch = secondLaunch
+	// A window already running gets opts.Folder (parsed and checked here,
+	// exactly like on the first launch) and this process exits in Run.
 	if alone {
 		freeConsole()
 	}
@@ -98,17 +98,4 @@ func alertError(err error) {
 		msg += "\n\n" + ce.Hint
 	}
 	alert(msg)
-}
-
-// secondLaunch is the folder of a later `gui <ordner>` while the window
-// runs (its os.Args and working folder), or "".
-func secondLaunch(args []string, cwd string) string {
-	if len(args) != 3 || args[1] != "gui" || strings.HasPrefix(args[2], "-") {
-		return ""
-	}
-	dir, err := guiFolder(args[2], cwd)
-	if err != nil {
-		return ""
-	}
-	return dir
 }

@@ -9,9 +9,9 @@ import type {} from "../github.com/wailsapp/wails/v3/internal/eventdata.js";
 import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 
 /**
- * Name of the custom event "ordner-abgelegt".
+ * Name of the custom event "ordner-wartet".
  */
-export const OrdnerAbgelegt = "ordner-abgelegt";
+export const OrdnerWartet = "ordner-wartet";
 
 /**
  * Name of the custom event "status-geaendert".

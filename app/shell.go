@@ -31,10 +31,13 @@ type Shell struct {
 	app   *application.App
 	fake  string // scenario name when the fake service is used
 	debug bool   // screenshot hooks (fake or test environment)
-	// start is the folder of `rechnungsarchiv gui <ordner>`, handed to the
-	// frontend once (StartFolder).
-	start *FolderDrop
 	mu    sync.Mutex
+	// folders waits for the frontend (TakeFolders): the folder of
+	// `rechnungsarchiv gui <ordner>`, of a later launch, and dropped ones.
+	// Wails drops events nobody listens to, and the frontend listens only
+	// after its boot, so the event "ordner-wartet" is just a hint.
+	folders []FolderDrop
+	hint    func() // emits "ordner-wartet"; nil: none (tests, before Run sets it)
 }
 
 // AboutInfo is shown in the "Über" dialog.
@@ -53,7 +56,8 @@ type StatusChanged struct {
 	Busy string `json:"busy"`
 }
 
-// FolderDrop is emitted as event "ordner-abgelegt" when folders are dropped.
+// FolderDrop is a folder handed to the window (command line, later launch,
+// drop), taken with TakeFolders.
 type FolderDrop struct {
 	Folder string `json:"folder"`
 	// Error is a German message when the drop cannot be used (files, several folders).
@@ -64,17 +68,69 @@ func (s *Shell) About() AboutInfo {
 	return AboutInfo{Version: archive.Version, License: licenseID, Fake: s.fake, Debug: s.debug}
 }
 
-// StartFolder returns the folder given on the command line
-// (rechnungsarchiv gui <ordner>) on the first call, then an empty value.
-// The frontend treats it like a dropped folder.
-func (s *Shell) StartFolder() FolderDrop {
+// TakeFolders returns the folders handed over since the last call (oldest
+// first) and empties the queue. The frontend calls it once after its boot
+// and on every "ordner-wartet" event; it decides when to offer them.
+func (s *Shell) TakeFolders() []FolderDrop {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var d FolderDrop
-	if s.start != nil {
-		d, s.start = *s.start, nil
-	}
+	d := s.folders
+	s.folders = nil
 	return d
+}
+
+// offer queues d for the frontend and hints it to take the queue.
+func (s *Shell) offer(d FolderDrop) {
+	s.mu.Lock()
+	s.folders = append(s.folders, d)
+	hint := s.hint
+	s.mu.Unlock()
+	if hint != nil {
+		hint()
+	}
+}
+
+func (s *Shell) setHint(f func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hint = f
+}
+
+// handoverKey names the folder in the single-instance data of a later
+// launch: the absolute folder its own command line already checked
+// (Options.Folder), never its raw argv.
+const handoverKey = "folder"
+
+// singleInstanceOptions makes this process the only window. A later launch
+// sends its folder (if any) and exits inside application.New; this window
+// comes to the front (front) and queues the folder after checking it again.
+func singleInstanceOptions(folder string, s *Shell, front func()) *application.SingleInstanceOptions {
+	o := &application.SingleInstanceOptions{
+		UniqueID: "at.rechnungsarchiv.gui",
+		OnSecondInstanceLaunch: func(d application.SecondInstanceData) {
+			front()
+			if f, ok := handoverFolder(d.AdditionalData[handoverKey]); ok {
+				s.offer(FolderDrop{Folder: f})
+			}
+		},
+	}
+	if folder != "" {
+		o.AdditionalData = map[string]string{handoverKey: folder}
+	}
+	return o
+}
+
+// handoverFolder checks a folder received from another process: an
+// absolute path of an existing folder. Anything else is ignored.
+func handoverFolder(p string) (string, bool) {
+	if p == "" || !filepath.IsAbs(p) {
+		return "", false
+	}
+	fi, err := os.Stat(p)
+	if err != nil || !fi.IsDir() {
+		return "", false
+	}
+	return filepath.Clean(p), true
 }
 
 // ServiceShutdown runs when the application quits (window closed): running

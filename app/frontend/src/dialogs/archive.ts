@@ -10,6 +10,11 @@ import { refreshStatus, withLock } from "../actions";
 
 let openNow = false;
 
+/** An "Ordner archivieren" dialog is open; handed-over folders wait (main.ts). */
+export function archiveDialogOpen(): boolean {
+  return openNow;
+}
+
 export async function openArchiveDialog(folder: string): Promise<void> {
   if (openNow) return;
   let preview: Preview;

@@ -71,6 +71,8 @@ Ein Anbieter genügt. Fällt er weg, bleiben bestehende Zeitstempel gültig und 
 
 Beispiele für Windows PowerShell. `testdata\demo` im Repository enthält die Ordner `2026-10 Eingangsrechnungen` und `2026-10 Ausgangsrechnungen`. Kopieren Sie einen Ordner, oder nehmen Sie Ihren eigenen. Im Terminal fragt `provider set` das Passwort ohne Echo. Ein Skript übergibt es als erste Zeile auf der Standardeingabe, nie als Argument. In Windows PowerShell 5.1 kommt Text in einer Pipe als ASCII an: ein Passwort mit Umlauten tippen Sie an der Abfrage, oder Sie setzen vorher `$OutputEncoding = [System.Text.UTF8Encoding]::new()`.
 
+Aus dem Quellcode gebaut liegt das Programm unter `bin\`. Im Repository-Ordner machen Sie es für diese Sitzung aufrufbar mit `$env:Path = "$PWD\bin;$env:Path"`.
+
 ```powershell
 $demo = "testdata\demo\2026-10 Eingangsrechnungen"
 rechnungsarchiv init "$env:USERPROFILE\Dokumente\Rechnungsarchiv" --firma "Musterfirma GmbH"

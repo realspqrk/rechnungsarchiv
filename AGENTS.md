@@ -12,24 +12,24 @@ For agents asked to "set up Rechnungsarchiv" for a user. Ask the user only for: 
    cd app; wails3 build; cd ..        # full app incl. window (needs Node + wails3 v3.1.0, see app/README.md)
    # CLI only, no window: go build -o bin/rechnungsarchiv.exe ./cmd/rechnungsarchiv
    ```
-   `$APP` = `bin\rechnungsarchiv.exe` (CLI and window in one file; `bin\rechnungsarchiv-gui.exe` is the window launcher for shortcuts). Then read `$APP --help` (the manual) and, before first use of any command, `$APP <command> --help`.
-2. `$APP status --json`:
+   Then, in the repository folder: `$APP = (Resolve-Path '.\bin\rechnungsarchiv.exe').Path`. It is CLI and window in one file; `bin\rechnungsarchiv-gui.exe` is the window launcher for shortcuts. In PowerShell always call it as `& $APP …`. Read `& $APP --help` (the manual) and, before first use of any command, `& $APP <command> --help`.
+2. `& $APP status --json`:
    - exit 3 with `NO_ARCHIVE` → step 3;
    - exit 0 → the archive exists; check `provider` and `credentials`.
-3. `$APP init "<Archivordner>" --firma "<Firma>" --json`. This is remembered as the default archive.
+3. `& $APP init "<Archivordner>" --firma "<Firma>" --json`. This is remembered as the default archive.
 4. Provider + credentials: the user runs this **in their own terminal**; the password prompt is hidden:
    ```powershell
-   $APP provider set mensatek --user <USER>
+   & $APP provider set mensatek --user <USER>
    ```
    - Only if the user explicitly hands you the secret: pipe it on stdin, never as an argument.
    - PowerShell 5.1 pipes ASCII, so umlauts break; prefer the interactive prompt.
-   - Check with `$APP provider show --json`: `credentials.stored: true`, no secret is printed.
-5. Verify with the demo invoices from the repo: `$APP archive --dry-run "testdata\demo\2026-10 Eingangsrechnungen" --json`.
+   - Check with `& $APP provider show --json`: `credentials.stored: true`, no secret is printed.
+5. Verify with the demo invoices from the repo: `& $APP archive --dry-run "testdata\demo\2026-10 Eingangsrechnungen" --json`.
    - Expected: exit 0, `count` 9, `skipped` `["Thumbs.db"]`, nothing written.
    - A real `archive … --yes` commits an Ablage and **buys one timestamp**. Run it only after the user agreed to exactly that.
-   - Then run `$APP verify --json` (exit 0 = Zeitgestempelt; exit 6 = pending, check `reason`).
+   - Then run `& $APP verify --json` (exit 0 = Zeitgestempelt; exit 6 = pending, check `reason`).
 6. Tell the user:
-   - Window: `rechnungsarchiv-gui.exe`, or `$APP gui`.
+   - Window: `rechnungsarchiv-gui.exe`, or `& $APP gui`.
    - CLI: `archive --dry-run <ordner>`, then `archive <ordner>`, then `verify`, and `export --von <jahr> --bis <jahr> <ziel>` for a tax audit.
    - Back up the archive folder after each timestamp.
 

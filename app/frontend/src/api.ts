@@ -2,7 +2,7 @@
 // views import one module.
 export { Shell as api } from "../bindings/github.com/realspqrk/rechnungsarchiv/app";
 export type * from "../bindings/github.com/realspqrk/rechnungsarchiv/app";
-export { OrdnerAbgelegt, StatusGeaendert } from "../bindings/events";
+export { OrdnerWartet, StatusGeaendert } from "../bindings/events";
 export { Events } from "@wailsio/runtime";
 
 /** German message of a rejected call (Go errors are user-facing German text). */

@@ -309,7 +309,8 @@ export interface Finding {
 }
 
 /**
- * FolderDrop is emitted as event "ordner-abgelegt" when folders are dropped.
+ * FolderDrop is a folder handed to the window (command line, later launch,
+ * drop), taken with TakeFolders.
  */
 export interface FolderDrop {
     "folder": string;

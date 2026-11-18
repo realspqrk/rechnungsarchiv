@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/realspqrk/rechnungsarchiv/internal/archive"
@@ -100,7 +101,7 @@ func helpText(c *command) string {
 			flagLines(&b, c.Flags)
 		}
 		b.WriteString("\nGlobale Optionen:\n")
-		flagLines(&b, globalFlags)
+		flagLines(&b, c.globals())
 		b.WriteString("\n" + agentRules)
 		return b.String()
 	}
@@ -151,6 +152,17 @@ Exit-Codes:
 	return b.String()
 }
 
+// globals are the global flags c accepts.
+func (c *command) globals() []flagSpec {
+	var out []flagSpec
+	for _, f := range globalFlags {
+		if !slices.Contains(c.NotGlobal, f.Name) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 type schemaFlag struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
@@ -169,6 +181,8 @@ type schemaCommand struct {
 	Flags   []schemaFlag `json:"flags"`
 	Writes  bool         `json:"writes"`
 	Consent bool         `json:"consent"` // needs --yes without a terminal
+	// NotGlobal are the global flags this command refuses (usage error).
+	NotGlobal []string `json:"not_global_flags,omitempty"`
 }
 
 func schemaFlags(fs []flagSpec) []schemaFlag {
@@ -179,11 +193,19 @@ func schemaFlags(fs []flagSpec) []schemaFlag {
 	return out
 }
 
+func notGlobal(c *command) []string {
+	var out []string
+	for _, n := range c.NotGlobal {
+		out = append(out, "--"+n)
+	}
+	return out
+}
+
 func schemaDoc() any {
 	var cmds []schemaCommand
 	for _, c := range commands {
 		cmds = append(cmds, schemaCommand{Name: c.Name, Usage: usageLine(c), Args: c.Args, MinArgs: c.MinArgs, MaxArgs: c.MaxArgs,
-			Summary: c.Summary, Help: c.Help, Flags: schemaFlags(c.Flags), Writes: c.Writes, Consent: c.Consent})
+			Summary: c.Summary, Help: c.Help, Flags: schemaFlags(c.Flags), Writes: c.Writes, Consent: c.Consent, NotGlobal: notGlobal(c)})
 	}
 	return map[string]any{
 		"name":         "rechnungsarchiv",

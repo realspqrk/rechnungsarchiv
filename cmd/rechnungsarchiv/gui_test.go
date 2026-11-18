@@ -70,14 +70,6 @@ func TestGUICommand(t *testing.T) {
 	if len(*opened) != 1 || (*opened)[0].Folder != dir || *freed != 0 {
 		t.Fatalf("gui <ordner>: opened %+v, freed %d", *opened, *freed)
 	}
-	// A later launch while the window runs: its folder, relative to its
-	// working folder.
-	sub := filepath.Join(dir, "sub")
-	os.Mkdir(sub, 0o755)
-	f := (*opened)[0].SecondLaunch
-	if f == nil || f([]string{"x.exe", "gui", "sub"}, dir) != sub || f([]string{"x.exe", "gui", "rechnung.pdf"}, dir) != "" || f([]string{"x.exe"}, dir) != "" {
-		t.Fatalf("second launch folder not resolved")
-	}
 
 	// gui without a folder, alone in its console (launcher, shortcut): the
 	// console is released first. Output is not a terminal there.
@@ -117,6 +109,75 @@ func TestGUICommand(t *testing.T) {
 	opened, _, _ = stubGUI(t, false)
 	if code, out, _ := inProcess(t, true, "gui", "--help"); code != 0 || !strings.HasPrefix(out, "rechnungsarchiv gui") || len(*opened) != 0 {
 		t.Errorf("gui --help: exit %d, opened %v:\n%s", code, *opened, out)
+	}
+}
+
+// Finding 2: first and second launch take the folder from the same parsed
+// command line. A second launch runs this very code and hands over
+// Options.Folder (app.singleInstanceOptions), so every spelling the first
+// launch accepts (`--`, `--json=false`, a folder named like a flag) gives
+// the same absolute folder; nothing is matched on raw argv any more.
+func TestGUIFolderParity(t *testing.T) {
+	t.Setenv("APPDATA", t.TempDir())
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "Belege 2026")
+	dash := filepath.Join(dir, "-belege")
+	os.Mkdir(plain, 0o755)
+	os.Mkdir(dash, 0o755)
+	t.Chdir(dir)
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"gui", "Belege 2026"}, plain},
+		{[]string{"gui", plain}, plain},
+		{[]string{"gui", "--", "Belege 2026"}, plain},
+		{[]string{"gui", "--json=false", "Belege 2026"}, plain},
+		{[]string{"gui", "Belege 2026", "--json=false"}, plain},
+		{[]string{"gui", "--", "-belege"}, dash},
+		{[]string{"gui", "--json=false", "--", "-belege"}, dash},
+		{[]string{"gui", "--", dash}, dash},
+		{[]string{"gui", "." + string(filepath.Separator) + "Belege 2026" + string(filepath.Separator)}, plain},
+	} {
+		opened, _, _ := stubGUI(t, false)
+		if code, _, stderr := inProcess(t, true, c.args...); code != 0 || len(*opened) != 1 {
+			t.Errorf("%q: exit %d %s", c.args, code, stderr)
+			continue
+		}
+		if got := (*opened)[0].Folder; got != c.want {
+			t.Errorf("%q: folder %q, want %q", c.args, got, c.want)
+		}
+	}
+	// A flag-like word without `--` is a flag, on every launch.
+	opened, _, _ := stubGUI(t, false)
+	if code, _, _ := inProcess(t, true, "gui", "-belege"); code != exitUsage || len(*opened) != 0 {
+		t.Errorf("gui -belege: exit %d, opened %v", code, *opened)
+	}
+}
+
+// Finding 3: gui refuses --archiv and --json, so its help lists neither as
+// an option, and the schema says they do not apply. The prose stays.
+func TestGUIHelpOnlyItsOptions(t *testing.T) {
+	h := helpText(find("gui"))
+	opts := h[strings.Index(h, "Globale Optionen:"):strings.Index(h, agentRules)]
+	if strings.Contains(opts, "--archiv") || strings.Contains(opts, "--json") || !strings.Contains(opts, "--help") {
+		t.Fatalf("gui options:\n%s", opts)
+	}
+	if !strings.Contains(h, "--json ist ein Aufruffehler") || !strings.HasPrefix(h, "rechnungsarchiv gui [<ordner>]\n") {
+		t.Fatalf("gui prose changed:\n%s", h)
+	}
+	if s := helpText(find("status")); !strings.Contains(s, "--archiv <ordner>") || !strings.Contains(s, "--json") {
+		t.Fatalf("status lost its global options:\n%s", s)
+	}
+	doc := schemaDoc().(map[string]any)
+	for _, c := range doc["commands"].([]schemaCommand) {
+		want := []string(nil)
+		if c.Name == "gui" {
+			want = []string{"--archiv", "--json"}
+		}
+		if strings.Join(c.NotGlobal, ",") != strings.Join(want, ",") {
+			t.Errorf("%s: not_global_flags %q", c.Name, c.NotGlobal)
+		}
 	}
 }
 

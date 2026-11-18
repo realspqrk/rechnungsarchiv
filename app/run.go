@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -28,20 +29,19 @@ const notBuiltPage = `<!doctype html><html lang="de"><meta charset="utf-8"><titl
 <p>Bitte im Ordner <code>app</code> <code>wails3 build</code> ausführen (siehe app/README.md).</p></body></html>`
 
 func init() {
-	application.RegisterEvent[FolderDrop]("ordner-abgelegt")
+	// A folder waits in Shell.TakeFolders; the event carries no data.
+	application.RegisterEvent[application.Void]("ordner-wartet")
 	application.RegisterEvent[StatusChanged]("status-geaendert")
 }
 
 // Options configures one window run.
 type Options struct {
 	// Folder, if set, is offered in the "Ordner archivieren" dialog once
-	// the window is ready (rechnungsarchiv gui <ordner>). Absolute path of
-	// an existing folder; the caller checks it.
+	// an archive is open for writing (rechnungsarchiv gui <ordner>).
+	// Absolute path of an existing folder; the caller checks it. If a
+	// window already runs, this process hands Folder over to it and exits;
+	// that window checks it again.
 	Folder string
-	// SecondLaunch returns the folder of a later launch (its os.Args and
-	// working folder) while this window runs; "" if it names none. The
-	// later process exits and this window comes to the front. Nil: none.
-	SecondLaunch func(args []string, workingDir string) string
 }
 
 // Run opens the window and returns when it is closed. It must be called on
@@ -51,8 +51,7 @@ func Run(opts Options) error {
 	// (screenshots, UI review). See README.md.
 	shell := &Shell{debug: sys.debug}
 	if opts.Folder != "" {
-		start := handleDrop([]string{opts.Folder})
-		shell.start = &start
+		shell.offer(handleDrop([]string{opts.Folder}))
 	}
 	var real *realService
 	if scenario := os.Getenv("RA_FAKE"); scenario != "" {
@@ -70,30 +69,24 @@ func Run(opts Options) error {
 		return err
 	}
 
-	var app *application.App
-	var win *application.WebviewWindow
-	app = application.New(application.Options{
-		Name:        "Rechnungsarchiv",
-		Description: "Lokales Archiv für Rechnungen mit qualifiziertem Zeitstempel",
-		Services:    []application.Service{application.NewService(shell)},
-		Assets:      application.AssetOptions{Handler: handler},
-		SingleInstance: &application.SingleInstanceOptions{
-			UniqueID: "at.rechnungsarchiv.gui",
-			OnSecondInstanceLaunch: func(d application.SecondInstanceData) {
-				if win == nil {
-					return
-				}
-				win.Restore()
-				win.Focus()
-				if opts.SecondLaunch != nil {
-					if folder := opts.SecondLaunch(d.Args, d.WorkingDir); folder != "" {
-						app.Event.Emit("ordner-abgelegt", handleDrop([]string{folder}))
-					}
-				}
-			},
-		},
+	// The second-instance listener runs on its own goroutine from inside
+	// application.New, possibly before the window exists.
+	var win atomic.Pointer[application.WebviewWindow]
+	front := func() {
+		if w := win.Load(); w != nil {
+			w.Restore()
+			w.Focus()
+		}
+	}
+	app := application.New(application.Options{
+		Name:           "Rechnungsarchiv",
+		Description:    "Lokales Archiv für Rechnungen mit qualifiziertem Zeitstempel",
+		Services:       []application.Service{application.NewService(shell)},
+		Assets:         application.AssetOptions{Handler: handler},
+		SingleInstance: singleInstanceOptions(opts.Folder, shell, front),
 	})
 	shell.app = app
+	shell.setHint(func() { app.Event.Emit("ordner-wartet") })
 	if real != nil {
 		real.onChange = func() {
 			busy := ""
@@ -108,7 +101,7 @@ func Run(opts Options) error {
 	if shell.fake != "" {
 		title += " – Beispieldaten (" + shell.fake + ")"
 	}
-	win = app.Window.NewWithOptions(application.WebviewWindowOptions{
+	w := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            title,
 		Width:            1280,
 		Height:           860,
@@ -118,8 +111,9 @@ func Run(opts Options) error {
 		EnableFileDrop:   true,
 		URL:              "/",
 	})
-	win.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {
-		app.Event.Emit("ordner-abgelegt", handleDrop(e.Context().DroppedFiles()))
+	win.Store(w)
+	w.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {
+		shell.offer(handleDrop(e.Context().DroppedFiles()))
 	})
 	return app.Run()
 }

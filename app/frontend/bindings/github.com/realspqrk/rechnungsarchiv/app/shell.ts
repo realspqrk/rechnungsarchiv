@@ -128,17 +128,17 @@ export function StampPending(): $CancellablePromise<$models.StampResult> {
     return $Call.ByID(3498016682);
 }
 
-/**
- * StartFolder returns the folder given on the command line
- * (rechnungsarchiv gui <ordner>) on the first call, then an empty value.
- * The frontend treats it like a dropped folder.
- */
-export function StartFolder(): $CancellablePromise<$models.FolderDrop> {
-    return $Call.ByID(1152663332);
-}
-
 export function Status(): $CancellablePromise<$models.Status> {
     return $Call.ByID(1781937110);
+}
+
+/**
+ * TakeFolders returns the folders handed over since the last call (oldest
+ * first) and empties the queue. The frontend calls it once after its boot
+ * and on every "ordner-wartet" event; it decides when to offer them.
+ */
+export function TakeFolders(): $CancellablePromise<$models.FolderDrop[] | null> {
+    return $Call.ByID(3463377320);
 }
 
 export function TakeOver(): $CancellablePromise<void> {

@@ -1,8 +1,8 @@
 import "./fonts.css";
 import "./style.css";
 
-import { api, errMsg, Events, OrdnerAbgelegt, StatusGeaendert } from "./api";
-import type { FolderDrop } from "./api";
+import { api, errMsg, Events, OrdnerWartet, StatusGeaendert } from "./api";
+import { FolderInbox, gateOf } from "./folders";
 import { clear, h } from "./dom";
 import { app, rerender, setRenderer } from "./state";
 import { toast } from "./ui";
@@ -11,7 +11,7 @@ import { renderStart } from "./views/start";
 import { renderMain } from "./views/overview";
 import { renderDeposit } from "./views/deposit";
 import { renderSettings } from "./views/settings";
-import { openArchiveDialog } from "./dialogs/archive";
+import { archiveDialogOpen, openArchiveDialog } from "./dialogs/archive";
 import { openExportDialog } from "./dialogs/export";
 import { openAboutDialog, openDisclaimerDialog } from "./dialogs/about";
 
@@ -46,6 +46,9 @@ async function route(): Promise<void> {
   if (view) clear(root);
   root.appendChild(next);
   window.scrollTo(0, 0);
+  // Every status change re-renders: after "Archiv anlegen" or "öffnen",
+  // and when a dialog closes, a waiting folder is offered.
+  void offerFolders();
 }
 
 async function boot(): Promise<void> {
@@ -58,7 +61,10 @@ async function boot(): Promise<void> {
   setRenderer(route);
   window.addEventListener("hashchange", () => void route());
 
-  Events.On(OrdnerAbgelegt, (ev) => onFolder(ev.data));
+  // A folder waits in Go (command line, a later launch, a drop); the event
+  // only says "take it now". Listening starts here, after the boot calls, so
+  // the queue is taken once more after the first render.
+  Events.On(OrdnerWartet, () => void takeFolders());
 
   // Background work in Go (stamping on start, trusted-list refresh).
   Events.On(StatusGeaendert, () => void onStatusChanged());
@@ -78,17 +84,39 @@ async function boot(): Promise<void> {
     };
   }
   await route();
-  // rechnungsarchiv gui <ordner>: the folder from the command line, once.
-  onFolder(await api.StartFolder());
+  ready = true;
+  await takeFolders();
 }
 
-/** A dropped folder, or the one given on the command line. */
-function onFolder(drop: FolderDrop): void {
-  if (!drop.folder && !drop.error) return;
-  // Read-only mode, or another PC holds the lock: nothing is archived.
-  if (!app.status?.hasArchive || app.status.archive.readOnly || app.status.lock) return;
-  if (drop.error) toast(drop.error, "error");
-  else openArchiveDialog(drop.folder);
+// Handed-over folders wait here until an archive is open for writing
+// (folders.ts); each is offered once.
+const inbox = new FolderInbox();
+let ready = false; // first render done
+let offering = false; // a dialog is being opened
+
+async function takeFolders(): Promise<void> {
+  try {
+    inbox.add(await api.TakeFolders());
+  } catch {
+    return;
+  }
+  await offerFolders();
+}
+
+async function offerFolders(): Promise<void> {
+  if (!ready || offering) return;
+  offering = true;
+  try {
+    for (;;) {
+      const step = inbox.next(gateOf(app.status, archiveDialogOpen()));
+      if (!step) break;
+      if (step.error) toast(step.error, "error");
+      else if (step.note) toast(step.note);
+      else if (step.folder) await openArchiveDialog(step.folder);
+    }
+  } finally {
+    offering = false;
+  }
 }
 
 void boot();
