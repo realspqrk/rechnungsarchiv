@@ -71,6 +71,13 @@ export function OpenProviderWebsite(id: string): $CancellablePromise<void> {
 }
 
 /**
+ * OpenSupport opens one of the fixed support pages by id.
+ */
+export function OpenSupport(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1547639987, id);
+}
+
+/**
  * PickFolder shows a folder dialog. purpose: "archiv" | "ablage" | "export".
  * It returns "" when the user cancels.
  */

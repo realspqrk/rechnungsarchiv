@@ -50,12 +50,6 @@ export function openAboutDialog(): void {
         h("dd", null, "IBM Plex Sans und IBM Plex Mono (SIL Open Font License 1.1)"),
       ),
       h("div", null, project),
-      h("p", { class: "muted small m0" }, "Das Programm macht Veränderungen an den Ablagen erkennbar. Das Löschen der jeweils letzten Ablage erkennt es nicht."),
-      h(
-        "p",
-        { class: "muted small m0" },
-        "Danke an die offenen Standards und Projekte, auf denen das hier aufbaut: BagIt (Library of Congress, RFC 8493), RFC 3161, die EU-Vertrauenslisten der Europäischen Kommission und der Mitgliedstaaten, digitorus/timestamp (Go), Wails und GoBDify für die Anregung.",
-      ),
       // The Kurzfassung paragraph is shown unchanged here (docs/haftungsausschluss.md);
       // the full text opens in its own dialog instead of repeating it.
       h(
@@ -72,9 +66,41 @@ export function openAboutDialog(): void {
           }, "inline-link"),
         ),
       ),
+      support(),
+      h("p", { class: "muted small m0" }, "Das Programm macht Veränderungen an den Ablagen erkennbar. Das Löschen der jeweils letzten Ablage erkennt es nicht."),
+      h(
+        "p",
+        { class: "muted small m0" },
+        "Danke an die offenen Standards und Projekte, auf denen das hier aufbaut: BagIt (Library of Congress, RFC 8493), RFC 3161, die EU-Vertrauenslisten der Europäischen Kommission und der Mitgliedstaaten, digitorus/timestamp (Go), Wails und GoBDify für die Anregung.",
+      ),
+      h("p", { class: "muted small m0" }, "SPQRK IT-Dienstleistungen · Gerhard Petermeir, BA MSc · Haag 8, 8344 Bad Gleichenberg, Österreich · office@spqrk.net · UID ATU69739438"),
     );
   const actions = h("div", { class: "dialog__actions" }, close);
   dlg.body.append(content, actions);
   scrollCue(content, actions);
   close.focus({ preventScroll: true });
+}
+
+/** "Rechnungsarchiv unterstützen": a voluntary contribution or PhraseVault.
+ * The pages are fixed in Go (Shell.OpenSupport). */
+function support(): HTMLElement {
+  const link = (id: string, label: string, primary = false) =>
+    button([label, " ", h("span", { "aria-hidden": "true" }, "↗")], async () => {
+      try {
+        await api.OpenSupport(id);
+      } catch (e) {
+        toast(errMsg(e), "error");
+      }
+    }, primary ? "primary" : "secondary", { "aria-label": `${label} (öffnet den Browser)` });
+  return h(
+    "section",
+    { class: "support", "aria-labelledby": "support-title" },
+    h("h2", { class: "support__title", id: "support-title" }, "Rechnungsarchiv unterstützen"),
+    h(
+      "p",
+      { class: "m0" },
+      "Gefällt Ihnen Rechnungsarchiv? Vielleicht erspart es Ihnen Stunden mit Ausdrucken, Sortieren und Ablegen in Papierordnern. Auch im Zeitalter der KI kosten Entwicklung und Pflege viel Zeit und Mittel. Wenn Sie das Projekt unterstützen möchten, freuen wir uns über einen freiwilligen Beitrag – oder probieren Sie PhraseVault, unser Programm für Textbausteine. Vielleicht gefällt es Ihnen auch.",
+    ),
+    h("div", { class: "support__links" }, link("github", "GitHub Sponsors", true), link("kofi", "Ko-fi"), link("paypal", "PayPal"), link("phrasevault", "PhraseVault")),
+  );
 }

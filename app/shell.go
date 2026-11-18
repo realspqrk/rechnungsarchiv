@@ -313,6 +313,23 @@ func (s *Shell) OpenPrices() error { return s.app.Browser.OpenURL(pricesURL) }
 // OpenProject opens the project page.
 func (s *Shell) OpenProject() error { return s.app.Browser.OpenURL(projectURL) }
 
+// supportLinks are the only pages "Rechnungsarchiv unterstützen" opens.
+var supportLinks = map[string]string{
+	"github":      "https://github.com/sponsors/realspqrk",
+	"kofi":        "https://ko-fi.com/spqrk",
+	"paypal":      "https://paypal.me/realSPQRK",
+	"phrasevault": "https://phrasevault.app",
+}
+
+// OpenSupport opens one of the fixed support pages by id.
+func (s *Shell) OpenSupport(id string) error {
+	u, ok := supportLinks[id]
+	if !ok {
+		return fmt.Errorf("Unbekannter Link: %s", id)
+	}
+	return s.app.Browser.OpenURL(u)
+}
+
 // handleDrop turns dropped paths into a FolderDrop.
 func handleDrop(paths []string) FolderDrop {
 	if len(paths) != 1 {

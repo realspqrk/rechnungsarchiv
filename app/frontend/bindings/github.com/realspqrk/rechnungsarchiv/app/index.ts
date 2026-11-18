@@ -24,6 +24,7 @@ export type {
     ExportPlan,
     ExportResult,
     FileCounts,
+    FileEntry,
     Finding,
     FolderDrop,
     InheritedPending,

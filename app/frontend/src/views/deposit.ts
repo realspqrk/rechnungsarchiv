@@ -1,12 +1,12 @@
 // Ablage detail ("Ablage kontrollieren"): banner from the report state.
 
-import { api, errMsg, list } from "../api";
-import { h, icon } from "../dom";
-import { date, n, seq } from "../fmt";
+import { api, errMsg, list, type FileEntry } from "../api";
+import { clear, h, icon } from "../dom";
+import { bytes, date, dateTimeShort, n, plural, seq } from "../fmt";
 import { app } from "../state";
 import { busy, button, lockedNote, subHeader, toast } from "../ui";
 import { stampPending } from "../actions";
-import { describe, MEANING, predecessorText } from "../describe";
+import { collapsedFiles, describe, deviationsFirst, MEANING, predecessorText } from "../describe";
 
 export async function renderDeposit(seqNo: number): Promise<HTMLElement> {
   const r = await api.VerifyDeposit(seqNo);
@@ -18,10 +18,9 @@ export async function renderDeposit(seqNo: number): Promise<HTMLElement> {
     { class: "mini-tiles mini-tiles--4" },
     mini("Unverändert", r.files.unchanged),
     mini("Verändert", r.files.changed),
-    mini("Fehlend", r.files.missing),
-    mini("Hinzugefügt", r.files.added),
+    mini("Fehlt", r.files.missing),
+    mini("Hinzugekommen", r.files.added),
   );
-  const changed = list(r.changedPaths);
 
   // While another PC holds the lock nothing is fetched here; the banner on
   // the main screen offers the takeover.
@@ -63,9 +62,7 @@ export async function renderDeposit(seqNo: number): Promise<HTMLElement> {
         { class: "card card--pad", "aria-labelledby": "h-dateien" },
         h("h2", { class: "card__h", id: "h-dateien" }, "Dateien"),
         filesTiles,
-        changed.length > 1
-          ? h("ul", { class: "path-list" }, ...changed.map((p) => h("li", { class: "mono mono--small" }, p)))
-          : null,
+        fileTable(list(r.fileList)),
       ),
       h(
         "section",
@@ -119,4 +116,61 @@ export async function renderDeposit(seqNo: number): Promise<HTMLElement> {
 
 function mini(label: string, value: number): HTMLElement {
   return h("div", { class: "mini-tile" }, h("div", { class: "mini-tile__label" }, label), h("div", { class: "mini-tile__value" }, n(value)));
+}
+
+const FIRST_FILES = 10;
+
+/** Result of this check per file: [label, tone, icon]. */
+const FILE_STATE: Record<string, [string, string, string]> = {
+  unveraendert: ["unverändert", "green", "check"],
+  veraendert: ["verändert", "red", "warn"],
+  fehlt: ["fehlt", "red", "warn"],
+  hinzugekommen: ["hinzugekommen", "amber", "warn"],
+};
+
+/** Every file of the Ablage with its own check result; long lists open on request. */
+function fileTable(all0: FileEntry[]): HTMLElement | null {
+  if (!all0.length) return null;
+  const files = deviationsFirst(all0);
+  const short = collapsedFiles(files, FIRST_FILES);
+  let all = short.length === files.length;
+  const body = h("tbody", null);
+  const more = h("div", { class: "table__more" });
+  const render = () => {
+    clear(body);
+    for (const f of all ? files : short) {
+      const [label, tone, ic] = FILE_STATE[f.state] ?? [f.state, "grey", "info"];
+      body.appendChild(
+        h(
+          "tr",
+          null,
+          h("td", { class: "file-table__path break" }, f.path),
+          h("td", { class: "file-table__num" }, f.size > 0 ? bytes(f.size) : "–"),
+          h("td", { class: "file-table__date" }, f.mtime ? dateTimeShort(f.mtime) : "–"),
+          h("td", null, h("span", { class: `file-state state--${tone}` }, icon(ic, 14, 2.4), label)),
+        ),
+      );
+    }
+    clear(more);
+    if (short.length < files.length) {
+      more.appendChild(
+        button(all ? "Nur die ersten anzeigen" : `Alle ${plural(files.length, "Datei", "Dateien")} anzeigen`, () => {
+          all = !all;
+          render();
+        }, "text"),
+      );
+    }
+  };
+  render();
+  return h(
+    "div",
+    { class: "file-table-wrap" },
+    h(
+      "table",
+      { class: "file-table" },
+      h("thead", null, h("tr", null, ...["Datei", "Größe", "Änderungsdatum", "Kontrolle"].map((t) => h("th", { scope: "col" }, t)))),
+      body,
+    ),
+    more,
+  );
 }

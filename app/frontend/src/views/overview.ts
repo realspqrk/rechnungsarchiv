@@ -4,7 +4,7 @@ import { api, list, type Deposit, type Status } from "../api";
 import { h, icon } from "../dom";
 import { dateTimeShort, n, plural, seq } from "../fmt";
 import { app, navigate, rerender } from "../state";
-import { findingText, QUAL, QUAL_SHORT, REASON_SHORT, STATE, depositTone } from "../text";
+import { findingText, QUAL, QUAL_SHORT, REASON_SHORT, STATE, UNCONFIRMED_TIP, depositTone } from "../text";
 import { banner, busy, button, lockedNote, readOnlyBadge } from "../ui";
 import { checkSummary, lastCheckText } from "../summary";
 import { confirmTakeOver, onStatusChanged, stampPending } from "../actions";
@@ -290,6 +290,9 @@ export function statusCell(d: Deposit, ro: boolean, locked = false): HTMLElement
     case STATE.stamped:
       label = "Zeitgestempelt";
       sub = [QUAL_SHORT[d.qualification] ?? ""];
+      if (d.qualification === QUAL.unconfirmed) {
+        sub = [h("span", { class: "has-tip", title: UNCONFIRMED_TIP, tabindex: "0", "aria-label": `${QUAL_SHORT[d.qualification]}. ${UNCONFIRMED_TIP}` }, QUAL_SHORT[d.qualification])];
+      }
       iconName = d.qualification === QUAL.unconfirmed ? "info" : "check";
       break;
     case STATE.pending: {

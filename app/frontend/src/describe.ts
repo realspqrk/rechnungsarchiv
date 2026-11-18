@@ -5,9 +5,9 @@
 // separately; the aggregate state never stands in for either of them. A
 // "spätestens" time is stated only when Go sent one (provenLatest).
 
-import type { DepositReport } from "./api";
+import type { DepositReport, FileEntry } from "./api";
 import { accuracy, country, date, dateTimeExact, dateTimeLong, n, plural, seq } from "./fmt";
-import { QUAL, QUAL_PAREN, REASON_LONG, STATE, type Tone } from "./text";
+import { QUAL, QUAL_PAREN, REASON_LONG, STATE, UNCONFIRMED_FIX, type Tone } from "./text";
 
 export interface View {
   tone: Tone;
@@ -65,8 +65,10 @@ export function describe(r: DepositReport): View {
   const provider = st ? `${st.provider}, ${country(st.providerCountry)}` : "";
   const latest = d.provenLatest ? dateTimeLong(d.provenLatest) : "";
   const stampTime = st && st.genTime ? `${dateTimeExact(st.genTime)} (${accuracy(st.accuracyMs)})` : "";
-  const revocation = st?.revocationSource ? `Zertifikat laut ${st.revocationSource} nicht gesperrt` : "";
+  // Only shown with a valid signature: the certificate passed the check, stated positively.
+  const revocation = st?.revocationSource ? `Zertifikat gültig (${st.revocationSource === "CRL" ? "Sperrlisten-Prüfung" : "OCSP-Prüfung"})` : "";
   const joined = (...parts: string[]) => parts.filter(Boolean).join(" · ");
+  const note = st?.qualificationNote ?? "";
   const base = { stampTime, retry: "none" as const, meaning: (latest ? "latest" : "plain") as View["meaning"] };
 
   switch (d.state) {
@@ -105,9 +107,9 @@ export function describe(r: DepositReport): View {
         tone: "neutral",
         icon: "info",
         title,
-        lead: `${matches} Ob der Dienst zu diesem Zeitpunkt qualifiziert war, ist mit den vorhandenen EU-Vertrauenslisten noch nicht bestätigt; das wird bei der nächsten Kontrolle mit Internetverbindung geprüft.`,
+        lead: `${matches} Ob der Dienst zu diesem Zeitpunkt qualifiziert war, ist noch offen. ${UNCONFIRMED_FIX}`,
         stampTitle: `Qualifikation unbestätigt · ${provider}`,
-        stampDetail: joined("Signatur gültig", revocation, "keine Vertrauensliste nach dem Stempelzeitpunkt vorhanden"),
+        stampDetail: joined("Signatur gültig", revocation, note ? note.charAt(0).toUpperCase() + note.slice(1) : ""),
       };
     }
     case STATE.modified:
@@ -202,3 +204,17 @@ export const MEANING: Record<View["meaning"], string> = {
     "Was das Ergebnis bedeutet: Die Dateien stimmen mit dem Stand überein, den der Zeitstempel belegt; ohne Angabe der Genauigkeit ist kein spätester Zeitpunkt belegt. Es bestätigt nicht, dass die Rechnungen echt oder inhaltlich richtig sind, und nicht, dass keine Ablage fehlt.",
   none: "",
 };
+
+/** The file list with deviating files first (each part in path order), so
+ * none hides behind "Alle … anzeigen". */
+export function deviationsFirst(files: FileEntry[]): FileEntry[] {
+  const ok = (f: FileEntry) => f.state === "unveraendert";
+  return [...files.filter((f) => !ok(f)), ...files.filter(ok)];
+}
+
+/** The collapsed file list: every deviating file (never hidden), then
+ * unchanged ones up to limit rows. files is in deviationsFirst order. */
+export function collapsedFiles(files: FileEntry[], limit: number): FileEntry[] {
+  const deviating = files.filter((f) => f.state !== "unveraendert").length;
+  return files.slice(0, Math.max(limit, deviating));
+}

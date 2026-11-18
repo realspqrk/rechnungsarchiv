@@ -228,3 +228,44 @@ func TestExportBundlesRunningExecutable(t *testing.T) {
 		t.Fatalf("bundled %d bytes, running program %d bytes (%v)", len(got), len(want), err)
 	}
 }
+
+// Owner decision 2026-11-18: an export made with network checks online, so
+// the Archivprotokoll of a stamp newer than the newest list reads
+// qualifiziert (list fetched during this check) instead of unbestätigt.
+// Without network it stays unbestätigt and says why.
+func TestExportChecksOnlineWhenPossible(t *testing.T) {
+	e := testenv.New(t) // lists issued 48 h ago, older than the stamp below
+	e.Add(testenv.Incoming, archive.Options{})
+	if r := e.Stamp(); len(r.Outcomes) != 1 || !r.Outcomes[0].Stamped {
+		t.Fatalf("stamp %s", testenv.JSON(r))
+	}
+	for _, tc := range []struct {
+		name   string
+		online bool
+		want   verify.Qualification
+	}{{"online", true, verify.Qualified}, {"offline", false, verify.Unconfirmed}} {
+		t.Run(tc.name, func(t *testing.T) {
+			o := options(e, "")
+			o.Executable = func() (string, error) { return "", fmt.Errorf("nicht nötig") }
+			if tc.online {
+				o.ExportTrust = func(dst string) (*trust.Store, error) {
+					dir := filepath.Join(dst, trust.DirName)
+					return e.TrustAt([]string{dir}, dir), nil
+				}
+			} else {
+				o.SourceTrust = func(src string) (*trust.Store, error) {
+					return e.OfflineTrust(filepath.Join(src, trust.DirName)), nil
+				}
+			}
+			dst := filepath.Join(t.TempDir(), "x")
+			res, err := export.Run(context.Background(), e.Dir, dst, o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := res.Report.Deposits[0]
+			if res.Report.Online != tc.online || d.Status != verify.StatusTimestamped || d.Qualification != tc.want {
+				t.Fatalf("online %v status %s qualification %s", res.Report.Online, d.Status, d.Qualification)
+			}
+		})
+	}
+}

@@ -188,16 +188,18 @@ func trustListText(tl verify.TrustList) string {
 	return s
 }
 
-// revocationText is "nicht gesperrt · OCSP vom … · CN=…".
+// revocationText is "gültig · OCSP-Auskunft vom … · CN=…", stated
+// positively for a certificate in good standing (owner: "nicht gesperrt"
+// read as suspicion).
 func revocationText(r verify.Revocation) string {
-	kind := "OCSP"
+	kind := "OCSP-Auskunft"
 	if r.Kind == "crl" {
 		kind = "Sperrliste (CRL)"
 	}
 	var s string
 	switch r.Status {
 	case "good":
-		s = "nicht gesperrt"
+		s = "gültig"
 	case "revoked":
 		s = "gesperrt seit " + present.TimeFull(r.RevokedAt)
 	default:

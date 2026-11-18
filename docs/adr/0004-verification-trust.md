@@ -44,3 +44,7 @@ The verifier is the security boundary. Several failure modes shaped this decisio
   - trusted list too old or with an invalid signature;
   - a token from before the QTST grant date;
   - malformed input (fuzzing).
+
+## Update 2026-11-18: export check online
+
+The export's own check (spec §8) runs online when the trusted lists could be refreshed. Reason: national lists appear every few weeks, so an offline check of a fresh stamp says unbestätigt, and the Archivprotokoll an auditor reads first would say so for every recent Ablage. Online, the list fetched during the check decides, as above, and the protocol states "online". An offline re-check of the same export may still say unbestätigt until a newer list exists; PDF, CLI and GUI then name the reason (`present.UnconfirmedReason`).

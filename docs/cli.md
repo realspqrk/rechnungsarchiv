@@ -153,7 +153,7 @@ The output is `verify.Report`: `{mode, path, checked_at, online, archive_id, com
 
 ### export
 
-`export --von <jahr> --bis <jahr> <ziel> --yes` refreshes the trusted lists if possible (into a cache outside the archive), then writes the folder described in spec §8, including `rechnungsarchiv.exe` (this program), one Archivprotokoll per Ablage, `DATEIVERZEICHNIS.csv` and `PRUEFANLEITUNG.txt`. The target must be new or empty and must not be inside the archive. The archive is only read. `report` is the check of the export itself, computed only from what the export contains. Exit 0 once the export is written; if that check is not clean, a warning says so.
+`export --von <jahr> --bis <jahr> <ziel> --yes` refreshes the trusted lists if possible (into a cache outside the archive), then writes the folder described in spec §8, including `rechnungsarchiv.exe` (this program), one Archivprotokoll per Ablage, `DATEIVERZEICHNIS.csv` and `PRUEFANLEITUNG.txt`. The target must be new or empty and must not be inside the archive. The archive is only read. `report` is the check of the export itself, computed from what the export contains, online when the trusted lists could be refreshed (spec §8). Exit 0 once the export is written; if that check is not clean, a warning says so.
 
 `export` has no `--dry-run`. Without `--yes` and without a terminal it exits 8 `CONSENT_REQUIRED` with `details: {action, from, to, target}`; show those to the user and repeat with `--yes` only after they agreed. `stamp` needs `--yes` only together with `--take-over`.
 

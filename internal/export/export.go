@@ -173,7 +173,8 @@ func Run(ctx context.Context, src, dst string, opts Options) (*Result, error) {
 	if a.Config.TSA != nil {
 		provider = *a.Config.TSA
 	}
-	if err := copyLists(ctx, src, dst, provider, opts, res); err != nil {
+	online, err := copyLists(ctx, src, dst, provider, opts, res)
+	if err != nil {
 		return nil, err
 	}
 
@@ -184,12 +185,16 @@ func Run(ctx context.Context, src, dst string, opts Options) (*Result, error) {
 		res.Warnings = append(res.Warnings, "Prüfprogramm konnte nicht beigelegt werden: "+err.Error())
 	}
 
-	// The report is computed only from what the export contains.
+	// The report is computed from what the export contains and, when the
+	// lists could be refreshed just now, online (spec §8): a fresh stamp is
+	// then qualifiziert by a list fetched during this check, as the
+	// Archivprotokolle state ("online"), instead of unbestätigt until the
+	// provider's country publishes its next list (owner decision 2026-11-18).
 	es, err := opts.ExportTrust(dst)
 	if err != nil {
 		return nil, err
 	}
-	rep, err := verify.Export(ctx, dst, verify.Options{Trust: es, Now: opts.Now})
+	rep, err := verify.Export(ctx, dst, verify.Options{Trust: es, Online: online, Now: opts.Now})
 	if err != nil {
 		return nil, err
 	}
@@ -242,36 +247,39 @@ func setDefaults(o *Options) {
 var reList = regexp.MustCompile(`^[A-Z]{2}-[0-9]{1,9}(-[0-9]{1,3})?\.xml$`)
 
 // copyLists refreshes the source's trusted lists (never into the archive)
-// and writes every cached and every loaded list into the export.
-func copyLists(ctx context.Context, src, dst, provider string, opts Options, res *Result) error {
+// and writes every cached and every loaded list into the export. It
+// reports whether the refresh succeeded (the network is available).
+func copyLists(ctx context.Context, src, dst, provider string, opts Options, res *Result) (bool, error) {
 	out := filepath.Join(dst, trust.DirName)
 	if err := mkNew(out); err != nil {
-		return err
+		return false, err
 	}
 	s, err := opts.SourceTrust(src)
 	if err != nil {
-		return err
+		return false, err
 	}
+	online := true
 	if err := s.Refresh(ctx, verify.Territories(s, provider)...); err != nil {
+		online = false
 		res.Warnings = append(res.Warnings, "Vertrauenslisten konnten nicht aktualisiert werden; der Export enthält die gespeicherten: "+err.Error())
 	}
 	des, err := os.ReadDir(filepath.Join(src, trust.DirName))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+		return false, err
 	}
 	for _, de := range des {
 		if de.Type().IsRegular() && reList.MatchString(de.Name()) {
 			if err := copyFile(filepath.Join(src, trust.DirName, de.Name()), filepath.Join(out, de.Name()), 0o644); err != nil {
-				return err
+				return false, err
 			}
 		}
 	}
 	for _, l := range s.Lists() {
 		if err := addList(out, fmt.Sprintf("%s-%d", l.Territory, l.Sequence), l.Raw); err != nil {
-			return err
+			return false, err
 		}
 	}
-	return nil
+	return online, nil
 }
 
 // addList stores a list unless identical bytes are already there; a

@@ -11,6 +11,9 @@
   </p>
 </div>
 
+> [!CAUTION]
+> **Wenn Sie nicht genau wissen, was dieses Programm tut, oder die Folgen für Ihre Aufbewahrungspflichten nicht verstehen: Verwenden Sie es nicht.**
+
 Sie legen Rechnungen in einen Ordner. Rechnungsarchiv übernimmt die Dateien unverändert in eine Ablage und holt dafür einen qualifizierten Zeitstempel eines EU-Dienstes Ihrer Wahl. Belegt wird, dass dieser Stand spätestens zum genannten Zeitpunkt vorlag. Ein Programm, `rechnungsarchiv.exe`, öffnet das Fenster (`rechnungsarchiv gui`, aus dem Startmenü über `rechnungsarchiv-gui.exe`) und ist die Kommandozeile. Dieselbe Datei liegt im Export für die Betriebsprüfung.
 
 > **In Entwicklung, noch keine Veröffentlichung.** Es gibt noch kein Setup und keine Version zum Herunterladen. Rechnungsarchiv ist für Windows 10 und 11. Eine Frage oder ein Fehler: [Issue öffnen](https://github.com/realspqrk/rechnungsarchiv/issues).
@@ -222,7 +225,7 @@ The verifier is security-critical. Missing validation material is `Unbestimmt`, 
 
 ## Unterstützen
 
-Gefällt Ihnen Rechnungsarchiv? Es kann Ihnen Stunden ersparen. Auch im Zeitalter von KI braucht das Entwickeln und Pflegen viel Zeit und Aufwand. Bitte erwägen Sie eine Spende — oder probieren Sie [PhraseVault](https://phrasevault.app), unseren Textbaustein-Verwalter. Vielleicht gefällt er Ihnen ebenfalls.
+Gefällt Ihnen Rechnungsarchiv? Es kann Ihnen Stunden ersparen. Auch im Zeitalter von KI braucht das Entwickeln und Pflegen viel Zeit und Aufwand. Bitte erwägen Sie einen freiwilligen Beitrag — oder probieren Sie [PhraseVault](https://phrasevault.app), unseren Textbaustein-Verwalter. Vielleicht gefällt er Ihnen ebenfalls.
 
 [GitHub Sponsors](https://github.com/sponsors/realspqrk) · [Ko-fi](https://ko-fi.com/spqrk) · [PayPal](https://paypal.me/realSPQRK) · [Repo mit einem Stern markieren](https://github.com/realspqrk/rechnungsarchiv).
 

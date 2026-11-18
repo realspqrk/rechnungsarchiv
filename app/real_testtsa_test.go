@@ -121,6 +121,15 @@ func TestRealServiceEndToEnd(t *testing.T) {
 	if _, err := os.Stat(dr.Path); err != nil {
 		t.Fatal(err)
 	}
+	// The detail view lists every file with its own check result.
+	if len(dr.FileList) != 9 || !slices.IsSortedFunc(dr.FileList, func(a, b FileEntry) int { return strings.Compare(a.Path, b.Path) }) {
+		t.Fatalf("file list %s", testenv.JSON(dr.FileList))
+	}
+	for _, f := range dr.FileList {
+		if f.State != FileUnchanged || f.Size <= 0 || f.MTime == "" || strings.HasPrefix(f.Path, "data/") {
+			t.Fatalf("file entry %+v", f)
+		}
+	}
 
 	// A provider error after the commit: the Ablage stays, pending · zugang.
 	e.SetMode(testenv.Denied)

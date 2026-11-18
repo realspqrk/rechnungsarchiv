@@ -65,7 +65,7 @@ func qualificationValue(t *verify.Token) string {
 	case verify.NotQualified:
 		return "zum Zeitpunkt des Zeitstempels nicht als qualifizierter Zeitstempeldienst nach eIDAS eingetragen (laut EU-Vertrauensliste)"
 	}
-	return "nicht festgestellt: keine nach dem Zeitstempel ausgestellte oder bei der Kontrolle abgerufene EU-Vertrauensliste"
+	return "unbestätigt: " + present.UnconfirmedReason(t)
 }
 
 // checkValue is the file check: "18.11.2026: 64 von 64 Dateien stimmen …".

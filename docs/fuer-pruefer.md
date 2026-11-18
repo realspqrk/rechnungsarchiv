@@ -41,7 +41,7 @@ echo $LASTEXITCODE
 | 5 | die Prüfung hat Verändert oder Ungültig ergeben |
 | 6 | etwas ist ausstehend oder unbestimmt; das ist kein positives Ergebnis |
 
-Andere Codes betreffen den Aufruf, die Konfiguration oder den Anbieter. Sie sind keine Aussage über die Rechnungen. Dieselbe Prüfung führt „Archiv kontrollieren“ aus. Liegen Zeitstempel, Zertifikatskette und Sperrstatus im Export, braucht die Kontrolle den Anbieter nicht. Fehlt eine Vertrauensliste, die nach dem Stempel ausgestellt wurde, bleibt offen, ob der Dienst zu diesem Zeitpunkt qualifiziert war (Status unbestätigt), bis eine neuere Liste vorliegt. Die Kontrolle läuft ohne weitere Angabe offline. Mit Internetverbindung lädt dieser Aufruf zusätzlich aktuelle Vertrauenslisten und Sperrstatus, in einen Zwischenspeicher außerhalb des Exportordners:
+Andere Codes betreffen den Aufruf, die Konfiguration oder den Anbieter. Sie sind keine Aussage über die Rechnungen. Dieselbe Prüfung führt „Archiv kontrollieren“ aus. Liegen Zeitstempel, Zertifikatskette und Sperrstatus im Export, braucht die Kontrolle den Anbieter nicht. Fehlt eine Vertrauensliste, die nach dem Stempel ausgestellt wurde, sagt eine Offline-Kontrolle unbestätigt, bis eine neuere Liste vorliegt. Eine Liste, die die Kontrolle selbst aus dem Internet holt, entscheidet auch dann, wenn sie vor dem Stempel ausgestellt wurde. Die Kontrolle läuft ohne weitere Angabe offline. Mit Internetverbindung lädt dieser Aufruf zusätzlich aktuelle Vertrauenslisten und Sperrstatus, in einen Zwischenspeicher außerhalb des Exportordners:
 
 ```powershell
 .\rechnungsarchiv.exe verify '.' --online

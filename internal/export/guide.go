@@ -58,7 +58,7 @@ func guide(rep *verify.Report) []byte {
 	p("  5  die Prüfung hat Verändert oder Ungültig ergeben")
 	p("  6  etwas ist ausstehend oder unbestimmt; das ist kein positives Ergebnis")
 	p("Andere Codes betreffen den Aufruf, die Konfiguration oder den Anbieter, nicht die Rechnungen.")
-	p("Liegen Zeitstempel, Zertifikatskette und Sperrstatus im Export, braucht die Kontrolle den Anbieter nicht. Fehlt eine Vertrauensliste, die nach dem Stempel ausgestellt wurde, bleibt offen, ob der Dienst zu diesem Zeitpunkt qualifiziert war (unbestätigt), bis eine neuere Liste vorliegt. Ohne weitere Angabe läuft die Kontrolle offline; mit Internetverbindung lädt dieser Aufruf zusätzlich aktuelle Vertrauenslisten und Sperrstatus (in einen Zwischenspeicher außerhalb dieses Ordners):")
+	p("Liegen Zeitstempel, Zertifikatskette und Sperrstatus im Export, braucht die Kontrolle den Anbieter nicht. Fehlt eine Vertrauensliste, die nach dem Stempel ausgestellt wurde, sagt eine Offline-Kontrolle unbestätigt, bis eine neuere Liste vorliegt. Eine Liste, die die Kontrolle selbst aus dem Internet holt, entscheidet auch dann, wenn sie vor dem Stempel ausgestellt wurde. Ohne weitere Angabe läuft die Kontrolle offline; mit Internetverbindung lädt dieser Aufruf zusätzlich aktuelle Vertrauenslisten und Sperrstatus (in einen Zwischenspeicher außerhalb dieses Ordners):")
 	p("")
 	p(`    .\%s verify '.' --online`, ExeName)
 	p("")

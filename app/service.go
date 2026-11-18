@@ -348,6 +348,25 @@ type DepositReport struct {
 	TokenState     string `json:"tokenState"`
 	RetentionYears int    `json:"retentionYears"`
 	RetentionUntil string `json:"retentionUntil"` // ISO date
+	// FileList is every file of the Ablage (sorted by path) and then the
+	// added ones, with the result of this check.
+	FileList []FileEntry `json:"fileList"`
+}
+
+// File states in FileEntry.State.
+const (
+	FileUnchanged = "unveraendert"
+	FileChanged   = "veraendert"
+	FileMissing   = "fehlt"
+	FileAdded     = "hinzugekommen"
+)
+
+// FileEntry is one file of an Ablage as the check found it.
+type FileEntry struct {
+	Path  string `json:"path"`  // below data/
+	Size  int64  `json:"size"`  // bytes; 0 if unknown (added files)
+	MTime string `json:"mtime"` // original modification time, RFC 3339; "" if unknown
+	State string `json:"state"` // FileUnchanged, FileChanged, FileMissing, FileAdded
 }
 
 type FileCounts struct {
@@ -368,7 +387,10 @@ type StampInfo struct {
 	// TrustList that decided the qualification: country and issue date.
 	TrustListCountry string `json:"trustListCountry"`
 	TrustListDate    string `json:"trustListDate"`
-	SignatureValid   bool   `json:"signatureValid"`
+	// QualificationNote says why the qualification is unbestaetigt
+	// (present.UnconfirmedReason); "" otherwise.
+	QualificationNote string `json:"qualificationNote"`
+	SignatureValid    bool   `json:"signatureValid"`
 	// Revocation evidence for the signer: "OCSP" or "CRL".
 	RevocationSource string `json:"revocationSource"`
 	// Revoked with keyCompromise/cACompromise/unspecified -> Unbestimmt.

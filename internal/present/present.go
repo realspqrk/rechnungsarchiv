@@ -162,11 +162,29 @@ func Reason(r verify.Reason) string {
 	return "noch kein Zeitstempel"
 }
 
+// UnconfirmedReason says, factually, why the qualification of t is
+// unbestätigt (spec §6 step 6): usually the newest list on hand was issued
+// before the timestamp. One sentence part, lower case, no full stop.
+func UnconfirmedReason(t *verify.Token) string {
+	tl := t.TrustList
+	switch {
+	case tl == nil:
+		return "es liegt keine nach dem Zeitstempel ausgestellte EU-Vertrauensliste vor"
+	case tl.IssueDate.Before(t.GenTime) && !tl.FetchedOnline:
+		// A list fetched during this check would have decided (spec §6 step 6).
+		return fmt.Sprintf("die vorliegende EU-Vertrauensliste (%s Nr. %d, ausgestellt %s) ist älter als der Zeitstempel", tl.Territory, tl.Sequence, Date(tl.IssueDate))
+	}
+	return "die EU-Vertrauensliste legt die Qualifikation zu diesem Zeitpunkt nicht eindeutig fest"
+}
+
 // Label is the status with its qualifier: "Zeitgestempelt · qualifiziert",
 // "Ausstehend · offline".
 func Label(d verify.Deposit) string {
 	switch d.Status {
 	case verify.StatusTimestamped:
+		if d.Qualification == verify.Unconfirmed {
+			return Status(d.Status) + " · Qualifikation unbestätigt"
+		}
 		return Status(d.Status) + " · " + Qualification(d.Qualification)
 	case verify.StatusPending:
 		return Status(d.Status) + " · " + Reason(d.Reason)

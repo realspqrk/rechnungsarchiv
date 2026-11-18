@@ -238,7 +238,7 @@ Qualifiers:
 - `DATEIVERZEICHNIS.csv`: one row per file with Ablage, path, size, sha256, Belegjahr and belegt_spätestens;
 - `PRUEFANLEITUNG.txt`: how to verify with the exe, and how to verify manually.
 
-The report is computed **only from evidence included in the export**. The export never writes into the source archive.
+The report is computed from the evidence included in the export. When the trusted lists could be refreshed just before (network available), the check also runs **online** (§6 step 7): the lists and revocation status fetched during it count, so a stamp newer than the newest published list is qualifiziert instead of unbestätigt; the Archivprotokolle state "online". Without network the check is offline. An offline re-check of the export can therefore still say unbestätigt until the provider's country publishes a newer list. The export never writes into the source archive.
 
 ## 9. Read-only mode
 
@@ -271,7 +271,7 @@ The document is an **objective statement of fact**. It contains no disclaimers, 
    - archived on / by (local assertion, labelled as such);
    - chosen retention period and its ordinary end ("gewählte Frist 7 Jahre, gewöhnliches Ende 31.12.2033");
    - the check (time, online or offline);
-   - sub-table **Zeitstempel**: provider, genTime as signed, accuracy and its source, serial number, policy OID, signing certificate, its serial number and issuer, revocation evidence stated factually ("nicht gesperrt · OCSP vom …"), qualification, trusted-list version used.
+   - sub-table **Zeitstempel**: provider, genTime as signed, accuracy and its source, serial number, policy OID, signing certificate, its serial number and issuer, revocation evidence stated factually and positively ("gültig · OCSP-Auskunft vom …"), qualification, trusted-list version used.
    - All times with time zone (local time + UTC offset).
 4. **Dateiverzeichnis** (file list), **complete**, one table row per file: running number, size in bytes, original modification date, **full SHA-256**, path (last, so a long path wraps without moving the other columns). Sorted by path. The column header repeats on every page.
 5. **Footer:** "Archivprotokoll Ablage NNNN · erstellt am … mit Rechnungsarchiv <version>", and "Seite x von y" on the right.

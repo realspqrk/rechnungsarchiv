@@ -180,6 +180,17 @@ func renderReport(w io.Writer, r *verify.Report) {
 	for _, p := range r.TrustProblems {
 		fmt.Fprintln(w, "Vertrauensliste: "+p)
 	}
+	for _, d := range r.Deposits {
+		if t := d.Token; t != nil && t.Qualification == verify.Unconfirmed {
+			why := present.UnconfirmedReason(t)
+			note := "Hinweis: Qualifikation unbestätigt. " + strings.ToUpper(why[:1]) + why[1:] + "."
+			if !r.Online {
+				note += " Mit --online lädt die Kontrolle die aktuelle Liste."
+			}
+			fmt.Fprintln(w, note)
+			break
+		}
+	}
 	n := len(r.Deposits)
 	switch verifyExit(r) {
 	case exitOK:

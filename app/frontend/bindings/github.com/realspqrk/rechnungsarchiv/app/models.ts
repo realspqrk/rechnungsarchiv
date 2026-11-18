@@ -224,6 +224,12 @@ export interface DepositReport {
      * ISO date
      */
     "retentionUntil": string;
+
+    /**
+     * FileList is every file of the Ablage (sorted by path) and then the
+     * added ones, with the result of this check.
+     */
+    "fileList": FileEntry[] | null;
 }
 
 /**
@@ -280,6 +286,31 @@ export interface FileCounts {
     "changed": number;
     "missing": number;
     "added": number;
+}
+
+/**
+ * FileEntry is one file of an Ablage as the check found it.
+ */
+export interface FileEntry {
+    /**
+     * below data/
+     */
+    "path": string;
+
+    /**
+     * bytes; 0 if unknown (added files)
+     */
+    "size": number;
+
+    /**
+     * original modification time, RFC 3339; "" if unknown
+     */
+    "mtime": string;
+
+    /**
+     * FileUnchanged, FileChanged, FileMissing, FileAdded
+     */
+    "state": string;
 }
 
 /**
@@ -393,7 +424,8 @@ export interface PreviewProblem {
 
     /**
      * Kind: name (invalid on Windows), collision (same name after case fold),
-     * placeholder (cloud file not on disk), link (symlink/reparse point).
+     * placeholder (cloud file not on disk), link (symlink/reparse point),
+     * ordnername (the folder name cannot name the Ablage).
      */
     "kind": string;
 }
@@ -479,6 +511,12 @@ export interface StampInfo {
      */
     "trustListCountry": string;
     "trustListDate": string;
+
+    /**
+     * QualificationNote says why the qualification is unbestaetigt
+     * (present.UnconfirmedReason); "" otherwise.
+     */
+    "qualificationNote": string;
     "signatureValid": boolean;
 
     /**

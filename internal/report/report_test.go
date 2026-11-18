@@ -82,8 +82,18 @@ func TestStatementFollowsStatus(t *testing.T) {
 	}{
 		{"unconfirmed", func(d *verify.Deposit) {
 			d.Token.Qualification, d.Qualification = verify.Unconfirmed, verify.Unconfirmed
+			d.Token.TrustList.IssueDate = d.Token.GenTime.Add(-24 * time.Hour)
 		},
-			[]string{"Qualifikation: nicht festgestellt", "spätestens am 05.11.2026, 09:14:23 Uhr MEZ"}, []string{"qualifizierter Zeitstempeldienst nach eIDAS zum"}},
+			[]string{"Ergebnis: Zeitgestempelt · Qualifikation unbestätigt",
+				"Qualifikation: unbestätigt: die vorliegende EU-Vertrauensliste (ES Nr. 190, ausgestellt 04.11.2026) ist älter als der Zeitstempel\n",
+				"spätestens am 05.11.2026, 09:14:23 Uhr MEZ"}, []string{"qualifizierter Zeitstempeldienst nach eIDAS zum", "abgerufen"}},
+		// Code review 16: a list fetched during this check that still cannot
+		// decide (no service identity for that date) is not called "older".
+		{"unconfirmed online", func(d *verify.Deposit) {
+			d.Token.Qualification, d.Qualification = verify.Unconfirmed, verify.Unconfirmed
+			d.Token.TrustList.IssueDate, d.Token.TrustList.FetchedOnline = d.Token.GenTime.Add(-24*time.Hour), true
+		},
+			[]string{"Qualifikation: unbestätigt: die EU-Vertrauensliste legt die Qualifikation zu diesem Zeitpunkt nicht eindeutig fest\n"}, []string{"älter als der Zeitstempel"}},
 		{"not qualified", func(d *verify.Deposit) {
 			d.Token.Qualification, d.Qualification = verify.NotQualified, verify.NotQualified
 		},
@@ -168,7 +178,7 @@ func TestPDFCompleteAndDeterministic(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"Feststellung", "Angaben", "Dateiverzeichnis (150 Dateien)", "Nr. | Byte | Änderungsdatum | SHA-256 | Datei (unter data/)",
-		"gewählte Frist 7 Jahre, gewöhnliches Ende 31.12.2033", "(UTC+01:00)", "nicht gesperrt", "| 1.000 |"} {
+		"gewählte Frist 7 Jahre, gewöhnliches Ende 31.12.2033", "(UTC+01:00)", "Sperrstatus: gültig · OCSP-Auskunft vom", "| 1.000 |"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -302,5 +312,34 @@ func TestLongHeaderWrapsAndTablesContinue(t *testing.T) {
 	}
 	if !strings.Contains(all, "Dateiverzeichnis (150 Dateien) – Fortsetzung Nr. | Byte") {
 		t.Error("file table continues without its heading")
+	}
+}
+
+// Owner: very long file names. A path wraps inside the last column and is
+// shown completely, also a single word longer than the column (no spaces).
+func TestLongFileNamesFitTheColumn(t *testing.T) {
+	long := "Rechnung_" + strings.Repeat("Lieferant-Mustermann-GmbH_", 8) + "RE-2026-10-0815.pdf"
+	spaced := "Unterordner mit langem Namen/" + strings.Repeat("Rechnung der Firma Mustermann ", 7) + "Nr. 4711.pdf"
+	l, err := layout([]string{"Archivprotokoll"}, nil, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.font("regular", 8)
+	for _, p := range []string{long, spaced} {
+		parts, err := l.wrap(p, fileCols[pathCol].w)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(parts) < 2 {
+			t.Errorf("%q not wrapped", p)
+		}
+		for _, part := range parts {
+			if w, _ := l.pdf.MeasureTextWidth(part); w > fileCols[pathCol].w {
+				t.Errorf("line %.0f pt wide, column %.0f: %q", w, fileCols[pathCol].w, part)
+			}
+		}
+		if got := strings.ReplaceAll(strings.Join(parts, ""), " ", ""); got != strings.ReplaceAll(p, " ", "") {
+			t.Errorf("wrapped text lost characters: %q, want %q", got, p)
+		}
 	}
 }

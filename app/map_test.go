@@ -161,3 +161,26 @@ func TestCheckSummaryNamesInheritedProof(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 }
+
+// The detail view's file list carries each file's own check result, with
+// added files last.
+func TestDepositReportFileList(t *testing.T) {
+	d := verify.Deposit{Sequence: 1, Root: root("a"), Status: verify.StatusChanged,
+		Files: []verify.File{
+			{Path: "data/a.pdf", Size: 10, MTime: "2026-10-02T08:00:00Z", State: verify.FileOK},
+			{Path: "data/b.pdf", Size: 20, State: verify.FileChanged},
+			{Path: "data/c.pdf", Size: 30, State: verify.FileMissing},
+		},
+		Added: []string{"data/z.pdf"}}
+	rep := &verify.Report{Deposits: []verify.Deposit{d}}
+	got := depositReportOf(rep, &rep.Deposits[0], false, `D:\A`).FileList
+	want := []FileEntry{
+		{Path: "a.pdf", Size: 10, MTime: "2026-10-02T08:00:00Z", State: FileUnchanged},
+		{Path: "b.pdf", Size: 20, State: FileChanged},
+		{Path: "c.pdf", Size: 30, State: FileMissing},
+		{Path: "z.pdf", State: FileAdded},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("file list %+v", got)
+	}
+}

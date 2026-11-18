@@ -3,7 +3,7 @@
 // in Node). Not part of the app bundle.
 
 import type { CheckSummary, DepositReport, FolderDrop } from "./api";
-import { CONTENT, describe, MEANING, predecessorText, TOKEN } from "./describe";
+import { collapsedFiles, CONTENT, describe, deviationsFirst, MEANING, predecessorText, TOKEN } from "./describe";
 import { FolderInbox, gateOf } from "./folders";
 import { dateTimeExact } from "./fmt";
 import { checkSummary, lastCheckText } from "./summary";
@@ -28,10 +28,10 @@ function report(over: Omit<Partial<DepositReport>, "deposit"> & { deposit?: Part
     files: { unchanged: 9, changed: 0, missing: 0, added: 0 }, changedPaths: [],
     stamp: {
       provider: "Mensatek", providerCountry: "ES", genTime: "2026-11-05T08:14:22Z", accuracyMs: 1000, provenLatest: "2026-11-05T08:14:23Z",
-      qualification: "qualifiziert", trustListCountry: "ES", trustListDate: "2026-11-12", signatureValid: true, revocationSource: "OCSP", keyCompromise: false,
+      qualification: "qualifiziert", trustListCountry: "ES", trustListDate: "2026-11-12", signatureValid: true, revocationSource: "OCSP", keyCompromise: false, qualificationNote: "",
     },
     inherited: null, predecessor: 1, predecessorPresent: true, predecessorLinked: true, chainFindings: [],
-    content: CONTENT.unchanged, tokenState: TOKEN.valid, retentionYears: 7, retentionUntil: "2033-12-31",
+    content: CONTENT.unchanged, tokenState: TOKEN.valid, retentionYears: 7, retentionUntil: "2033-12-31", fileList: [],
   };
   return { ...base, ...over, deposit: { ...base.deposit, ...(over.deposit ?? {}) } } as DepositReport;
 }
@@ -57,6 +57,15 @@ function report(over: Omit<Partial<DepositReport>, "deposit"> & { deposit?: Part
 {
   const v = describe(report({ deposit: { state: "ungueltig", provenLatest: "" }, content: CONTENT.unchanged, tokenState: TOKEN.invalid, stamp: null }));
   check("invalid token title", has(v.title, "Zeitstempel fehlerhaft") && has(v.stampTitle, "ungültig"), v);
+}
+// Owner: "Qualifikation unbestätigt" says why and how it resolves.
+{
+  const r = report({ deposit: { qualification: "unbestaetigt" } });
+  r.stamp!.qualification = "unbestaetigt";
+  r.stamp!.qualificationNote = "die vorliegende EU-Vertrauensliste (ES Nr. 190, ausgestellt 04.11.2026) ist älter als der Zeitstempel";
+  const v = describe(r);
+  check("unconfirmed: what is open and how it resolves", has(v.lead, "noch offen") && has(v.lead, "„Archiv kontrollieren“"), v);
+  check("unconfirmed: reason in the detail", has(v.stampDetail, "Die vorliegende EU-Vertrauensliste"), v);
 }
 // Finding 9: no latest time without provenLatest.
 {
@@ -181,6 +190,18 @@ check("never checked", lastCheckText(null, 3) === "Noch nicht kontrolliert");
   check("then the folder", inbox.next(gateOf(st({}), false))?.folder === "C");
   inbox.add([drop("", "x")]);
   check("read-only: error alone gives no note", inbox.next(gateOf(st({ readOnly: true }), false)) === null && inbox.size === 0);
+}
+
+// The detail view's file list: a changed file never hides behind "Alle anzeigen".
+{
+  const f = (path: string, state: string) => ({ path, size: 1, mtime: "", state });
+  const got = deviationsFirst([f("a", "unveraendert"), f("b", "veraendert"), f("c", "unveraendert"), f("z", "hinzugekommen")]).map((x) => x.path).join("");
+  check("deviating files first, each part in order", got === "bzac", got);
+  // Code review 16 / visual review 7: eleven deviations, all visible collapsed.
+  const many = deviationsFirst([...Array.from({ length: 11 }, (_, i) => f(`v${i}`, "veraendert")), ...Array.from({ length: 5 }, (_, i) => f(`u${i}`, "unveraendert"))]);
+  const shown = collapsedFiles(many, 10);
+  check("collapsed: every deviation shown", shown.length === 11 && shown.every((x) => x.state === "veraendert"), shown.length);
+  check("collapsed: fills up with unchanged", collapsedFiles(deviationsFirst([f("a", "veraendert"), ...Array.from({ length: 12 }, (_, i) => f(`u${i}`, "unveraendert"))]), 10).length === 10);
 }
 
 if (failed) throw new Error(`${failed} check(s) failed`);

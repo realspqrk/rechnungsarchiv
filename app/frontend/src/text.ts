@@ -73,6 +73,12 @@ export const REASON_RESULT: Record<string, { title: string; text: string }> = {
   },
 };
 
+/** How "Qualifikation unbestätigt" resolves; "Archiv kontrollieren" checks online. */
+export const UNCONFIRMED_FIX = "Mit Internetverbindung holt „Archiv kontrollieren“ die aktuelle EU-Vertrauensliste und stellt die Qualifikation damit in aller Regel fest.";
+
+/** Tooltip on "Qualifikation unbestätigt" in the list of Ablagen. */
+export const UNCONFIRMED_TIP = "Der Zeitstempel ist gültig. Offen ist nur, ob der Dienst zu diesem Zeitpunkt als qualifiziert eingetragen war; das belegt bisher keine geprüfte EU-Vertrauensliste. Der Grund steht in der Ablage. " + UNCONFIRMED_FIX;
+
 export const QUAL_SHORT: Record<string, string> = {
   qualifiziert: "qualifiziert (eIDAS)",
   "nicht-qualifiziert": "nicht qualifiziert",

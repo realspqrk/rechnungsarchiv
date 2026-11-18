@@ -215,11 +215,20 @@ func depositReportOf(rep *verify.Report, d *verify.Deposit, readOnly bool, dir s
 		RetentionYears: d.RetentionYears, RetentionUntil: d.RetentionUntil,
 	}
 	for _, f := range d.Files {
+		e := FileEntry{Path: strings.TrimPrefix(f.Path, "data/"), Size: f.Size, MTime: f.MTime, State: FileUnchanged}
+		switch f.State {
+		case verify.FileChanged:
+			e.State = FileChanged
+		case verify.FileMissing:
+			e.State = FileMissing
+		}
+		out.FileList = append(out.FileList, e)
 		if f.State != verify.FileOK {
-			out.ChangedPaths = append(out.ChangedPaths, strings.TrimPrefix(f.Path, "data/"))
+			out.ChangedPaths = append(out.ChangedPaths, e.Path)
 		}
 	}
 	for _, p := range d.Added {
+		out.FileList = append(out.FileList, FileEntry{Path: strings.TrimPrefix(p, "data/"), State: FileAdded})
 		out.ChangedPaths = append(out.ChangedPaths, strings.TrimPrefix(p, "data/"))
 	}
 	if len(out.ChangedPaths) > maxChangedPaths {
@@ -238,6 +247,9 @@ func depositReportOf(rep *verify.Report, d *verify.Deposit, readOnly bool, dir s
 		}
 		if l := t.TrustList; l != nil {
 			st.TrustListCountry, st.TrustListDate = l.Territory, isoDate(l.IssueDate)
+		}
+		if t.Qualification == verify.Unconfirmed {
+			st.QualificationNote = present.UnconfirmedReason(t)
 		}
 		// Revocation evidence of the signer certificate.
 		i := slices.IndexFunc(t.Revocation, func(r verify.Revocation) bool { return r.Subject == t.Signer })

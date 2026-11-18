@@ -515,6 +515,7 @@ func (f *fakeService) VerifyDeposit(ctx context.Context, seq int) (DepositReport
 		r.Stamp = stamp(d.Qualification)
 		if d.Qualification == QualUnconfirmed {
 			r.Stamp.TrustListDate = ""
+			r.Stamp.QualificationNote = "die vorliegende EU-Vertrauensliste (ES Nr. 189, ausgestellt 15.09.2026) ist älter als der Zeitstempel"
 		}
 	case StateModified:
 		r.Stamp = stamp(QualQualified)
@@ -535,8 +536,32 @@ func (f *fakeService) VerifyDeposit(ctx context.Context, seq int) (DepositReport
 			r.Inherited = &InheritedProof{FromSeq: d.InheritedFrom, ProvenLatest: d.ProvenLatest, GenTime: d.ProvenLatest, Qualification: d.Qualification}
 		}
 	}
+	r.FileList = fakeFiles(d, r.ChangedPaths)
 	// The normal scenario mirrors the mockup: 0013 pending without a successor.
 	return r, nil
+}
+
+// fakeFiles invents d.Files plausible invoice files; changed names those
+// reported as changed.
+func fakeFiles(d Deposit, changed []string) []FileEntry {
+	suppliers := []string{"Huber Bürobedarf", "Holzhandel Ebner", "Stromversorgung Mühltal", "Druckerei Weißenböck", "Spedition Fröhlich", "Kanzlei Bäuerle Buchhaltung"}
+	var out []FileEntry
+	for i := 0; i < d.Files; i++ {
+		day := i%28 + 1
+		out = append(out, FileEntry{
+			Path:  fmt.Sprintf("%d-%02d-%02d %s RE-%d.pdf", d.Belegjahr, 10, day, suppliers[i%len(suppliers)], 4000+i*7),
+			Size:  int64(18000 + i*937%9000),
+			MTime: fmt.Sprintf("%d-10-%02dT09:00:00+02:00", d.Belegjahr, day),
+			State: FileUnchanged,
+		})
+	}
+	for i, p := range changed {
+		if i < len(out) {
+			out[i].Path, out[i].State = p, FileChanged
+		}
+	}
+	slices.SortFunc(out, func(a, b FileEntry) int { return strings.Compare(a.Path, b.Path) })
+	return out
 }
 
 func fakeRoot(d Deposit) string {
