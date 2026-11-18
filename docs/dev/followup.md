@@ -5,11 +5,8 @@
 2. [Deferred features (cut from v1, revisit on demand)](#deferred-features-cut-from-v1-revisit-on-demand)
 
 ## Owner tasks
-- **Qualified TSA for integration tests:**
-  - Buy Mensatek credit (€10, never expires; `https://www.mensatek.com/en/precios.php`).
-  - Confirm sale to an Austrian company with reverse charge, the endpoint URL, the policy OID and the accuracy.
-  - Disig as second test provider (client cert).
-  - Confirm Aruba's RFC 3161 endpoint before listing it as supported.
+- **Qualified TSA real-world proof:** Mensatek credit bought 2026-11-18 (reverse charge confirmed, Basic auth works with the "Sellado de Tiempo" credentials). Pending: credit booking → `rechnungsarchiv stamp --archiv tmp/echttest-archiv`, then verify --online, manual openssl check, Archivprotokoll. Record the real policy OID and accuracy in providers.json.
+  - Confirm Aruba's RFC 3161 endpoint before listing it as supported; Disig endpoint comes only with its access certificate.
 - **DGN as default provider** (owner): register at https://www.dgn.de/dgn-zeitstempeldienst/ (German, 5 stamps/month free, QTST granted on the DE list). Confirm Austrian customers, auth method, endpoint URL. If OK, add `dgn` to providers.json and make it the README/GUI recommendation.
 - **GLOBALTRUST small quota** (owner): ask sales@globaltrust.eu for ~100 stamps/year citing their eIDAS best-price guarantee (Mensatek: 233 stamps for EUR 10). If good, make GLOBALTRUST the German-language recommendation in the README (Mensatek's customer area is Spanish only; Disig needs a client certificate, Slovak e-shop, endpoint not public).
 - **Acceptance route (ADR-0007):**
@@ -34,3 +31,5 @@
 - **PDF/A-2b for the Archivprotokoll** (spec §10 SHOULD): gopdf cannot produce it; options: post-process with a PDF/A library or switch generator.
 - **RFC 4998 ERS export** (Bouncy Castle / BSI ERVerifyTool interop).
 - **macOS/Linux GUI builds.** The CLI builds everywhere.
+- **tsa evidence robustness:** keep every evidence file per certificate (`ReadAttempts` keeps one per CertKey, so a bad stored OCSP answer blocks completion until the 24 h window ends); add `Fetcher.Evidence(cert, issuer, genTime)` and `tsa.WriteProvider` instead of the local workarounds in internal/stamp.
+- **GUI performance on large archives:** every detail view, protocol and archive action re-verifies the whole archive (correct, slow for many GB). Cache the last `verify.Report` per archive generation.

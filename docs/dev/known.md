@@ -24,7 +24,6 @@
 - System Go is 1.25.6; Wails v3 needs Go >= 1.26. go.mod pins `toolchain go1.27.4` so `go` auto-downloads it (GOTOOLCHAIN=auto). Do not upgrade system Go. Verified 2026-11-18: download works.
 - Wails v3 stable tags: v3.0.0, v3.1.0 (pin v3.1.0); `@latest` resolves to a nightly, never use it.
 - PDF: `github.com/signintech/gopdf` (active). `go-pdf/fpdf` last release 2023. Fonts: `golang.org/x/image/font/gofont` (BSD, umlauts), no extra license file.
-- `digitorus/timestamp` and `digitorus/pkcs7` have no semver tags: pin pseudo-versions via `go get ...@master` once, then keep go.sum.
 - `gofmt -l .` also walks `.claude/worktrees/` (other agents' checkouts) and reports their files; `go vet ./...` and `go test ./...` skip dot-dirs. Judge only paths outside `.claude/`, or run `gofmt -l internal cmd app`.
 - gopdf output is byte-deterministic only if `PdfInfo.CreationDate` stays zero (it writes `/ID [()()]`, no other timestamp). Two embedded Go font subsets make a one-page invoice ~23 KB.
 - A `"\uFEFF"` escape written into Go source through the Write tool arrived as a literal BOM character, and Go refuses it (`invalid BOM in the middle of the file`). Spell the CSV BOM as `"\xef\xbb\xbf"` (`internal/export`).
@@ -82,7 +81,7 @@
 - Raw `windows.*` calls (`MoveFileEx`, `CreateFile`) get no automatic long-path handling. Go's `os.*` adds it, so a broken prefix only shows up beyond 240 characters. The prefix is `\\?\`; `internal/archive` once had `\?\`.
 - Read-only before commit: `(*os.File).Chmod(0o444)` works on Windows on the open write handle, `MoveFileEx` renames a read-only file, and `os.Remove` clears `READONLY` by itself on Windows.
 - Crafting bad ZIPs: `zip.Writer.SetOffset(n)` after writing n junk bytes gives data in front of the first entry with consistent offsets. For an archive comment, append bytes and patch the last 2 bytes of the EOCD. To swap the central order but not the physical order, rewrite the CD records by hand (`swapCentral` in `internal/bag/hardening_test.go`).
-- Archive recovery deletes only `*.tmp` (a suffix). Every temp file inside the archive must therefore end in `.tmp`. `tsa.WriteNew` names them `.<name>.<random>.tmp`; until 2026-11-18 it used `.tmp-*`, and recovery never cleaned those up.
+- Archive recovery deletes only `*.tmp` (a suffix). Every temp file inside the archive must therefore end in `.tmp`. `tsa.WriteNew` names them `.<name>.<random>.tmp`.
 - `Archive.Lock` is the real OS-level writer lock; pass it as `stamp.Options.Lock` (the CLI and `internal/testenv` do). Settings go through `SetProvider`, `SetCompany` and `SetRetentionDefault`: they re-read `rechnungsarchiv.json` under the lock and replace it canonically. Never write the file by hand.
 - `json.Decoder.Decode` reads one value and ignores what follows (`{…}{"tsa":"x"}` or `{…}garbage` decoded fine), and `DisallowUnknownFields` lets duplicate keys through (last wins). `parseConfig` therefore requires `Token() == io.EOF` after the value and compares the bytes with `Config.render()`: the file must be exactly the canonical JCS this program writes. A hand-edited file is `ErrBadConfig`, which also stops the setters from rewriting it.
 
