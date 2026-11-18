@@ -2,17 +2,15 @@
 
 ## Kurzfassung
 
-Das Programm zeigt die folgenden drei Sätze beim ersten Start und unter „Über“ unverändert an.
+Das Programm zeigt den folgenden Absatz beim ersten Start und unter „Über“ unverändert an. Darunter steht: „Mit dem Anlegen des Archivs bestätigen Sie, diesen Hinweis gelesen zu haben.“
 
-Rechnungsarchiv ist freie Open-Source-Software und wird ohne Gewähr und ohne Haftung bereitgestellt, soweit gesetzlich zulässig. Die Hinweise in diesem Projekt geben die eigene Einschätzung der Autorinnen und Autoren wieder; sie sind keine Steuer- oder Rechtsberatung und wurden weder von der Finanzverwaltung noch von Rechtsanwältinnen oder Rechtsanwälten geprüft. Klären Sie die Verwendung vor dem Einsatz mit Ihrer Steuerberaterin oder Ihrem Steuerberater.
+Rechnungsarchiv ist freie Open-Source-Software. Für Sach- und Vermögensschäden aus leichter Fahrlässigkeit – insbesondere Datenverlust, einen abgelehnten Vorsteuerabzug, eine Schätzung oder Strafen – wird nicht gehaftet. Die Haftung für Vorsatz, grobe Fahrlässigkeit und Personenschäden bleibt bestehen. Ein weitergehender Ausschluss besteht nicht. Die Hinweise in diesem Projekt geben die eigene Einschätzung der Autorinnen und Autoren wieder; sie sind keine Steuer- oder Rechtsberatung und wurden weder von der Finanzverwaltung noch von Rechtsanwältinnen oder Rechtsanwälten geprüft. Klären Sie die Verwendung vor dem Einsatz mit Ihrer Steuerberaterin oder Ihrem Steuerberater.
 
-## Kein Gewähr / keine Haftung
+## Gewährleistung und Haftung
 
 Die Software steht unter der Apache-Lizenz, Version 2.0. Der englische Lizenztext in [LICENSE](../LICENSE) ist maßgeblich. Dort wird die Software auf einer „AS IS“-Grundlage bereitgestellt, also wie besehen, ohne Gewährleistung oder Zusicherung, soweit das anwendbare Recht nichts anderes verlangt (Abschnitt 7 der Lizenz). Die Haftungsbeschränkung der Lizenz steht in Abschnitt 8.
 
-Soweit gesetzlich zulässig übernehmen die Autorinnen und Autoren keine Haftung für Schäden aus der Nutzung oder der fehlenden Nutzbarkeit der Software. Das gilt insbesondere für Datenverlust, einen abgelehnten Vorsteuerabzug, eine Schätzung, Strafen und jeden anderen Schaden, gleich aus welchem Rechtsgrund.
-
-Ein Haftungsausschluss gilt nur in den Grenzen, die das anwendbare Recht zulässt. Vorsatz und andere Fälle, in denen das Recht einen Ausschluss verbietet, bleiben unberührt. „Soweit gesetzlich zulässig“ ist Teil dieses Hinweises und engt ihn auf das rechtlich zulässige Maß ein.
+Für Sach- und Vermögensschäden aus leichter Fahrlässigkeit – insbesondere Datenverlust, einen abgelehnten Vorsteuerabzug, eine Schätzung oder Strafen – wird nicht gehaftet. Die Haftung für Vorsatz, grobe Fahrlässigkeit und Personenschäden bleibt bestehen. Ein weitergehender Ausschluss besteht nicht.
 
 Die Software ist kostenlos und ohne Servicevertrag. Es besteht kein Anspruch auf Fehlerbehebung, auf eine bestimmte Funktion oder darauf, dass eine Ablage von einer Behörde in einer bestimmten Weise gewürdigt wird.
 
@@ -20,7 +18,7 @@ Die Software ist kostenlos und ohne Servicevertrag. Es besteht kein Anspruch auf
 
 Die Software, die README, die Archivprotokolle und dieser Text sind keine Steuerberatung und keine Rechtsberatung. Sie begründen kein Mandat und kein Beratungsverhältnis gegenüber einer Steuerberaterin, einem Steuerberater, einer Rechtsanwältin oder einem Rechtsanwalt.
 
-Was ein qualifizierter Zeitstempel vermuten lässt, ist Zeitpunkt und Unversehrtheit des Prüfwerts (Art. 41 Abs. 2 eIDAS). Die Software belegt damit, dass die Dateien mit dem spätestens zu diesem Zeitpunkt vorhandenen Stand übereinstimmen. Sie belegt nicht die Echtheit der Rechnungen, nicht die Richtigkeit ihres Inhalts und nicht die Vollständigkeit des Archivs.
+Was ein qualifizierter Zeitstempel vermuten lässt, ist Zeitpunkt und Unversehrtheit des Prüfwerts (Art. 41 Abs. 2 eIDAS). Nach einer erfolgreichen Kontrolle stimmen die Dateien mit dem Stand überein, dessen Prüfwert der Zeitstempel spätestens für diesen Zeitpunkt belegt. Die Software belegt nicht die Echtheit der Rechnungen, nicht die Richtigkeit ihres Inhalts und nicht die Vollständigkeit des Archivs.
 
 ## Eigene Einschätzung
 

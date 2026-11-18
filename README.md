@@ -12,25 +12,27 @@
 </div>
 
 > [!IMPORTANT]
-> Freie Open-Source-Software ohne Gewähr und ohne Haftung. Keine Steuer- oder Rechtsberatung. Die Texte geben die eigene Einschätzung der Autorinnen und Autoren wieder und sind von der Finanzverwaltung und von Rechtsanwältinnen oder Rechtsanwälten nicht geprüft. Klären Sie die Verwendung zuerst mit Ihrer Steuerberaterin oder Ihrem Steuerberater. Vollständiger Text: [docs/haftungsausschluss.md](docs/haftungsausschluss.md).
+> Rechnungsarchiv ist freie Open-Source-Software. Für Sach- und Vermögensschäden aus leichter Fahrlässigkeit – insbesondere Datenverlust, einen abgelehnten Vorsteuerabzug, eine Schätzung oder Strafen – wird nicht gehaftet. Die Haftung für Vorsatz, grobe Fahrlässigkeit und Personenschäden bleibt bestehen. Ein weitergehender Ausschluss besteht nicht. Die Hinweise in diesem Projekt geben die eigene Einschätzung der Autorinnen und Autoren wieder; sie sind keine Steuer- oder Rechtsberatung und wurden weder von der Finanzverwaltung noch von Rechtsanwältinnen oder Rechtsanwälten geprüft. Klären Sie die Verwendung vor dem Einsatz mit Ihrer Steuerberaterin oder Ihrem Steuerberater. Vollständiger Text: [docs/haftungsausschluss.md](docs/haftungsausschluss.md).
 
 Das Programm ist in Entwicklung. Eine Veröffentlichung gibt es noch nicht. Es läuft unter Windows.
 
 | Für wen | Hier beginnen |
 |---|---|
 | Buchhaltung im Betrieb | [So funktioniert es](#so-funktioniert-es) und [Was es kostet](#zeitstempel-dienste) |
-| Ein-Personen-Unternehmen, Skript oder KI-Agent | [Einrichten](#so-funktioniert-es) und [Kommandozeile](#kommandozeile--ki-agenten) |
+| Ein-Personen-Unternehmen, Skript oder KI-Agent | [Einrichten](#einrichten) und [Kommandozeile](#kommandozeile--ki-agenten) |
 | Steuerberatung | [Was es belegt](#was-es-belegt--und-was-nicht), [Recht](#rechtlicher-rahmen), [Haftung](docs/haftungsausschluss.md) |
 | Betriebsprüfung | [Export und eigene Prüfung](#für-die-betriebsprüfung) |
 | Entwicklung | [Kommandozeile](#kommandozeile--ki-agenten) und [Für Entwickler](#für-entwickler) |
 
-## Inhalt
+## Einrichten
 
-- [So funktioniert es](#so-funktioniert-es) · [Was es belegt – und was nicht](#was-es-belegt--und-was-nicht)
-- [Zeitstempel-Dienste](#zeitstempel-dienste) · [Für die Betriebsprüfung](#für-die-betriebsprüfung)
-- [Kommandozeile & KI-Agenten](#kommandozeile--ki-agenten) · [Rechtlicher Rahmen](#rechtlicher-rahmen)
-- [Bekannte Grenzen](#bekannte-grenzen) · [Häufige Fragen](#häufige-fragen)
-- [Unterstützen & Danke](#unterstützen--danke) · [Für Entwickler](#für-entwickler) · [Lizenz & Haftung](#lizenz--haftung)
+Unter Windows:
+
+1. Laden Sie das Programm herunter. Eine Veröffentlichung gibt es noch nicht.
+2. Legen Sie ein Konto bei einem Zeitstempel-Dienst aus der [Tabelle](#zeitstempel-dienste) an. Empfehlung: Mensatek.
+3. Starten Sie das Programm, geben Sie Firma und Archivordner ein und wählen Sie „Archiv anlegen“.
+4. Tragen Sie die Zugangsdaten unter Einstellungen ein.
+5. Ziehen Sie einen Ordner hinein.
 
 ## So funktioniert es
 
@@ -40,7 +42,7 @@ Unter Windows gibt es ein Fenster mit „Ordner archivieren“, „Archiv kontro
 2. **Qualifizierter Zeitstempel auf den Prüfwert.** Zur Ablage gehört ein Prüfwert von 32 Byte. Das Programm holt dafür genau einen qualifizierten Zeitstempel nach RFC 3161 bei einem EU-Dienst Ihrer Wahl. Der Dienst erhält den Prüfwert, Ihren Kontonamen und Ihre IP-Adresse. Dateinamen, Rechnungsinhalte und die Prüfsummen der einzelnen Dateien bleiben auf dem Computer. Neben der Ablage liegen danach der Zeitstempel, die Zertifikatskette und der Sperrstatus.
 3. **Später kontrollieren oder exportieren.** Mit „Archiv kontrollieren“ prüfen Sie die Ablagen. Die Prüfung braucht den Dienstanbieter nicht, wenn die Prüfdaten beim Stempeln gespeichert wurden. Mit „Export für Betriebsprüfung“ stellen Sie die Unterlagen für eine Prüfung zusammen.
 
-Ohne eingerichteten Dienst bleiben neue Ablagen ausstehend und erhalten ihren Zeitstempel, sobald ein Dienst eingerichtet ist. Einen kostenlosen Dienst bietet das Programm bewusst nicht an: Er hätte keine gesetzliche Vermutung, und bekannte kostenlose Dienste (z. B. DigiCert) stehen in den USA.
+Ohne eingerichteten Dienst bleiben neue Ablagen ausstehend. Einen kostenlosen Dienst bietet das Programm bewusst nicht an: Er hätte keine gesetzliche Vermutung, und bekannte kostenlose Dienste (z. B. DigiCert) stehen in den USA. Ausstehende Zeitstempel werden beim nächsten Programmstart, nach dem nächsten erfolgreichen Zeitstempel oder über „Jetzt nachholen“ geholt.
 
 Für den Start brauchen Sie einen Windows-PC, einen Ordner für das Archiv und ein Konto bei einem Dienst aus der Tabelle unten. Zugangsdaten liegen im Windows-Anmeldeinformationsspeicher, nicht in der Kommandozeile.
 
@@ -67,7 +69,7 @@ Die Pflichten des Verfahrens bleiben beim Unternehmen. Dazu gehören insbesonder
 - die Aufbewahrung der Rechnung in der empfangenen Form und die Lesbarkeit über die gesamte Frist;
 - die Entscheidung, welche Belege archiviert werden.
 
-Sicherungen sind erforderlich. Die Sicherungskopie wird nach dem Zeitstempel auf einem zweiten Datenträger angelegt. Einmal im Jahr sollten Sie die Sicherung mit „Archiv kontrollieren“ wiederherstellen und prüfen.
+Sicherungen sind erforderlich. Die Sicherungskopie wird nach dem Zeitstempel auf einem zweiten Datenträger angelegt. Einmal im Jahr kopieren Sie die Sicherung in einen eigenen Ordner und prüfen diese wiederhergestellte Kopie mit „Archiv nur kontrollieren“.
 
 Das Programm ersetzt keine Verfahrensdokumentation und keine Buchhaltung.
 
@@ -101,11 +103,22 @@ Ein Anbieter genügt. Fällt er weg, bleiben bestehende Zeitstempel gültig und 
 
 Das Archivprotokoll gibt das Ergebnis der Kontrolle wieder. Maßgeblich ist das Prüfprogramm. Die Prüfung schreibt nichts ins Archiv. Ein Archivprotokoll können Sie jederzeit auch für eine einzelne Ablage speichern.
 
-So prüfen Sie selbst: `rechnungsarchiv.exe` auf das exportierte Archiv oder eine einzelne Ablage anwenden und `PRUEFANLEITUNG.txt` lesen. Eine Prüfung ohne Schreibzugriff braucht keinen Zeitstempel-Dienst, wenn die Prüfdaten im Export liegen.
+So prüfen Sie selbst: `rechnungsarchiv.exe` auf das exportierte Archiv oder eine einzelne Ablage anwenden und `PRUEFANLEITUNG.txt` lesen. `PRUEFANLEITUNG.txt` enthält den genauen PowerShell-Befehl für den Exportordner, mit Pfaden in Anführungszeichen. Eine Prüfung ohne Schreibzugriff braucht keinen Zeitstempel-Dienst, wenn die Prüfdaten im Export liegen.
 
 ## Kommandozeile & KI-Agenten
 
 Ein Programm: `rechnungsarchiv`. Die grafische Oberfläche und die Kommandozeile verwenden dieselbe Prüfung. Die Befehlsbeschreibung steht in [docs/cli.md](docs/cli.md) (in Arbeit).
+
+Beispiel, ein neues Archiv und die erste Ablage. Das Passwort liest das Programm von der Standardeingabe, nie als Argument:
+
+```text
+rechnungsarchiv init "D:\Buchhaltung\Rechnungsarchiv" --firma "Musterfirma GmbH"
+rechnungsarchiv provider set mensatek --user musterfirma
+rechnungsarchiv archive --dry-run "D:\Scans\2026-11 Eingangsrechnungen"
+rechnungsarchiv archive "D:\Scans\2026-11 Eingangsrechnungen" --yes
+```
+
+Alternative mit Client-Zertifikat (z. B. Disig): `rechnungsarchiv provider set disig --p12 "C:\Pfad\zertifikat.p12"` (Zertifikatspasswort über die Standardeingabe).
 
 Zuerst `status --json`. Mit `--json`, und immer wenn die Ausgabe kein Terminal ist, kommt nur JSON auf die Standardausgabe. `archive --dry-run` zeigt den Plan und schreibt nichts. `archive` und `export` ohne Terminal brauchen `--yes`. Beides ist endgültig oder kostet einen Zeitstempel. Zugangsdaten gehören in den Anmeldeinformationsspeicher, nicht in den Aufruf.
 
@@ -143,12 +156,12 @@ Keine Rechtsberatung. Die tragenden Normen, soweit sie dieses Programm betreffen
 - **DSGVO.** Rechtsgrundlage der gesetzlich gebotenen Aufbewahrung ist Art. 6 Abs. 1 lit. c. Art. 5 Abs. 1 lit. e verlangt die Löschung nach Fristende. Eine Löschfunktion ist in dieser Version nicht enthalten. Beim Stempeln erhält der Anbieter den Prüfwert, den Kontonamen und die IP-Adresse. Das Programm verwendet nur Anbieter in der EU.
 - Das Bundesministerium für Finanzen zertifiziert keine Archivierungssoftware.
 
-Unterlagen dazu, alle in Arbeit:
+Unterlagen dazu:
 
-- [docs/rechtsgrundlagen.md](docs/rechtsgrundlagen.md)
-- [docs/verfahrensdokumentation.md](docs/verfahrensdokumentation.md)
-- [docs/fuer-pruefer.md](docs/fuer-pruefer.md)
-- [docs/datenschutz.md](docs/datenschutz.md)
+- [docs/rechtsgrundlagen.md](docs/rechtsgrundlagen.md) (in Arbeit)
+- [docs/verfahrensdokumentation.md](docs/verfahrensdokumentation.md) (in Arbeit)
+- [docs/fuer-pruefer.md](docs/fuer-pruefer.md) (in Arbeit)
+- [docs/datenschutz.md](docs/datenschutz.md) (in Arbeit)
 
 ## Bekannte Grenzen
 
@@ -164,13 +177,9 @@ Unterlagen dazu, alle in Arbeit:
 
 **Was passiert, wenn der Anbieter pleitegeht?** Bestehende Zeitstempel bleiben mit den gespeicherten Prüfdaten prüfbar. Für neue Ablagen wählen Sie einen anderen qualifizierten EU-Anbieter.
 
-**Kann ich danach die Papierrechnungen wegwerfen?** Erst nachdem Sie das mit Ihrer Steuerberaterin oder Ihrem Steuerberater geklärt haben. Der vorgesehene Ablauf steht in der [Verfahrensdokumentation](docs/verfahrensdokumentation.md) (in Arbeit): Scan prüfen, archivieren, den Zeitstempel abwarten, und erst dann das Papier vernichten.
+**Kann ich danach die Papierrechnungen wegwerfen?** Erst nachdem Sie das mit Ihrer Steuerberaterin oder Ihrem Steuerberater geklärt haben. Der vorgesehene Ablauf steht in der [Verfahrensdokumentation](docs/verfahrensdokumentation.md): Scan prüfen, archivieren, den Zeitstempel abwarten, und erst dann das Papier vernichten.
 
 **Ersetzt das meine Buchhaltung oder die Verfahrensdokumentation?** Nein. Buchhaltung, innerbetriebliches Kontrollverfahren und Verfahrensdokumentation bleiben bei Ihnen.
-
-**Was verlässt den Computer?** Der Prüfwert (32 Byte), der Kontoname beim Zeitstempel-Dienst und die IP-Adresse der Anfrage. Dateinamen, einzelne Prüfsummen und die Rechnungen bleiben auf dem Computer.
-
-**Darf ich das für österreichische Belege verwenden?** Die Aufbewahrung bleibt Ihre Pflicht. Ein qualifizierter Zeitstempel trägt die Vermutung nur für Zeitpunkt und Unversehrtheit des Prüfwerts (Art. 41 Abs. 2 eIDAS). Das Bundesministerium für Finanzen zertifiziert keine Archivierungssoftware. Klären Sie den Einsatz mit Ihrer Steuerberaterin oder Ihrem Steuerberater.
 
 ## Unterstützen & Danke
 
@@ -186,7 +195,7 @@ Danke an die offenen Standards und Projekte, auf denen das hier aufbaut: BagIt (
 <details>
 <summary><strong>Build, layout, and specification</strong></summary>
 
-Go. Layout, rules, and UI wording: [AGENTS.md](AGENTS.md). Byte-level format: [docs/spec.md](docs/spec.md). Decisions: [docs/adr/](docs/adr/). Architecture: [docs/architecture.md](docs/architecture.md). CLI reference: [docs/cli.md](docs/cli.md) (in progress).
+Go. Layout, rules, and UI wording: [AGENTS.md](AGENTS.md). Byte-level format: [docs/spec.md](docs/spec.md). Decisions: [docs/adr/](docs/adr/). Architecture: [docs/architecture.md](docs/architecture.md). CLI reference: [docs/cli.md](docs/cli.md).
 
 The CLI and the GUI render one `verify.Report`. Business logic stays in `internal/`. The GUI is a thin Wails v3 shell. The toolchain in `go.mod` is go1.27.4 and is fetched automatically. Prices stay in this README only.
 
@@ -205,4 +214,4 @@ The verifier is security-critical. Missing validation material is `Unbestimmt`, 
 
 Apache-2.0. Der Text steht in [LICENSE](LICENSE).
 
-Keine Gewähr und keine Haftung, soweit gesetzlich zulässig. Keine Steuer- oder Rechtsberatung. Maßgeblich ist [docs/haftungsausschluss.md](docs/haftungsausschluss.md).
+Für Sach- und Vermögensschäden aus leichter Fahrlässigkeit wird nicht gehaftet. Die Haftung für Vorsatz, grobe Fahrlässigkeit und Personenschäden bleibt bestehen. Keine Steuer- oder Rechtsberatung. Maßgeblich ist [docs/haftungsausschluss.md](docs/haftungsausschluss.md).

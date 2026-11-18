@@ -157,7 +157,7 @@ For each Ablage:
 
    Otherwise the token is **unbestätigt**. This is normal for an offline check of a recent stamp; it resolves once a newer list is cached or the check runs online. If the conditions hold but the status is not `granted` at genTime, the token is **nicht qualifiziert**.
 7. **Key compromise.** If any valid revocation evidence (stored, or fetched online when available) shows the signer or a CA in its path revoked with reason `keyCompromise`, `cACompromise` or unspecified, the token is **Unbestimmt**, whatever the dates (RFC 3161 §4).
-8. **Proven time.** `belegt_spätestens` is genTime + accuracy, rounded up to the full minute for display.
+8. **Proven time.** `belegt_spätestens` is genTime + accuracy, rounded **up to the full second** for display (e.g. 09:14:22 ± 1 s → "spätestens 09:14:23 Uhr MEZ"). The raw genTime and the accuracy are shown separately in the details.
    - Accuracy comes from the token; if the token has none, from the provider's declared accuracy in `providers.json`.
    - If neither exists, show genTime with the note "Genauigkeit nicht angegeben" and assert no exact latest time.
    - If the Ablage has no valid own token, it MAY instead inherit the earliest `belegt_spätestens` of a valid successor in the verified set, because every successor commits to it through the chain.
@@ -235,20 +235,19 @@ The document is an **objective statement of fact**. It contains no disclaimers, 
    - Belegjahr.
 2. **Feststellung** (statement, a short factual paragraph). Example:
 
-   > Ablage 0011 „2026-10 Eingangsrechnungen" enthält 64 Dateien (31,4 MB). Ihr Prüfwert ist sha256:c41e…a1b8. Für diesen Prüfwert besteht ein Zeitstempel von Mensatek (Spanien) vom 05.11.2026, 09:14:22 Uhr (± 1 s); der Dienst ist laut EU-Vertrauensliste zu diesem Zeitpunkt ein qualifizierter Zeitstempeldienst nach eIDAS. Bei der Kontrolle am 18.11.2026 stimmten alle 64 Dateien mit dem spätestens zu diesem Zeitpunkt belegten Stand überein.
+   > Ablage 0011 „2026-10 Eingangsrechnungen" enthält 64 Dateien (31,4 MB). Ihr Prüfwert ist sha256:<64 hex>. Für diesen Prüfwert besteht ein Zeitstempel von Mensatek (Spanien) vom 05.11.2026, 09:14:22 Uhr MEZ (± 1 s); der Dienst ist laut EU-Vertrauensliste zu diesem Zeitpunkt ein qualifizierter Zeitstempeldienst nach der eIDAS-Verordnung. Bei der Kontrolle am 18.11.2026 stimmten alle 64 Dateien im Dateiverzeichnis mit dem Stand überein, den der Zeitstempel spätestens für den 05.11.2026, 09:14:23 Uhr MEZ belegt.
 
    The wording follows the actual status (Ausstehend, Verändert, …) exactly. It never claims more than §6 established.
 3. **Angaben** (details):
    - archive ID;
-   - sequence number and predecessor (number + Prüfwert);
+   - sequence number and predecessor (number + **full** Prüfwert), stated neutrally (no "lückenlos");
    - archived on / by (local assertion, labelled as such);
-   - retention period up to;
-   - timestamp details: provider, serial number, policy OID, accuracy, signing certificate, issuer;
+   - chosen retention period and its ordinary end date ("Gewählte Frist: 7 Jahre, gewöhnliches Datum 31.12.2033");
+   - timestamp details: provider, serial number, policy OID, accuracy, signing certificate and its issuer, revocation evidence stated factually ("Zertifikat laut OCSP vom … nicht gesperrt");
+   - all times with time zone (local time + UTC offset);
    - trusted-list version used.
 4. **Dateiverzeichnis** (file list), **complete**: running number, path, size, original modification date, **full SHA-256**. Sorted by path. Continues over as many pages as needed.
-5. **Unabhängige Kontrolle** (independent verification), described factually:
-   - with `rechnungsarchiv verify`;
-   - manually: the bag's `sha256sum -c` lines plus `openssl ts -verify -digest <Prüfwert> -in 1.tsr`.
+5. **Unabhängige Kontrolle** (independent verification), described factually: the exact command for the bundled verifier with quoted paths (`.\rechnungsarchiv.exe verify "<datei>.zip"`, run in the export folder), and a reference to the complete manual procedure in `PRUEFANLEITUNG.txt` / `VERIFY.txt`.
 6. **Footer:** "Archivprotokoll Ablage NNNN · erstellt am … mit Rechnungsarchiv <version> · Seite x von y".
 
 **Format:**

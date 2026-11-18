@@ -51,7 +51,8 @@ chain.json: each Ablage names its predecessor → gaps/forks detectable; proven 
 |---|---|
 | `internal/bag` | Write and read bags, path rules, ZIP profile, duplicate detection |
 | `internal/archive` | Archive folder, lock, numbering, commit/recovery, pending queue |
-| `internal/tsa` | RFC 3161 client (Basic / client cert), evidence collection, token verification, `providers.json`, EU trusted-list fetch + XML-signature check + cache |
+| `internal/tsa` | RFC 3161 client (Basic / client cert), evidence collection, token verification, `providers.json` |
+| `internal/trust` | EU trusted lists: LOTL + national lists fetch, XML-signature check against pinned LOTL certs, cache, qualification at genTime |
 | `internal/verify` | **The only** verification engine → `Report` |
 | `internal/export` | Export for the tax audit (spec §8) |
 | `internal/report` | Archivprotokoll PDF per Ablage: factual statement and complete file list, rendered from `verify.Report` (spec §10) |

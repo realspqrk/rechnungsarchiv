@@ -18,6 +18,8 @@ The owner's projects ship a CLI next to the GUI so that scripts and AI agents ca
   | `verify [<archiv>\|<ablage.zip>]` | Check an archive or a single Ablage. Always read-only |
   | `export --von --bis <ziel>` | Write an export for a tax audit (Betriebsprüfung) |
   | `providers` | List supported providers (no prices) |
+  | `provider set <id> [--user <name>] [--p12 <datei>]` | Set the timestamp provider for this archive. Password / PKCS#12 password is read from **stdin only** and stored in the OS credential store (never as an argument) |
+  | `provider show` | Show the configured provider and whether credentials exist on this PC (never the secret) |
   | `schema --json` | Machine-readable definition of all commands |
 
 - **Output rules:**
