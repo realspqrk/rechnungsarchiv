@@ -1,0 +1,22 @@
+# Build output
+/bin/
+/dist/
+/build/bin/
+*.exe
+# Frontend
+node_modules/
+app/frontend/dist/
+# Test artefacts
+/tmp/
+*.test
+coverage.out
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store
+# Local agent state
+.claude/settings.local.json
+# Temporary review inputs
+/.review/
+# harness-subagent temp files
+/.harness-subagent-*

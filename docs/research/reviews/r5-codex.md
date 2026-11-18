@@ -1,0 +1,7 @@
+VERDICT changes: 2
+
+**Hold residual: YES, partial rejection accepted.** A v1 tool may accept documented limitations of authenticated revocation evidence without promising detection of an erased historical hold; this is a risk decision, not proof of complete ETSI conformance. [ETSI EN 319 102-1 §5.2.5](https://www.etsi.org/deliver/etsi_en/319100_319199/31910201/01.04.01_60/en_31910201v010401p.pdf).
+
+1. **P1 — Contradictory evidence conditions (§5).** The mandatory `thisUpdate ≥ genTime` remains alongside the new interval alternative `thisUpdate ≤ genTime ≤ nextUpdate`. Together they permit that alternative only at exact equality. Example: a CRL issued 09:00, nextUpdate tomorrow, cannot validate a 10:00 stamp through the intended interval rule. Services with infrequent updates may trigger unnecessary replacement timestamps. **Minimal fix:** remove the unconditional lower bound; apply it only to the separate post-genTime evidence branch.
+
+2. **P1 — Cached retrieval time is not authenticated evidence (§§6.6–7).** The XML signature authenticates list contents, not local retrieval metadata. An archive owner can supply a superseded signed list and edit its retrieval time to after genTime, making an offline auditor falsely accept qualification after withdrawal. **Minimal fix:** accept retrieval freshness from an authenticated online fetch performed by the verifier itself. Offline, require a post-genTime signed list or independently verifiable retrieval evidence; ordinary cache metadata must yield unbestätigt.
