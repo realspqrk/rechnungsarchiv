@@ -43,6 +43,22 @@ func NewRequest(pruefwert [32]byte, policy asn1.ObjectIdentifier) (*Request, err
 		}
 		nonce = new(big.Int).SetBytes(b)
 	}
+	return encodeRequest(pruefwert, policy, nonce)
+}
+
+// Canonical reports whether r is byte for byte the request NewRequest
+// builds for its imprint, policy and nonce (64-bit nonce, certReq, no
+// extensions). Only such a stored request may be sent again: anything
+// else in n.tsq would leave the machine (AGENTS.md: only the Prüfwert).
+func (r *Request) Canonical() bool {
+	if r.Nonce == nil || r.Nonce.Sign() <= 0 || r.Nonce.BitLen() > 64 {
+		return false
+	}
+	c, err := encodeRequest(r.Imprint, r.Policy, r.Nonce)
+	return err == nil && bytes.Equal(c.DER, r.DER)
+}
+
+func encodeRequest(pruefwert [32]byte, policy asn1.ObjectIdentifier, nonce *big.Int) (*Request, error) {
 	der, err := asn1.Marshal(timeStampReq{
 		Version: 1,
 		MessageImprint: messageImprint{

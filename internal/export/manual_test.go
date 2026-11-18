@@ -27,6 +27,11 @@ func TestManualOpenSSLCommandsWork(t *testing.T) {
 	if o := e.Stamp().Outcomes; len(o) != 1 || o[0].Stamped {
 		t.Fatalf("offline attempt: %+v", o)
 	}
+	// The unanswered request is resent unless it went to another provider
+	// (or predates the resend rule): simulate that, so attempt 2 exists.
+	if err := os.WriteFile(filepath.Join(e.Dir, "0001_"+testenv.Incoming+".nachweis", "1.provider"), []byte("anderer"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	e.SetMode(testenv.Normal)
 	if o := e.Stamp().Outcomes; len(o) != 1 || !o[0].Stamped || o[0].Attempt != 2 {
 		t.Fatalf("second attempt: %+v", o)

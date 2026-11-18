@@ -68,6 +68,20 @@ Mit „Archiv kontrollieren“ prüfen Sie die Ablagen. Die Prüfung braucht den
 
 Preise netto, ohne Gewähr, Stand 18.11.2026 laut Anbieter-Websites; vor dem Kauf prüfen, ob der Anbieter an österreichische Unternehmen verkauft (Reverse Charge). Die Preise stehen bewusst nur hier, nicht im Programm.
 
+### Empfehlung: Mensatek, auch mit spanischem Kundenbereich
+
+Mensatek ist die Empfehlung: qualifiziert nach eIDAS, mit Abstand am günstigsten, Guthaben verfällt nicht, Zugang mit Benutzername und Passwort. Mit diesem Anbieter ist Rechnungsarchiv im Echtbetrieb getestet. Die Hürde ist die Sprache: Website, Kundenbereich, Rechnungen und E-Mails sind spanisch (die Website teils englisch).
+
+So kommen Sie ohne Spanischkenntnisse durch:
+
+1. **Seite übersetzen lassen.** In Microsoft Edge: Rechtsklick auf die Seite → „In Deutsch übersetzen“, oder das Übersetzen-Symbol in der Adressleiste. In Google Chrome ebenso über den Rechtsklick den Eintrag zum Übersetzen wählen. Das gilt auch im Kundenbereich nach der Anmeldung. Für E-Mails und eigene Nachrichten an den Support hilft [DeepL](https://www.deepl.com/translator) (Text hinein kopieren, Übersetzung zurück kopieren).
+2. **Konto anlegen.** In den Einstellungen des Programms bei „Anbieter“ Mensatek wählen; danach erscheint „Konto beim Anbieter anlegen“. Geben Sie Ihre Firma mit UID an: Dann stellt Mensatek ohne spanische Umsatzsteuer aus (Reverse Charge).
+3. **Guthaben kaufen.** Das kleinste Paket reicht für viele Jahre. Die Bestätigung kommt per E-Mail mit dem Betreff „RECARGA REALIZADA“ (Aufladung durchgeführt). Bis das Guthaben im Konto steht, können mehrere Stunden vergehen.
+4. **Zugangsdaten für den Zeitstempel-Dienst** („Sellado de Tiempo“) im Kundenbereich nachsehen. Das sind eigene Zugangsdaten für die Schnittstelle, nicht unbedingt die Anmeldung zum Kundenbereich. Tragen Sie Benutzername und Passwort in den Einstellungen des Programms ein; das Passwort bleibt in der Windows-Anmeldeinformationsverwaltung dieses PCs.
+5. **Bei Problemen** (z. B. Guthaben bezahlt, aber nicht verfügbar): im Kundenbereich ein Support-Ticket schreiben, auf Englisch oder mit DeepL auf Spanisch übersetzt, und mit „Enviar Ticket“ absenden.
+
+Nach dem ersten Zeitstempel zeigt das Programm, ob Zugangsdaten und Guthaben passen und ob der Stempel qualifiziert ist. Ist das Guthaben aufgebraucht, bleiben neue Ablagen ausstehend; es geht nichts verloren. Nach dem Aufladen holt das Programm die Zeitstempel beim nächsten Start oder sofort mit „Jetzt nachholen“.
+
 Ein Anbieter genügt. Fällt er weg, bleiben bestehende Zeitstempel gültig und prüfbar (Zertifikatskette und Sperrstatus werden beim Stempeln gespeichert); für neue Ablagen wählen Sie einen anderen Anbieter. Das Programm wechselt den Anbieter nicht von selbst und bietet keinen kostenlosen Dienst an. Die eingebaute Liste enthält nur qualifizierte EU-Dienste.
 
 ## Kommandozeile in 60 Sekunden

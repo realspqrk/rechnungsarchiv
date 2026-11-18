@@ -3,8 +3,11 @@
 package stamp_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/x509/pkix"
 	"encoding/asn1"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +17,7 @@ import (
 	"github.com/realspqrk/rechnungsarchiv/internal/archive"
 	"github.com/realspqrk/rechnungsarchiv/internal/stamp"
 	"github.com/realspqrk/rechnungsarchiv/internal/testenv"
+	"github.com/realspqrk/rechnungsarchiv/internal/tsa"
 	"github.com/realspqrk/rechnungsarchiv/internal/tsa/tsatest"
 	"github.com/realspqrk/rechnungsarchiv/internal/verify"
 	"golang.org/x/crypto/ocsp"
@@ -127,10 +131,21 @@ func TestStampFailureReasons(t *testing.T) {
 				t.Fatalf("%s", testenv.JSON(d))
 			}
 
+			// A second refused run resends the same request: no new attempt.
+			if res = e.Stamp(); res.Outcomes[0].Stamped || res.Outcomes[0].Attempt != 1 {
+				t.Fatalf("second failure: %s", testenv.JSON(res))
+			}
 			e.SetMode(testenv.Normal)
 			res = e.Stamp()
-			if len(res.Outcomes) != 2 || !res.Outcomes[0].Stamped || res.Outcomes[0].Attempt != 2 || !res.Outcomes[1].Stamped {
+			if len(res.Outcomes) != 2 || !res.Outcomes[0].Stamped || res.Outcomes[0].Attempt != 1 || !res.Outcomes[1].Stamped {
 				t.Fatalf("retry: %s", testenv.JSON(res))
+			}
+			// Owner: no clutter. The token answers the request stored first.
+			if extra, _ := filepath.Glob(filepath.Join(e.Dir, "*.nachweis", "2.*")); len(extra) != 0 {
+				t.Fatalf("new attempt written: %v", extra)
+			}
+			if r := verifyArchive(t, e, verify.Options{}); r.Status != verify.StatusTimestamped {
+				t.Fatalf("%s", testenv.JSON(r.Deposits[0]))
 			}
 		})
 	}
@@ -252,4 +267,80 @@ func TestChangedAblageIsNeverStamped(t *testing.T) {
 	if o.Stamped || o.Reason != "" || e.TSA.Requests() != 0 {
 		t.Fatalf("%+v", o)
 	}
+}
+
+// Code review 19: a stored request that is not the program's own encoding
+// is never resent (a fresh attempt goes out), and a provider marker that
+// differs only in its line ending does not block the resend.
+func TestResendSafeguards(t *testing.T) {
+	nachweis := func(e *testenv.Env) string {
+		m, _ := filepath.Glob(filepath.Join(e.Dir, "*.nachweis"))
+		if len(m) != 1 {
+			t.Fatalf("nachweis folders %v", m)
+		}
+		return m[0]
+	}
+	t.Run("altered request", func(t *testing.T) {
+		e := testenv.New(t)
+		e.Add(testenv.Incoming, archive.Options{})
+		e.SetMode(testenv.Offline)
+		e.Stamp()
+		dir := nachweis(e)
+		old, _ := os.ReadFile(filepath.Join(dir, "1.tsq"))
+		req, err := tsa.ParseRequest(old)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The same imprint and nonce, plus an extension carrying a file name:
+		// it parses and pairs, but must never be sent.
+		type imprint struct {
+			HashAlgorithm pkix.AlgorithmIdentifier
+			HashedMessage []byte
+		}
+		type tsq struct {
+			Version        int
+			MessageImprint imprint
+			Nonce          *big.Int
+			CertReq        bool
+			Extensions     []pkix.Extension `asn1:"optional,tag:0"`
+		}
+		bad, err := asn1.Marshal(tsq{Version: 1,
+			MessageImprint: imprint{pkix.AlgorithmIdentifier{Algorithm: asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}, Parameters: asn1.NullRawValue}, req.Imprint[:]},
+			Nonce:          req.Nonce, CertReq: true,
+			Extensions: []pkix.Extension{{Id: asn1.ObjectIdentifier{1, 2, 3}, Value: []byte("Rechnung Muster GmbH.pdf")}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p, err := tsa.ParseRequest(bad); err != nil || p.Imprint != req.Imprint {
+			t.Fatalf("altered request does not pair: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "1.tsq"), bad, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		e.SetMode(testenv.Normal)
+		if o := one(t, e.Stamp()); !o.Stamped || o.Attempt != 2 {
+			t.Fatalf("%+v", o)
+		}
+	})
+	t.Run("marker with CRLF", func(t *testing.T) {
+		e := testenv.New(t)
+		e.Add(testenv.Incoming, archive.Options{})
+		e.SetMode(testenv.Offline)
+		e.Stamp()
+		dir := nachweis(e)
+		id, err := os.ReadFile(filepath.Join(dir, "1.provider"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "1.provider"), append(bytes.TrimSpace(id), '\r', '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := os.ReadFile(filepath.Join(dir, "1.provider")); !bytes.HasSuffix(got, []byte("\r\n")) {
+			t.Fatalf("marker not rewritten: %q", got)
+		}
+		e.SetMode(testenv.Normal)
+		if o := one(t, e.Stamp()); !o.Stamped || o.Attempt != 1 {
+			t.Fatalf("%+v", o)
+		}
+	})
 }

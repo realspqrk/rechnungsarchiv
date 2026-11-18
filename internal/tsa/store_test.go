@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"errors"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -225,6 +228,36 @@ func TestChainExtendsAppendOnly(t *testing.T) {
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".tmp") {
 			t.Errorf("temp file left: %s", e.Name())
+		}
+	}
+}
+
+// Code review 19: only a request this package builds may be resent; extra
+// content in a stored n.tsq would otherwise leave the machine.
+func TestCanonicalRequest(t *testing.T) {
+	pw := sha256.Sum256([]byte("x"))
+	r := must(NewRequest(pw, nil))
+	if !must(ParseRequest(r.DER)).Canonical() {
+		t.Fatal("own request not canonical")
+	}
+	withExt, _ := asn1.Marshal(timeStampReq{Version: 1,
+		MessageImprint: messageImprint{HashAlgorithm: pkix.AlgorithmIdentifier{Algorithm: oidSHA256, Parameters: asn1.NullRawValue}, HashedMessage: pw[:]},
+		Nonce:          r.Nonce, CertReq: true,
+		Extensions: []pkix.Extension{{Id: asn1.ObjectIdentifier{1, 2, 3}, Value: []byte("Rechnung Muster GmbH.pdf")}}})
+	huge := new(big.Int).Lsh(big.NewInt(1), 70)
+	bigNonce, _ := asn1.Marshal(timeStampReq{Version: 1,
+		MessageImprint: messageImprint{HashAlgorithm: pkix.AlgorithmIdentifier{Algorithm: oidSHA256, Parameters: asn1.NullRawValue}, HashedMessage: pw[:]},
+		Nonce:          huge, CertReq: true})
+	noCert, _ := asn1.Marshal(timeStampReq{Version: 1,
+		MessageImprint: messageImprint{HashAlgorithm: pkix.AlgorithmIdentifier{Algorithm: oidSHA256, Parameters: asn1.NullRawValue}, HashedMessage: pw[:]},
+		Nonce:          r.Nonce})
+	for name, der := range map[string][]byte{"extension": withExt, "oversized nonce": bigNonce, "certReq false": noCert} {
+		p, err := ParseRequest(der)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if p.Canonical() {
+			t.Errorf("%s accepted as canonical", name)
 		}
 	}
 }

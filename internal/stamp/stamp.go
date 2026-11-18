@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"encoding/asn1"
 	"errors"
 	"fmt"
 	"os"
@@ -315,13 +316,52 @@ func (s *stamper) stamp(p pending) (o Outcome, fatal bool) {
 	pw, _ := rootBytes(p.root)
 	reqPolicy, err := s.prov.RequestPolicyOID()
 	if err == nil {
+		if dir, n, req := s.unanswered(&p, pw, reqPolicy); req != nil {
+			return s.send(o, dir, n, req)
+		}
 		var req *tsa.Request
 		if req, err = tsa.NewRequest(pw, reqPolicy); err == nil {
-			return s.send(o, p.dir, req)
+			return s.send(o, p.dir, 0, req)
 		}
 	}
 	o.Reason, o.Message = verify.ReasonProvider, err.Error()
 	return o, true
+}
+
+// unanswered returns the newest attempt of p in the folder new attempts go
+// to (p.dir) if it got no response and went to this provider with this
+// request policy. Its stored request (same bytes, same nonce) is sent
+// again, so offline, 401 or 402 runs do not leave a new attempt each time.
+// The request is on disk before it is sent again (write-before-send). Only
+// a request this program would build is resent (Request.Canonical).
+func (s *stamper) unanswered(p *pending, pw [32]byte, policy asn1.ObjectIdentifier) (string, int, *tsa.Request) {
+	var last *verify.Attempt
+	for i := range p.attempts {
+		// Numbers count per folder; NextAttempt allocates in p.dir.
+		if filepath.Join(s.dir, p.attempts[i].Nachweis) != p.dir {
+			continue
+		}
+		if last == nil || p.attempts[i].N > last.N {
+			last = &p.attempts[i]
+		}
+	}
+	if last == nil || last.Outcome != verify.OutcomeNoResponse {
+		return "", 0, nil
+	}
+	dir := p.dir
+	prov, err := os.ReadFile(filepath.Join(dir, verify.ProviderFile(last.N)))
+	if err != nil || strings.TrimSpace(string(prov)) != s.prov.ID {
+		return "", 0, nil
+	}
+	der, err := os.ReadFile(filepath.Join(dir, fmt.Sprintf("%d.tsq", last.N)))
+	if err != nil {
+		return "", 0, nil
+	}
+	req, err := tsa.ParseRequest(der)
+	if err != nil || req.Imprint != pw || !req.Policy.Equal(policy) || !req.Canonical() {
+		return "", 0, nil
+	}
+	return dir, last.N, req
 }
 
 // inWindow reports whether evidence for tok may still be obtained (spec §5:
@@ -330,15 +370,22 @@ func (s *stamper) inWindow(tok *tsa.Token) bool {
 	return !s.now().After(tok.GenTime.Add(tsa.GracePeriod))
 }
 
-func (s *stamper) send(o Outcome, dir string, req *tsa.Request) (Outcome, bool) {
-	n, err := tsa.NextAttempt(dir)
-	if err == nil {
-		err = tsa.WriteRequest(dir, n, req.DER) // n.tsq before sending
-	}
-	if err == nil {
-		// The provider the request goes to, for verification later
-		// (declared accuracy, trusted list). It is not sent anywhere.
-		err = writeOnce(filepath.Join(dir, verify.ProviderFile(n)), []byte(s.prov.ID))
+// send sends req as attempt n of dir; n == 0 writes a new attempt first.
+// A resent attempt (n > 0) is already on disk with its provider marker,
+// both checked by unanswered.
+func (s *stamper) send(o Outcome, dir string, n int, req *tsa.Request) (Outcome, bool) {
+	resent := n > 0
+	var err error
+	if !resent {
+		n, err = tsa.NextAttempt(dir)
+		if err == nil {
+			err = tsa.WriteRequest(dir, n, req.DER) // n.tsq before sending
+		}
+		if err == nil {
+			// The provider the request goes to, for verification later
+			// (declared accuracy, trusted list). It is not sent anywhere.
+			err = writeOnce(filepath.Join(dir, verify.ProviderFile(n)), []byte(s.prov.ID))
+		}
 	}
 	if err != nil {
 		o.Reason, o.Message = verify.ReasonProvider, "Anfrage konnte nicht gespeichert werden: "+err.Error()
@@ -372,7 +419,9 @@ func (s *stamper) send(o Outcome, dir string, req *tsa.Request) (Outcome, bool) 
 		o.Reason, o.Message = verify.ReasonProvider, "Antwort konnte nicht gespeichert werden: "+err.Error()
 		return o, true
 	}
-	if skew := tok.GenTime.Sub(s.now()); skew > ClockTolerance || skew < -ClockTolerance {
+	// A resent request may be answered with the token of its earlier send,
+	// so only a genTime in the future says something about this PC's clock.
+	if skew := tok.GenTime.Sub(s.now()); skew > ClockTolerance || (!resent && skew < -ClockTolerance) {
 		o.Warning = fmt.Sprintf("Ablage %04d: Die Uhr dieses PCs weicht um %s von der Zeit des Zeitstempels ab. Bitte die PC-Uhr prüfen.", o.Sequence, skew.Abs().Round(time.Second))
 	}
 	return s.complete(o, dir, n, tok), false

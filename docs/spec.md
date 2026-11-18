@@ -114,6 +114,7 @@ Value formats:
   - `certReq = TRUE`;
   - a fresh 64-bit random `nonce`;
   - `reqPolicy` = the provider's `request_policy`, only if set.
+- **Resend instead of a new attempt:** if the newest attempt in the Nachweis folder in use has no response (`n.tsq` without `n.tsr`, e.g. offline, 401, 402), went to the same provider with the same `reqPolicy`, and its `n.tsq` is byte for byte the request this program builds for that imprint, policy and nonce (64-bit nonce, `certReq`, no extensions), it is sent again unchanged as attempt n. Otherwise a new attempt with a fresh nonce is written. Either way the request is on disk before it is sent.
 - Send it as an HTTPS POST of `application/timestamp-query`, with HTTP Basic or a TLS client certificate as configured.
 - Do not follow redirects.
 - **There is no fallback to any other provider.**
@@ -159,7 +160,7 @@ An Ablage is **Zeitgestempelt** only when the token and all validation material 
 | `prüfdaten` | validation material is missing or invalid; retried |
 | `anbieter` | any other error |
 
-**Time sanity.** If |genTime − local clock at receipt| > 5 min, add a warning to the report. It only indicates a wrong PC clock.
+**Time sanity.** If |genTime − local clock at receipt| > 5 min, add a warning to the report. It only indicates a wrong PC clock. For a resent request only a genTime ahead of the clock warns: the provider may answer with the token of the earlier send.
 
 ## 6. Verification (single engine: `internal/verify`)
 
