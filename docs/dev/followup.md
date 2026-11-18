@@ -32,4 +32,5 @@
 - **RFC 4998 ERS export** (Bouncy Castle / BSI ERVerifyTool interop).
 - **macOS/Linux GUI builds.** The CLI builds everywhere.
 - **tsa evidence robustness:** keep every evidence file per certificate (`ReadAttempts` keeps one per CertKey, so a bad stored OCSP answer blocks completion until the 24 h window ends); add `Fetcher.Evidence(cert, issuer, genTime)` and `tsa.WriteProvider` instead of the local workarounds in internal/stamp.
+- **Attempt clutter on refused requests:** every refused or unanswered request (offline, 401, 402) leaves a new `n.tsq` + `n.provider` (seen: attempt 6 after five 402s). Reuse the newest unanswered attempt's request when no token came back, keeping write-before-send.
 - **GUI performance on large archives:** every detail view, protocol and archive action re-verifies the whole archive (correct, slow for many GB). Cache the last `verify.Report` per archive generation.
