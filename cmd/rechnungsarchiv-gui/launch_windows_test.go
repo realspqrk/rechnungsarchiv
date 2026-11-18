@@ -87,3 +87,18 @@ func TestEchoArgs(t *testing.T) {
 	os.Stdout.Write(append(data, '\n'))
 	os.Exit(0)
 }
+
+// The installer runs the main exe for its hooks and waits for it; the
+// launcher must not open the window then.
+func TestInstallerHooksExit(t *testing.T) {
+	for _, args := range [][]string{{"--veloapp-install", "1.0.0"}, {"--veloapp-updated", "1.0.1"}, {"--veloapp-obsolete"}, {"--veloapp-uninstall"}} {
+		if !installerHook(args) {
+			t.Errorf("%v not recognised", args)
+		}
+	}
+	for _, args := range [][]string{nil, {`D:\Rechnungen`}, {"--help"}, {"x", "--veloapp-install"}} {
+		if installerHook(args) {
+			t.Errorf("%v taken for a hook", args)
+		}
+	}
+}

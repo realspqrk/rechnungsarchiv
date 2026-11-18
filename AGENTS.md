@@ -6,13 +6,19 @@ Local, tamper-evident invoice archive for Austrian SMEs. A folder of invoices be
 
 For agents asked to "set up Rechnungsarchiv" for a user. Ask the user only for: company name, archive folder, timestamp provider (recommend `mensatek`, see the README provider table) and the provider username. **Never put a password or key on a command line or in chat output.**
 
-1. **Get the binary** (`$APP` below). There is no release yet, so build from source (Go auto-downloads its toolchain):
+1. **Install the signed release** (`$APP` below). Ask before installing; it adds Start menu and desktop entries, no admin rights:
    ```powershell
-   git clone https://github.com/realspqrk/rechnungsarchiv; cd rechnungsarchiv
-   cd app; wails3 build; cd ..        # full app incl. window (needs Node + wails3 v3.1.0, see app/README.md)
-   # CLI only, no window: go build -o bin/rechnungsarchiv.exe ./cmd/rechnungsarchiv
+   $ErrorActionPreference = 'Stop'
+   $setup = Join-Path $env:TEMP 'Rechnungsarchiv-win-Setup.exe'
+   Invoke-WebRequest 'https://github.com/realspqrk/rechnungsarchiv/releases/latest/download/Rechnungsarchiv-win-Setup.exe' -OutFile $setup
+   $sig = Get-AuthenticodeSignature $setup
+   if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -ne 'CN=Gerhard Petermeir, O=Gerhard Petermeir, L=Bad Gleichenberg, S=Steiermark, C=AT') { throw "Signatur ungültig: $($sig.Status) $($sig.SignerCertificate.Subject)" }
+   $p = Start-Process $setup -ArgumentList '--silent' -Wait -PassThru
+   if ($p.ExitCode -ne 0) { throw "Setup fehlgeschlagen ($($p.ExitCode))" }
+   $APP = "$env:LOCALAPPDATA\Rechnungsarchiv\current\rechnungsarchiv.exe"
+   & $APP --version                                    # {"version":"x.y.z"}
    ```
-   Then, in the repository folder: `$APP = (Resolve-Path '.\bin\rechnungsarchiv.exe').Path`. It is CLI and window in one file; `bin\rechnungsarchiv-gui.exe` is the window launcher for shortcuts. In PowerShell always call it as `& $APP …`. Read `& $APP --help` (the manual) and, before first use of any command, `& $APP <command> --help`.
+   From source instead, in a clone: `cd app; wails3 build; cd ..` (needs Node + wails3 v3.1.0, see app/README.md), then `$APP = (Resolve-Path '.\bin\rechnungsarchiv.exe').Path`. `$APP` is CLI and window in one file; `rechnungsarchiv-gui.exe` next to it is the window launcher for shortcuts. In PowerShell always call it as `& $APP …`. Read `& $APP --help` (the manual) and, before first use of any command, `& $APP <command> --help`.
 2. `& $APP status --json`:
    - exit 3 with `NO_ARCHIVE` → step 3;
    - exit 0 → the archive exists; check `provider` and `credentials`.
@@ -24,8 +30,9 @@ For agents asked to "set up Rechnungsarchiv" for a user. Ask the user only for: 
    - Only if the user explicitly hands you the secret: pipe it on stdin, never as an argument.
    - PowerShell 5.1 pipes ASCII, so umlauts break; prefer the interactive prompt.
    - Check with `& $APP provider show --json`: `credentials.stored: true`, no secret is printed.
-5. Verify with the demo invoices from the repo: `& $APP archive --dry-run "testdata\demo\2026-10 Eingangsrechnungen" --json`.
-   - Expected: exit 0, `count` 9, `skipped` `["Thumbs.db"]`, nothing written.
+5. Dry run on a folder of the user's invoices: `& $APP archive --dry-run "<Ordner>" --json`.
+   - Expected: exit 0, `count` = the files that will be archived (system files such as `Thumbs.db` are listed in `skipped` and not counted), nothing written.
+   - In a clone of the repository, the demo invoices work too: `& $APP archive --dry-run "testdata\demo\2026-10 Eingangsrechnungen" --json` → `count` 9, `skipped` `["Thumbs.db"]`.
    - A real `archive … --yes` commits an Ablage and **buys one timestamp**. Run it only after the user agreed to exactly that.
    - Then run `& $APP verify --json` (exit 0 = Zeitgestempelt; exit 6 = pending, check `reason`).
 6. Tell the user:
@@ -59,6 +66,7 @@ go test -tags testtsa ./...    # + end-to-end tests with the test PKI/TSA (run t
 go test -tags online ./...     # also hits real timestamp services
 go vet ./... && gofmt -l .
 cd app && wails3 build         # bin/rechnungsarchiv.exe (CLI + GUI) + bin/rechnungsarchiv-gui.exe (app/README.md)
+.\scripts\release.ps1 -Version x.y.z -SignMetadata <metadata.json>   # signed Setup + ZIP (docs/dev/playbooks/release.md)
 ```
 
 ## Rules

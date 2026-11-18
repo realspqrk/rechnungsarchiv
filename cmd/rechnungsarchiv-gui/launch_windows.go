@@ -21,6 +21,9 @@ import (
 const mainExe = "rechnungsarchiv.exe"
 
 func main() {
+	if installerHook(os.Args[1:]) {
+		return
+	}
 	self, err := os.Executable()
 	if err == nil {
 		var exe string
@@ -32,6 +35,14 @@ func main() {
 		alert(err.Error())
 		os.Exit(1)
 	}
+}
+
+// installerHook reports whether the installer (Velopack) runs the launcher
+// for one of its hooks (--veloapp-install, -updated, -obsolete,
+// -uninstall). The app has nothing to do then and must exit at once:
+// opening the window would stall the installation.
+func installerHook(args []string) bool {
+	return len(args) > 0 && strings.HasPrefix(args[0], "--veloapp-")
 }
 
 // target is rechnungsarchiv.exe in the folder of the launcher self.

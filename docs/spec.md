@@ -1,6 +1,6 @@
 # Rechnungsarchiv — format and verification spec, v1 (normative)
 
-MUST/SHOULD/MAY are used per RFC 2119. Rationale for decisions is in `adr/`. From release 1.0 on, changing this file is a format change and needs a new `format` number; before 1.0 it is revised within format 1. Revised after adversarial review rounds 1–2 (`research/reviews/`).
+MUST/SHOULD/MAY are used per RFC 2119. Rationale for decisions is in `adr/`. Format 1 is frozen since release 1.0.0 (2026-11-18): changing this file is a format change and needs a new `format` number. Revised after adversarial review rounds 1–2 (`research/reviews/`).
 
 ## 1. Archive folder
 

@@ -16,7 +16,7 @@
 
 Sie legen Rechnungen in einen Ordner. Rechnungsarchiv übernimmt die Dateien unverändert in eine Ablage und holt dafür einen qualifizierten Zeitstempel eines EU-Dienstes Ihrer Wahl. Belegt wird, dass dieser Stand spätestens zum genannten Zeitpunkt vorlag. Ein Programm, `rechnungsarchiv.exe`, öffnet das Fenster (`rechnungsarchiv gui`, aus dem Startmenü über `rechnungsarchiv-gui.exe`) und ist die Kommandozeile. Dieselbe Datei liegt im Export für die Betriebsprüfung.
 
-> **In Entwicklung, noch keine Veröffentlichung.** Es gibt noch kein Setup und keine Version zum Herunterladen. Rechnungsarchiv ist für Windows 10 und 11. Eine Frage oder ein Fehler: [Issue öffnen](https://github.com/realspqrk/rechnungsarchiv/issues).
+> **Version 1.0.0** für Windows 10 und 11: [Setup herunterladen](https://github.com/realspqrk/rechnungsarchiv/releases/latest/download/Rechnungsarchiv-win-Setup.exe) (signiert). Eine Frage oder ein Fehler: [Issue öffnen](https://github.com/realspqrk/rechnungsarchiv/issues).
 
 > [!IMPORTANT]
 > Rechnungsarchiv legt Dateien als unveränderliche Ablagen zur Langzeitaufbewahrung ab; spätere Veränderungen werden erkennbar. Die Software wird ohne Gewähr bereitgestellt, so wie sie ist. Die Haftung ist ausgeschlossen, soweit das Gesetz das zulässt. Ob die Software für die Aufbewahrung in Ihrem Unternehmen rechtlich genügt, liegt allein in Ihrer Verantwortung. Klären Sie das vor dem Einsatz mit Ihrer Steuerberatung oder Rechtsberatung.
@@ -39,11 +39,14 @@ Sie legen Rechnungen in einen Ordner. Rechnungsarchiv übernimmt die Dateien unv
 
 ## Installieren
 
+Beide Programme sind mit dem Zertifikat von Gerhard Petermeir signiert (Microsoft Artifact Signing). Prüfsummen: `SHA256SUMS.txt` beim Release.
+
 Für den Start brauchen Sie einen Windows-PC, einen Ordner für das Archiv und ein Konto bei einem Dienst aus der [Tabelle](#zeitstempel-dienste). Empfehlung: Mensatek. Zugangsdaten liegen im Windows-Anmeldeinformationsspeicher, nicht in der Kommandozeile.
 
 | System | Datei | Installation |
 |---|---|---|
-| Windows 10/11 (x64) | noch keine Veröffentlichung – Setup folgt | Sobald das Setup da ist: doppelklicken, keine Administratorrechte. Danach Rechnungsarchiv im Startmenü. Der Eintrag startet `rechnungsarchiv-gui.exe` (nur der Start, ohne Konsolenfenster). Fenster und Kommandozeile sind dieselbe Datei, `rechnungsarchiv.exe`. |
+| Windows 10/11 (x64) | [`Rechnungsarchiv-win-Setup.exe`](https://github.com/realspqrk/rechnungsarchiv/releases/latest) | Doppelklicken, keine Administratorrechte. Installiert nach `%LOCALAPPDATA%\Rechnungsarchiv`, mit Eintrag im Startmenü und auf dem Desktop; entfernen über Windows-Einstellungen → Apps. Der Eintrag startet `rechnungsarchiv-gui.exe` (nur der Start, ohne Konsolenfenster). Fenster und Kommandozeile sind dieselbe Datei: `%LOCALAPPDATA%\Rechnungsarchiv\current\rechnungsarchiv.exe`. Ihre Archive und Einstellungen bleiben beim Entfernen erhalten. |
+| Ohne Installation | [`Rechnungsarchiv-<Version>-win-x64.zip`](https://github.com/realspqrk/rechnungsarchiv/releases/latest) | Entpacken, `rechnungsarchiv-gui.exe` starten. Für IT-Abteilungen und Skripte. |
 | Aus dem Quelltext (Windows) | Go 1.27.4 | `go build -o bin/rechnungsarchiv.exe ./cmd/rechnungsarchiv`. Das Fenster zusätzlich mit Wails: [Für Entwickler](#für-entwickler). |
 
 ## Erste Ablage in 3 Schritten
@@ -88,7 +91,7 @@ Ein Anbieter genügt. Fällt er weg, bleiben bestehende Zeitstempel gültig und 
 
 Beispiele für Windows PowerShell. `testdata\demo` im Repository enthält die Ordner `2026-10 Eingangsrechnungen` und `2026-10 Ausgangsrechnungen`. Kopieren Sie einen Ordner, oder nehmen Sie Ihren eigenen. Im Terminal fragt `provider set` das Passwort ohne Echo. Ein Skript übergibt es als erste Zeile auf der Standardeingabe, nie als Argument. In Windows PowerShell 5.1 kommt Text in einer Pipe als ASCII an: ein Passwort mit Umlauten tippen Sie an der Abfrage, oder Sie setzen vorher `$OutputEncoding = [System.Text.UTF8Encoding]::new()`.
 
-Aus dem Quellcode gebaut liegt das Programm unter `bin\`. Im Repository-Ordner machen Sie es für diese Sitzung aufrufbar mit `$env:Path = "$PWD\bin;$env:Path"`.
+Nach dem Setup machen Sie das Programm für diese Sitzung aufrufbar mit `$env:Path = "$env:LOCALAPPDATA\Rechnungsarchiv\current;$env:Path"`. Aus dem Quellcode gebaut liegt es unter `bin\`; im Repository-Ordner dann `$env:Path = "$PWD\bin;$env:Path"`.
 
 ```powershell
 $demo = "testdata\demo\2026-10 Eingangsrechnungen"
@@ -192,7 +195,7 @@ Unterlagen dazu:
 
 ## Häufige Fragen
 
-**Was muss ich tun, und was kostet das?** Sobald es eine Veröffentlichung gibt: Programm installieren, ein Konto bei einem Dienst aus der Tabelle anlegen, den Archivordner wählen, dann „Ordner archivieren“. Die Software ist Apache-2.0. Die Zeitstempel zahlen Sie beim Anbieter. Die Beträge stehen in der Tabelle, netto, Stand 18.11.2026, ohne Gewähr.
+**Was muss ich tun, und was kostet das?** Programm [installieren](#installieren), ein Konto bei einem Dienst aus der Tabelle anlegen, den Archivordner wählen, dann „Ordner archivieren“. Die Software ist Apache-2.0. Die Zeitstempel zahlen Sie beim Anbieter. Die Beträge stehen in der Tabelle, netto, Stand 18.11.2026, ohne Gewähr.
 
 **Brauche ich Internet?** Für den Zeitstempel ja, und für das Nachladen der EU-Vertrauenslisten. Die spätere Kontrolle gespeicherter Ablagen braucht den Anbieter nicht, wenn Zeitstempel, Zertifikatskette und Sperrstatus vorhanden sind. Fehlt eine Vertrauensliste, die nach dem Stempel ausgestellt wurde, bleibt offen, ob der Dienst zu diesem Zeitpunkt qualifiziert war, bis eine neuere Liste oder eine Online-Prüfung vorliegt.
 
