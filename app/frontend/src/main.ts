@@ -96,7 +96,8 @@ let offering = false; // a dialog is being opened
 
 async function takeFolders(): Promise<void> {
   try {
-    inbox.add(await api.TakeFolders());
+    const drops = await api.TakeFolders();
+    inbox.add(drops, offering || archiveDialogOpen());
   } catch {
     return;
   }

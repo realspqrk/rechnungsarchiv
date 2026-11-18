@@ -156,11 +156,15 @@ check("never checked", lastCheckText(null, 3) === "Noch nicht kontrolliert");
   // open is not offered a second time after that dialog closes.
   inbox.add([drop("A")]);
   check("offered A", inbox.next(gateOf(st({}), false))?.folder === "A");
-  inbox.add([drop("A")]);
+  inbox.add([drop("A")], true);
   check("A while its dialog is open: not queued", inbox.next(gateOf(st({}), true)) === null && inbox.size === 0);
   check("dialog closed: no second offer", inbox.next(gateOf(st({}), false)) === null);
   inbox.add([drop("A")]);
   check("later request for A: offered again", inbox.next(gateOf(st({}), false))?.folder === "A");
+  // Code review 10: a request after the dialog closed but before the next
+  // render (next() not yet called) is kept, not discarded as a duplicate.
+  inbox.add([drop("A")], false);
+  check("request after close, before render: kept", inbox.size === 1 && inbox.next(gateOf(st({}), false))?.folder === "A");
   inbox.next(gateOf(st({}), false));
 
   // Read-only ("nur kontrollieren"): not offered, dropped with one short note.

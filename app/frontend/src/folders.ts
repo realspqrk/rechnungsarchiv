@@ -41,8 +41,11 @@ export class FolderInbox {
     return this.items.length;
   }
 
-  /** Adds what Go handed over (Shell.TakeFolders); a folder already waiting or being offered is not added twice. */
-  add(drops: FolderDrop[] | null | undefined): void {
+  /** Adds what Go handed over (Shell.TakeFolders); a folder already waiting, or the one whose dialog is busy, is not added twice. */
+  add(drops: FolderDrop[] | null | undefined, busy = false): void {
+    // busy: its dialog is opening or open. Once it is closed, a new request
+    // for the same folder counts again (checked here, not only in next()).
+    if (!busy) this.active = "";
     for (const d of drops ?? []) {
       if (d.folder) {
         if (d.folder !== this.active && !this.items.some((i) => i.folder === d.folder)) this.items.push({ folder: d.folder, error: "" } as FolderDrop);
