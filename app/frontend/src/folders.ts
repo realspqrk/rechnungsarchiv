@@ -34,16 +34,18 @@ export const READ_ONLY_NOTE = "Nur kontrollieren: Der übergebene Ordner wird ni
 
 export class FolderInbox {
   private items: FolderDrop[] = [];
+  /** The folder whose dialog is open; a handover of it meanwhile is not queued again. */
+  private active = "";
 
   get size(): number {
     return this.items.length;
   }
 
-  /** Adds what Go handed over (Shell.TakeFolders); a folder already waiting is not added twice. */
+  /** Adds what Go handed over (Shell.TakeFolders); a folder already waiting or being offered is not added twice. */
   add(drops: FolderDrop[] | null | undefined): void {
     for (const d of drops ?? []) {
       if (d.folder) {
-        if (!this.items.some((i) => i.folder === d.folder)) this.items.push({ folder: d.folder, error: "" } as FolderDrop);
+        if (d.folder !== this.active && !this.items.some((i) => i.folder === d.folder)) this.items.push({ folder: d.folder, error: "" } as FolderDrop);
       } else if (d.error) {
         this.items.push({ folder: "", error: d.error } as FolderDrop);
       }
@@ -56,6 +58,7 @@ export class FolderInbox {
    * error only counts while archiving is possible, never later.
    */
   next(g: Gate): Step | null {
+    if (!g.dialogOpen) this.active = ""; // its dialog is closed: a later request may offer it again
     if (!g.hasArchive || g.locked || g.dialogOpen || g.readOnly) {
       const hadFolder = this.items.some((i) => i.folder);
       this.items = g.readOnly && g.hasArchive ? [] : this.items.filter((i) => i.folder);
@@ -63,6 +66,8 @@ export class FolderInbox {
     }
     const d = this.items.shift();
     if (!d) return null;
-    return d.folder ? { folder: d.folder } : { error: d.error };
+    if (!d.folder) return { error: d.error };
+    this.active = d.folder;
+    return { folder: d.folder };
   }
 }

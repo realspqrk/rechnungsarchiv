@@ -152,6 +152,17 @@ check("never checked", lastCheckText(null, 3) === "Noch nicht kontrolliert");
   check("fifo A", inbox.next(gateOf(st({}), false))?.folder === "A");
   check("fifo B", inbox.next(gateOf(st({}), false))?.folder === "B");
 
+  // Code review 9: the same folder handed over again while its dialog is
+  // open is not offered a second time after that dialog closes.
+  inbox.add([drop("A")]);
+  check("offered A", inbox.next(gateOf(st({}), false))?.folder === "A");
+  inbox.add([drop("A")]);
+  check("A while its dialog is open: not queued", inbox.next(gateOf(st({}), true)) === null && inbox.size === 0);
+  check("dialog closed: no second offer", inbox.next(gateOf(st({}), false)) === null);
+  inbox.add([drop("A")]);
+  check("later request for A: offered again", inbox.next(gateOf(st({}), false))?.folder === "A");
+  inbox.next(gateOf(st({}), false));
+
   // Read-only ("nur kontrollieren"): not offered, dropped with one short note.
   inbox.add([drop("A"), drop("B")]);
   const ro = inbox.next(gateOf(st({ readOnly: true }), false));
