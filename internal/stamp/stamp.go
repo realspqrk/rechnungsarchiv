@@ -34,6 +34,9 @@ type Options struct {
 	RootCAs *x509.CertPool // TLS roots for the provider; nil: system roots
 	Timeout time.Duration  // per request; 0: tsa.Client default
 	Now     func() time.Time
+	// Roots limits the run to these Prüfwerte (archiving stamps only the
+	// new Ablage); nil: every Ablage without a valid timestamp.
+	Roots []string
 }
 
 // ClockTolerance is how far genTime may differ from the PC clock before a
@@ -79,8 +82,9 @@ type pending struct {
 	attempts []verify.Attempt
 }
 
-// Run stamps every Ablage of a without a complete, valid attempt, in order.
-// Read-only archives never stamp.
+// Run stamps every Ablage of a without a complete, valid attempt (or those
+// of opts.Roots): first the free completions of tokens already paid for,
+// then new requests, each group in order. Read-only archives never stamp.
 func Run(ctx context.Context, a *archive.Archive, opts Options) (*Result, error) {
 	if a.ReadOnly() {
 		return nil, archive.ErrReadOnly
@@ -133,6 +137,18 @@ func Run(ctx context.Context, a *archive.Archive, opts Options) (*Result, error)
 	if s.fetcher == nil {
 		s.fetcher = &tsa.Fetcher{}
 	}
+	// Free completions first: a failing paid request stops the run.
+	slices.SortStableFunc(todo, func(x, y pending) int {
+		_, _, fx := s.completable(x)
+		_, _, fy := s.completable(y)
+		switch {
+		case fx && !fy:
+			return -1
+		case fy && !fx:
+			return 1
+		}
+		return 0
+	})
 	stop := s.setup(a.Config.ArchiveID)
 	stamped := false
 	for _, p := range todo {
@@ -186,8 +202,18 @@ func findPending(ctx context.Context, a *archive.Archive, opts Options, res *Res
 	if err != nil {
 		return nil, err
 	}
+	var only map[string]bool
+	if opts.Roots != nil {
+		only = map[string]bool{}
+		for _, r := range opts.Roots {
+			only[r] = true
+		}
+	}
 	var out []pending
 	for _, d := range deps {
+		if only != nil && (d.Err != nil || !only[d.Bag.Root]) {
+			continue
+		}
 		if d.Err != nil {
 			// Never stamped; a failed outcome like a changed Ablage, so the
 			// run does not look complete (verify reports it as Ungültig).
@@ -263,6 +289,11 @@ func (s *stamper) setup(archiveID string) *tsa.Error {
 	}
 	switch s.prov.Auth {
 	case tsa.AuthBasic:
+		// Checked here, not only by the client: Plan offers nothing and Run
+		// writes no attempt for a request that could only fail.
+		if c.User == "" || c.Password == "" {
+			return &tsa.Error{Reason: tsa.ReasonZugang, Msg: "Zugangsdaten unvollständig (Benutzer und Passwort)"}
+		}
 		cl.Creds = tsa.Credentials{User: c.User, Password: c.Password}
 	case tsa.AuthClientCert:
 		p12, err := os.ReadFile(c.P12Path)
@@ -295,22 +326,13 @@ func (s *stamper) stamp(p pending) (o Outcome, fatal bool) {
 		return o, false
 	}
 
-	// A token whose validation material is not complete yet: within 24 h
-	// of its genTime, complete that attempt instead of paying for a new
-	// stamp (spec §5). Only after the window is a new stamp requested.
-	for _, a := range p.attempts {
-		if a.Outcome != verify.OutcomeDiscarded {
-			continue
-		}
+	if a, tok, ok := s.completable(p); ok {
+		o.Attempt = a.N
 		dir := filepath.Join(s.dir, a.Nachweis)
-		if tok := a.TSAToken(); tok != nil && s.inWindow(tok) {
-			o.Attempt = a.N
+		if tok != nil {
 			return s.complete(o, dir, a.N, tok), false
 		}
-		if tok := a.IncompleteToken(); tok != nil && s.inWindow(tok) {
-			o.Attempt = a.N
-			return s.resume(o, dir, a.N), false
-		}
+		return s.resume(o, dir, a.N), false
 	}
 
 	pw, _ := rootBytes(p.root)
@@ -326,6 +348,69 @@ func (s *stamper) stamp(p pending) (o Outcome, fatal bool) {
 	}
 	o.Reason, o.Message = verify.ReasonProvider, err.Error()
 	return o, true
+}
+
+// completable finds an already paid token whose validation material is not
+// complete yet: within 24 h of its genTime that attempt is completed
+// instead of paying for a new stamp (spec §5). tok is nil when the stored
+// token itself is incomplete (resume). Only after the window is a new
+// stamp requested.
+func (s *stamper) completable(p pending) (att verify.Attempt, tok *tsa.Token, ok bool) {
+	for _, a := range p.attempts {
+		if a.Outcome != verify.OutcomeDiscarded {
+			continue
+		}
+		if t := a.TSAToken(); t != nil && s.inWindow(t) {
+			return a, t, true
+		}
+		if t := a.IncompleteToken(); t != nil && s.inWindow(t) {
+			return a, nil, true
+		}
+	}
+	return verify.Attempt{}, nil, false
+}
+
+// Due is what Run would do now: Paid new requests (a resent unanswered one
+// counts as paid: the provider may bill it) and Free completions of tokens
+// already paid for (completable).
+type Due struct {
+	Paid int
+	Free int
+}
+
+// Plan counts what Run would do now, without network access or writing.
+// It is zero whenever Run could not send a request: read-only, no or an
+// unknown provider, credentials or trusted list missing (stamper.setup).
+// cfg is a's configuration as the caller last saw it: a.Config may be
+// replaced meanwhile by a writer (settings), and Plan holds no lock.
+func Plan(ctx context.Context, a *archive.Archive, cfg archive.Config, opts Options) (Due, error) {
+	if a.ReadOnly() || cfg.TSA == nil {
+		return Due{}, nil
+	}
+	prov, ok := tsa.ProviderByID(*cfg.TSA)
+	if !ok {
+		return Due{}, nil
+	}
+	s := &stamper{ctx: ctx, opts: opts, prov: prov, now: time.Now, dir: a.Dir}
+	if opts.Now != nil {
+		s.now = opts.Now
+	}
+	if s.setup(cfg.ArchiveID) != nil {
+		return Due{}, nil
+	}
+	todo, err := findPending(ctx, a, opts, &Result{})
+	if err != nil {
+		return Due{}, err
+	}
+	var d Due
+	for _, p := range todo {
+		if _, _, ok := s.completable(p); ok {
+			d.Free++
+		} else {
+			d.Paid++
+		}
+	}
+	return d, nil
 }
 
 // unanswered returns the newest attempt of p in the folder new attempts go

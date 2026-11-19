@@ -8,8 +8,9 @@ Merge to `main` and the release itself need the owner's Go.
 
 1. `main` is clean; `go test -tags testtsa ./...`, `go vet ./...`, `gofmt -l .`, and in `app/frontend` `npx tsc --noEmit` and `npm test` pass.
 2. Set the version in `app/build/windows/info.json` (both `file_version`/`product_version` and the `0407` strings). `scripts/release.ps1` refuses a mismatch. Dev builds report `0.1.0-dev` (`internal/archive.Version`); only the release build stamps the version.
-3. A version ≥ 1.0 never changes `docs/spec.md` within format 1 (spec header).
-4. Tools on this PC: `wails3` v3.1.0, Node, `vpk` (dotnet global tool, 1.2.0), an Azure login with access to the signing account (`az account show`), the Artifact Signing dlib (`%LOCALAPPDATA%\Microsoft\MicrosoftArtifactSigningClientTools`). The signing `metadata.json` lives in `D:\Code\electron-workspace\metadata.json`; pass its path, never copy it into this repo.
+3. Within format 1 the byte format stays frozen (spec header); prose and app behaviour in `docs/spec.md` may change.
+4. **Leak gate:** `go run ./internal/tools/leakcheck` prints `leakcheck: clean`. It covers every blob of every branch and tag, plus the files to be committed. `release.ps1` runs it before building and again with `-artifacts` on the downloads before the checksums; it stops on any finding. Private strings (TSA account name, private addresses) go in `%APPDATA%\Rechnungsarchiv\leakcheck-private.txt`, outside the repo. A finding that was already pushed: rotate the secret first, then purge history (owner decision, force push).
+5. Tools on this PC: `wails3` v3.1.0, Node, `vpk` (dotnet global tool, 1.2.0), an Azure login with access to the signing account (`az account show`), the Artifact Signing dlib (`%LOCALAPPDATA%\Microsoft\MicrosoftArtifactSigningClientTools`). The signing `metadata.json` lives in `D:\Code\electron-workspace\metadata.json`; pass its path, never copy it into this repo.
 
 ## Build and sign
 

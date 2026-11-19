@@ -3,11 +3,11 @@
 import { api, list, type Deposit, type Status } from "../api";
 import { h, icon } from "../dom";
 import { dateTimeShort, n, plural, seq } from "../fmt";
-import { app, navigate, rerender } from "../state";
+import { app, rerender, acceptStatus } from "../state";
 import { findingText, QUAL, QUAL_SHORT, REASON_SHORT, STATE, UNCONFIRMED_TIP, depositTone } from "../text";
 import { banner, busy, button, lockedNote, readOnlyBadge } from "../ui";
 import { checkSummary, lastCheckText } from "../summary";
-import { confirmTakeOver, onStatusChanged, stampPending } from "../actions";
+import { confirmTakeOver, onStatusChanged, openArchiveFolder, refreshStatus, stampPending } from "../actions";
 import { openArchiveDialog } from "../dialogs/archive";
 import { openExportDialog } from "../dialogs/export";
 import { openAboutDialog, openDisclaimerDialog } from "../dialogs/about";
@@ -36,9 +36,21 @@ export function renderMain(): HTMLElement {
 
   const checkBtn = button("Archiv kontrollieren", () => {
     void busy(checkBtn, "Kontrolle läuft …", async () => {
-      app.checked = await api.Verify();
-      app.status = await api.Status();
-      rerender();
+      // The result belongs to this opening of the archive; after a switch
+      // (also to a copy with the same ID) it is dropped.
+      const session = s.session;
+      let checked = null;
+      try {
+        checked = await api.Verify();
+      } finally {
+        // Also after a failed check: the lock may have changed meanwhile.
+        const next = await api.Status();
+        if (next.session === session && app.status?.session === session) {
+          if (checked) app.checked = checked;
+          acceptStatus(next);
+          void rerender();
+        }
+      }
     });
   });
 
@@ -61,18 +73,15 @@ export function renderMain(): HTMLElement {
 
   const banners: (HTMLElement | null)[] = [];
   if (ro) {
+    // A folder this PC cannot write to (write-protected share, stick, DVD).
+    const why = s.archive.readOnlyReason ? ` (${s.archive.readOnlyReason.replace(/\.$/, "")})` : "";
     banners.push(
       banner(
         "blue",
-        "Modus",
-        "Nur kontrollieren.",
-        `Dieses Archiv (${s.archive.dir}) wird nicht verändert, nichts wird gestempelt oder gespeichert.`,
-        button("Kontrolle beenden", async () => {
-          await api.CloseArchive();
-          app.status = await api.Status();
-          app.checked = null;
-          navigate("#/");
-        }, "secondary", { class: "btn--on-banner" }),
+        "Nur Ansicht",
+        "Nur Ansicht.",
+        `In diesen Ordner kann dieser PC nicht schreiben${why}. Der Archivordner bleibt unverändert, es wird nichts gestempelt. Kontrollieren, Export und Archivprotokoll (in einen anderen Ordner) sind möglich.`,
+        button("Anderes Archiv öffnen …", () => void openArchiveFolder(), "secondary", { class: "btn--on-banner", id: "anderes-archiv" }),
       ),
     );
   }
@@ -81,7 +90,8 @@ export function renderMain(): HTMLElement {
     const since = dateTimeShort(l.since);
     const takeBtn: HTMLButtonElement = button("Sperre übernehmen …", async () => {
       const msg = `Das Archiv wird auf ${l.host} von ${l.user} verwendet (seit ${since}).`;
-      if (await confirmTakeOver(msg)) await stampPending(takeBtn);
+      // Only the lock: fetching timestamps stays the user's choice.
+      if (await confirmTakeOver(msg, s.session)) await refreshStatus();
     }, "secondary", { class: "btn--on-banner" });
     banners.push(
       banner(
@@ -94,9 +104,6 @@ export function renderMain(): HTMLElement {
       ),
     );
   }
-  if (s.busy === "stempeln") {
-    banners.push(banner("neutral", "Hintergrund", "", "Ausstehende Zeitstempel werden geholt …", null, "clock"));
-  }
   if (s.trustList.stale) {
     banners.push(banner("amber", "Vertrauensliste", "", "Vertrauensliste veraltet – Internetverbindung prüfen oder Programm aktualisieren", null, "warn"));
   }
@@ -107,7 +114,7 @@ export function renderMain(): HTMLElement {
         "amber",
         "Zeitstempel-Dienst fehlt",
         "Noch kein Zeitstempel-Dienst eingerichtet.",
-        "Sie können schon archivieren; die Ablagen erhalten ihren Zeitstempel, sobald ein Dienst eingerichtet ist.",
+        "Sie können schon archivieren. Ist ein Dienst eingerichtet, holen Sie die Zeitstempel mit „Jetzt nachholen“.",
         h("a", { href: "#/einstellungen", class: "btn btn--primary" }, "Jetzt einrichten"),
       ),
     );
@@ -347,12 +354,13 @@ function footer(): HTMLElement {
   );
 }
 
-/** Which archive is open: the company, and the archive folder the Ablagen are written to. */
+/** Which archive is open: the company, and the archive folder the Ablagen
+ * are written to. Switching is in Einstellungen (most users have one). */
 function archiveHead(s: Status): HTMLElement {
   return h(
     "section",
     { class: "archive-head", "aria-label": "Geöffnetes Archiv" },
-    h("h1", { class: "archive-head__title" }, s.archive.company, s.archive.readOnly ? [" ", readOnlyBadge()] : null),
+    h("h1", { class: "archive-head__title", id: "archiv-titel", tabindex: "-1" }, s.archive.company, s.archive.readOnly ? readOnlyBadge() : null),
     h("div", { class: "archive-head__path" }, h("span", { class: "archive-head__label" }, "Archivordner"), h("span", { class: "mono mono--small break" }, s.archive.dir)),
   );
 }

@@ -16,7 +16,7 @@
 
 Sie legen Rechnungen in einen Ordner. Rechnungsarchiv übernimmt die Dateien unverändert in eine Ablage und holt dafür einen qualifizierten Zeitstempel eines EU-Dienstes Ihrer Wahl. Belegt wird, dass dieser Stand spätestens zum genannten Zeitpunkt vorlag. Ein Programm, `rechnungsarchiv.exe`, öffnet das Fenster (`rechnungsarchiv gui`, aus dem Startmenü über `rechnungsarchiv-gui.exe`) und ist die Kommandozeile. Dieselbe Datei liegt im Export für die Betriebsprüfung.
 
-> **Version 1.0.1** für Windows 10 und 11: [Setup herunterladen](https://github.com/realspqrk/rechnungsarchiv/releases/latest/download/Rechnungsarchiv-win-Setup.exe) (signiert). Eine Frage oder ein Fehler: [Issue öffnen](https://github.com/realspqrk/rechnungsarchiv/issues).
+> **Version 1.0.2** für Windows 10 und 11: [Setup herunterladen](https://github.com/realspqrk/rechnungsarchiv/releases/latest/download/Rechnungsarchiv-win-Setup.exe) (signiert). Eine Frage oder ein Fehler: [Issue öffnen](https://github.com/realspqrk/rechnungsarchiv/issues).
 
 > [!IMPORTANT]
 > Rechnungsarchiv legt Dateien als unveränderliche Ablagen zur Langzeitaufbewahrung ab; spätere Veränderungen werden erkennbar. Die Software wird ohne Gewähr bereitgestellt, so wie sie ist. Die Haftung ist ausgeschlossen, soweit das Gesetz das zulässt. Ob die Software für die Aufbewahrung in Ihrem Unternehmen rechtlich genügt, liegt allein in Ihrer Verantwortung. Klären Sie das vor dem Einsatz mit Ihrer Steuerberatung oder Rechtsberatung.
@@ -61,7 +61,7 @@ Für den Start brauchen Sie einen Windows-PC, einen Ordner für das Archiv und e
 2. **Zeitstempel-Dienst einrichten.** Legen Sie ein Konto bei einem Dienst aus der Tabelle an und tragen Sie die Zugangsdaten unter Einstellungen ein. Ohne eingerichteten Dienst bleiben neue Ablagen ausstehend. Einen kostenlosen Dienst bietet das Programm bewusst nicht an: Er hätte keine gesetzliche Vermutung, und bekannte kostenlose Dienste (z. B. DigiCert) stehen in den USA.
 3. **Ordner archivieren.** Ziehen Sie einen Ordner mit Rechnungen in das Fenster, für eine Woche, einen Monat oder ein Quartal. Das Programm übernimmt die Dateien unverändert in eine Ablage. Eine Ablage ist ein ZIP im lokalen Archiv. Nach dem Speichern wird dieses ZIP nicht mehr umgeschrieben. Danach holt es genau einen qualifizierten Zeitstempel nach RFC 3161 auf den Prüfwert von 32 Byte. Der Dienst erhält den Prüfwert, Ihren Kontonamen und Ihre IP-Adresse. Dateinamen, Rechnungsinhalte und die Prüfsummen der einzelnen Dateien bleiben auf dem Computer. Neben der Ablage liegen danach der Zeitstempel, die Zertifikatskette und der Sperrstatus.
 
-Mit „Archiv kontrollieren“ prüfen Sie die Ablagen. Die Prüfung braucht den Dienstanbieter nicht, wenn die Prüfdaten beim Stempeln gespeichert wurden. Mit „Export für Betriebsprüfung“ stellen Sie die Unterlagen für eine Prüfung zusammen. Ausstehende Zeitstempel werden beim nächsten Programmstart, nach dem nächsten erfolgreichen Zeitstempel oder über „Jetzt nachholen“ geholt.
+Ein anderes Archiv öffnen oder ein neues anlegen Sie unter Einstellungen → „Archiv wechseln“; dort stehen auch die zuletzt geöffneten Archive. Mit „Archiv kontrollieren“ prüfen Sie die Ablagen. Die Prüfung braucht den Dienstanbieter nicht, wenn die Prüfdaten beim Stempeln gespeichert wurden. Mit „Export für Betriebsprüfung“ stellen Sie die Unterlagen für eine Prüfung zusammen. Fehlen Zeitstempel (etwa nach einem Abbruch ohne Internet), fragt das Programm beim Öffnen des Archivs, ob es sie holen soll, und sagt dazu, wie viele neu verrechnet werden und wie viele kostenlos ergänzt werden; von selbst holt es nichts. Später geht es jederzeit über „Jetzt nachholen“.
 
 ## Zeitstempel-Dienste
 
@@ -70,12 +70,10 @@ Mit „Archiv kontrollieren“ prüfen Sie die Ablagen. Die Prüfung braucht den
 | Anbieter (Land) | eIDAS-qualifiziert (Stand EU-Vertrauensliste 18.11.2026) | Kleinstes Paket | ca. Kosten pro Ablage | Zugang | Hinweis |
 |---|---|---|---|---|---|
 | Mensatek / ASETEC (ES) | ✓ (granted seit 04.11.2026) | 10 € = 233 Zeitstempel (ca. 0,043 € je Stück), Guthaben verfällt nicht; Rechnung an Unternehmen mit UID ohne spanische USt (Reverse Charge, geprüft 18.11.2026); Kundenbereich nur Spanisch | ≈ 0,04 € | Benutzer/Passwort (HTTP Basic) | Empfehlung: günstigste Option |
-| Disig (SK) | ✓ | 100 Zeitstempel 11,67 € (mind. 365 Tage gültig) | ≈ 0,12 € | Client-Zertifikat | Alternative |
-| Aruba (IT) | ✓ | 50 Zeitstempel 13,50 € | ≈ 0,27 € | Benutzer/Passwort | Endpunkt noch zu bestätigen |
-| Namirial (IT) | ✓ | 100 Zeitstempel 25 €, verfallen nicht | ≈ 0,25 € | Benutzer/Passwort (über Vertrieb) | – |
-| GLOBALTRUST (AT) | ✓ | 1.000 Zeitstempel 185 €/Jahr, verfallen zum Jahresende | ≈ 3,70 € bei 50 Ablagen/Jahr | Benutzer/Passwort | österreichischer Anbieter, für KMU-Mengen teuer |
 
-Preise netto, ohne Gewähr, Stand 18.11.2026 laut Anbieter-Websites; vor dem Kauf prüfen, ob der Anbieter an österreichische Unternehmen verkauft (Reverse Charge). Die Preise stehen bewusst nur hier, nicht im Programm.
+Preise netto, ohne Gewähr, Stand 18.11.2026 laut Anbieter-Website. Die Preise stehen bewusst nur hier, nicht im Programm.
+
+Angeboten wird nur, was im Echtbetrieb erprobt ist: derzeit Mensatek. **Weitere Anbieter? [Melden Sie sich](https://github.com/realspqrk/rechnungsarchiv/issues).** Das Programm kennt weitere qualifizierte EU-Dienste (Disig, Namirial, Aruba, GLOBALTRUST; Vergleich in [docs/research](docs/research/)) und prüft deren Zeitstempel; zur Auswahl stehen sie erst, wenn jemand sie im Echtbetrieb bestätigt hat.
 
 ### Empfehlung: Mensatek, auch mit spanischem Kundenbereich
 
@@ -89,9 +87,9 @@ So kommen Sie ohne Spanischkenntnisse durch:
 4. **Zugangsdaten für den Zeitstempel-Dienst** („Sellado de Tiempo“) im Kundenbereich nachsehen. Das sind eigene Zugangsdaten für die Schnittstelle, nicht unbedingt die Anmeldung zum Kundenbereich. Tragen Sie Benutzername und Passwort in den Einstellungen des Programms ein; das Passwort bleibt in der Windows-Anmeldeinformationsverwaltung dieses PCs.
 5. **Bei Problemen** (z. B. Guthaben bezahlt, aber nicht verfügbar): im Kundenbereich ein Support-Ticket schreiben, auf Englisch oder mit DeepL auf Spanisch übersetzt, und mit „Enviar Ticket“ absenden.
 
-Nach dem ersten Zeitstempel zeigt das Programm, ob Zugangsdaten und Guthaben passen und ob der Stempel qualifiziert ist. Ist das Guthaben aufgebraucht, bleiben neue Ablagen ausstehend; es geht nichts verloren. Nach dem Aufladen holt das Programm die Zeitstempel beim nächsten Start oder sofort mit „Jetzt nachholen“.
+Nach dem ersten Zeitstempel zeigt das Programm, ob Zugangsdaten und Guthaben passen und ob der Stempel qualifiziert ist. Ist das Guthaben aufgebraucht, bleiben neue Ablagen ausstehend; es geht nichts verloren. Nach dem Aufladen holen Sie die Zeitstempel mit „Jetzt nachholen“ (oder beim nächsten Öffnen mit „Jetzt holen“).
 
-Ein Anbieter genügt. Fällt er weg, bleiben bestehende Zeitstempel gültig und prüfbar (Zertifikatskette und Sperrstatus werden beim Stempeln gespeichert); für neue Ablagen wählen Sie einen anderen Anbieter. Das Programm wechselt den Anbieter nicht von selbst und bietet keinen kostenlosen Dienst an. Die eingebaute Liste enthält nur qualifizierte EU-Dienste.
+Ein Anbieter genügt. Fällt er weg, bleiben bestehende Zeitstempel gültig und prüfbar (Zertifikatskette und Sperrstatus werden beim Stempeln gespeichert); für neue Ablagen braucht es dann einen anderen Anbieter (melden Sie sich, siehe oben). Das Programm wechselt den Anbieter nicht von selbst und bietet keinen kostenlosen Dienst an. Die eingebaute Liste enthält nur qualifizierte EU-Dienste.
 
 ## Kommandozeile in 60 Sekunden
 
@@ -109,7 +107,7 @@ rechnungsarchiv verify
 rechnungsarchiv export --von 2026 --bis 2026 "$env:USERPROFILE\Dokumente\Export 2026" --yes
 ```
 
-`$pw` kommt aus Ihrem Geheimnisspeicher, nicht aus der Befehlszeile. Mit Client-Zertifikat (z. B. Disig): `rechnungsarchiv provider set disig --p12 "C:\Pfad\zertifikat.p12" --url "https://…"` (die Adresse erhalten Sie mit dem Zugangszertifikat; das Zertifikatspasswort kommt über die Standardeingabe). Nach `init` verwenden die Befehle dieses Archiv, solange weder `--archiv` angegeben ist noch der aktuelle Ordner ein Archiv ist.
+`$pw` kommt aus Ihrem Geheimnisspeicher, nicht aus der Befehlszeile. Nach `init` verwenden die Befehle dieses Archiv, solange weder `--archiv` angegeben ist noch der aktuelle Ordner ein Archiv ist.
 
 **`rechnungsarchiv --help` ist das Handbuch.** Es beginnt mit dem üblichen Ablauf (init, provider set, archive --dry-run, archive, verify, export) und listet die Befehle und die Exit-Codes. `rechnungsarchiv <befehl> --help` erklärt Optionen, Wirkungen und Beispiele. Mit `--json`, und immer wenn die Ausgabe kein Terminal ist, kommt nur JSON auf die Standardausgabe.
 
@@ -170,7 +168,7 @@ Die Pflichten des Verfahrens bleiben beim Unternehmen. Dazu gehören insbesonder
 - die Aufbewahrung der Rechnung in der empfangenen Form und die Lesbarkeit über die gesamte Frist;
 - die Entscheidung, welche Belege archiviert werden.
 
-Sicherungen sind erforderlich. Die Sicherungskopie wird nach dem Zeitstempel auf einem zweiten Datenträger angelegt. Einmal im Jahr kopieren Sie die Sicherung in einen eigenen Ordner und prüfen diese wiederhergestellte Kopie mit „Archiv nur kontrollieren“.
+Sicherungen sind erforderlich. Die Sicherungskopie wird nach dem Zeitstempel auf einem zweiten Datenträger angelegt. Einmal im Jahr kopieren Sie die Sicherung in einen eigenen Ordner und prüfen diese wiederhergestellte Kopie: mit `rechnungsarchiv verify --archiv "<Ordner>"` (schreibt nichts) oder im Fenster über Einstellungen → „Archiv wechseln“ → „Bestehendes Archiv öffnen …“ und „Archiv kontrollieren“; danach über „Zuletzt geöffnet“ zurück.
 
 Das Programm ersetzt keine Verfahrensdokumentation und keine Buchhaltung.
 

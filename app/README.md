@@ -37,7 +37,7 @@ Without `wails3`: `npm run build` in `frontend/`, then `go build -o bin/rechnung
 
 ## Real service and sample data
 
-By default the GUI runs the real service (`real.go`, mapped to the DTOs in `map.go`): the same core and wiring as the CLI. On start it opens the remembered default archive (`%APPDATA%\Rechnungsarchiv\settings.json`, written by "Archiv anlegen" and "Bestehendes Archiv öffnen"). In normal mode it then refreshes the trusted lists and fetches pending timestamps in the background (`Status.busy`, event `status-geaendert`); "nur kontrollieren" never writes, locks or stamps. Credentials go to the Windows Credential Manager.
+By default the GUI runs the real service (`real.go`, mapped to the DTOs in `map.go`): the same core and wiring as the CLI. On start it opens the remembered default archive (`%APPDATA%\Rechnungsarchiv\settings.json`, written by "Archiv anlegen" and "Bestehendes Archiv öffnen"). It then refreshes the trusted lists and re-checks in the background (`Status.busy`, event `status-geaendert`). Opening never stamps: when `Status.due` is not zero the window asks once ("Ausstehende Zeitstempel"). A folder it cannot write to opens view only ("Nur Ansicht"), which never writes, locks or stamps. Credentials go to the Windows Credential Manager.
 
 A lock held by another PC reaches the frontend as a `UIError` with code `gesperrt` (host, user, since). The UI then asks before `TakeOver`; a writer that is still running is never taken over.
 
@@ -50,13 +50,13 @@ Set `RA_FAKE` to show sample data instead (no disk access at all):
 | `normal` (default) | 13 Ablagen, 0013 pending (offline), provider Mensatek |
 | `kein-dienst` | no provider set up |
 | `guthaben` | "Archivieren" ends pending: credit used up |
-| `nur-kontrollieren` | backup opened read-only |
+| `schreibgeschuetzt` | backup in a write-protected folder: view only |
 | `luecke` | Ablage 0007 missing |
 | `zustaende` | one Ablage per state (0006–0013), stale trusted list |
 | `disig` | client-certificate provider with URL from the contract |
 | `abgelehnt` | folder with files that cannot be archived |
 | `gesperrt` | archive locked by another PC (banner, takeover dialog) |
-| `nachholen` | pending timestamps are fetched in the background (4 s) |
+| `nachholen` | on opening: the question about pending timestamps (1 new, 1 free completion) |
 
 `RA_FAKE_DELAY_MS` sets the simulated latency (default 300).
 

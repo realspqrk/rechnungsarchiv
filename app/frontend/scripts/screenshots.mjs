@@ -34,7 +34,7 @@ const shots = [
   ["05-main-alle-ablagen", "normal", async (p) => { await p.getByRole("button", { name: /Weitere .* anzeigen/ }).click(); }],
   ["06-main-leer", "leer", null],
   ["07-main-kein-dienst", "kein-dienst", null],
-  ["08-main-nur-kontrollieren", "nur-kontrollieren", null],
+  ["08-main-schreibgeschuetzt", "schreibgeschuetzt", null],
   ["09-main-luecke", "luecke", null],
   ["10-main-zustaende", "zustaende", async (p) => { await p.getByRole("button", { name: /Weitere .* anzeigen/ }).click(); }],
   ["11-archivieren", "normal", async (p) => { await openArchive(p); }],
@@ -49,12 +49,13 @@ const shots = [
   ["20-ablage-veraendert", "zustaende", async (p) => { await gotoDeposit(p, 8); }],
   ["21-ablage-ausstehend-ueber-nachfolger", "zustaende", async (p) => { await gotoDeposit(p, 12); }],
   ["22-ablage-ausstehend-offline", "normal", async (p) => { await gotoDeposit(p, 13); }],
-  ["23-ablage-ausstehend-nur-kontrollieren", "nur-kontrollieren", async (p) => { await gotoDeposit(p, 13); }],
+  ["23-ablage-ausstehend-schreibgeschuetzt", "schreibgeschuetzt", async (p) => { await gotoDeposit(p, 13); }],
   ["24-ablage-unbestimmt", "zustaende", async (p) => { await gotoDeposit(p, 7); }],
   ["25-ablage-ungueltig", "zustaende", async (p) => { await gotoDeposit(p, 6); }],
   ["26-ablage-technische-details", "normal", async (p) => { await gotoDeposit(p, 11); await p.click("summary"); }],
   ["27-einstellungen-basic", "normal", async (p) => { await gotoSettings(p); }],
-  ["41-archiv-wechseln", "normal", async (p) => { await gotoSettings(p); await p.getByRole("button", { name: "Anderes Archiv öffnen …" }).click(); await p.waitForSelector(".back-link--start"); }],
+  ["41-archiv-menue", "normal", async (p) => { await openSwitcher(p); }],
+  ["42-neues-archiv", "normal", async (p) => { await openSwitcher(p); await p.getByRole("menuitem", { name: "Neues Archiv anlegen …" }).click(); await p.waitForSelector(".back-link--start"); }],
   ["28-einstellungen-clientcert", "disig", async (p) => { await gotoSettings(p); }],
   ["29-einstellungen-kein-dienst", "kein-dienst", async (p) => { await gotoSettings(p); }],
   ["30-export", "normal", async (p) => { await openExport(p); }],
@@ -64,7 +65,12 @@ const shots = [
   ["34-fokus-tastatur", "normal", async (p) => { await p.keyboard.press("Tab"); await p.keyboard.press("Tab"); }],
   ["35-main-gesperrt", "gesperrt", null],
   ["36-sperre-uebernehmen", "gesperrt", async (p) => { await p.getByRole("button", { name: "Sperre übernehmen …" }).click(); await p.waitForSelector("dialog[open] #sperre-title"); }],
-  ["37-main-zeitstempel-werden-geholt", "nachholen", null],
+  ["43-zeitstempel-frage", "nachholen", async (p) => { await p.waitForSelector("dialog[open] #frage-title"); }],
+  ["44-zeitstempel-frage-geholt", "nachholen", async (p) => {
+    await p.waitForSelector("dialog[open] #frage-title");
+    await p.getByRole("button", { name: "Jetzt holen" }).click();
+    await p.waitForSelector(".toast");
+  }],
   ["38-haftungsausschluss-ende", "normal", async (p) => {
     await p.getByRole("button", { name: "Haftungsausschluss" }).click();
     await p.waitForSelector("dialog[open]");
@@ -96,6 +102,11 @@ async function gotoDeposit(p, seq) {
 async function gotoSettings(p) {
   await p.evaluate(() => (location.hash = "#/einstellungen"));
   await p.waitForSelector("#tsa-anbieter");
+}
+async function openSwitcher(p) {
+  await gotoSettings(p);
+  await p.getByRole("button", { name: "Archiv wechseln" }).click();
+  await p.waitForSelector("#archiv-menu:not([hidden])");
 }
 async function openExport(p) {
   await p.getByRole("button", { name: "Export für Betriebsprüfung" }).click();

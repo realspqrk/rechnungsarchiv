@@ -32,8 +32,8 @@ func zips(t *testing.T, dir string) []string {
 	return m
 }
 
-// Code review finding 1: an explicit read-only open is never replaced by
-// the remembered default archive (opened writable on the first Status).
+// Code review finding 1: an explicit (here view-only) open is never
+// replaced by the remembered default archive (opened on the first Status).
 func TestExplicitOpenBeatsRememberedDefault(t *testing.T) {
 	e := testenv.New(t)
 	s := newTestService(t, e)
@@ -45,9 +45,10 @@ func TestExplicitOpenBeatsRememberedDefault(t *testing.T) {
 	if _, err := archive.Init(backup, "Sicherung GmbH"); err != nil {
 		t.Fatal(err)
 	}
-	st := must(s.OpenArchive(ctx, backup, true))
+	denyWrite(s, backup)
+	st := must(s.OpenArchive(ctx, backup))
 	s.wait()
-	if st.Archive.Dir != backup || !st.Archive.ReadOnly || st.Busy == busyStamp {
+	if st.Archive.Dir != backup || !st.Archive.ReadOnly {
 		t.Fatalf("explicit read-only open returned %+v", st.Archive)
 	}
 	if st := must(s.Status(ctx)); st.Archive.Dir != backup || !st.Archive.ReadOnly {
@@ -63,24 +64,25 @@ func TestExplicitOpenBeatsRememberedDefault(t *testing.T) {
 }
 
 // Code review finding 2: a writer queued behind another one never commits
-// into an archive that was reopened read-only meanwhile.
+// into an archive that was reopened view only meanwhile.
 func TestQueuedWriterRespectsReopen(t *testing.T) {
 	e := testenv.New(t)
 	s := newTestService(t, e)
 	ctx := t.Context()
-	must(s.OpenArchive(ctx, e.Dir, false))
+	must(s.OpenArchive(ctx, e.Dir))
 	s.wait()
 
 	s.write.Lock() // another writer is busy
 	errc := make(chan error, 1)
 	go func() {
-		_, err := s.Archive(ctx, ArchiveOptions{Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7})
+		_, err := s.Archive(ctx, ArchiveOptions{Session: session(s), Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7})
 		errc <- err
 	}()
 	time.Sleep(50 * time.Millisecond) // let Archive queue on the writer slot
 	opened := make(chan error, 1)
+	denyWrite(s, e.Dir)
 	go func() {
-		_, err := s.OpenArchive(ctx, e.Dir, true)
+		_, err := s.OpenArchive(ctx, e.Dir)
 		opened <- err
 	}()
 	// Wait until the reopen has cancelled the old generation, then let the
@@ -119,7 +121,7 @@ func TestCancelAfterCommitReportsCommitted(t *testing.T) {
 	if err := s.sys.creds.Set(e.Archive.Config.ArchiveID, e.Provider.ID, creds.Credential{User: testenv.User, Password: testenv.Password}); err != nil {
 		t.Fatal(err)
 	}
-	must(s.OpenArchive(t.Context(), e.Dir, false))
+	must(s.OpenArchive(t.Context(), e.Dir))
 	s.wait()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -133,7 +135,7 @@ func TestCancelAfterCommitReportsCommitted(t *testing.T) {
 		}
 		return true
 	})
-	res, err := s.Archive(ctx, ArchiveOptions{Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7})
+	res, err := s.Archive(ctx, ArchiveOptions{Session: session(s), Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7})
 	if err != nil {
 		t.Fatalf("error after the commit: %v", err)
 	}
@@ -152,7 +154,7 @@ func TestProtocolNeverIntoAnotherArchive(t *testing.T) {
 	e.Add(testenv.Incoming, archive.Options{})
 	s := newTestService(t, e)
 	ctx := t.Context()
-	must(s.OpenArchive(ctx, e.Dir, true))
+	must(s.OpenArchive(ctx, e.Dir))
 	s.wait()
 	other := filepath.Join(t.TempDir(), "Archiv B")
 	if _, err := archive.Init(other, "B GmbH"); err != nil {
@@ -197,9 +199,9 @@ func TestStampPendingReportsRefusedAblage(t *testing.T) {
 	if err := s.sys.creds.Set(e.Archive.Config.ArchiveID, e.Provider.ID, creds.Credential{User: testenv.User, Password: testenv.Password}); err != nil {
 		t.Fatal(err)
 	}
-	must(s.OpenArchive(t.Context(), e.Dir, false))
+	must(s.OpenArchive(t.Context(), e.Dir))
 	s.wait()
-	r := must(s.StampPending(t.Context()))
+	r := must(s.StampPending(t.Context(), session(s)))
 	if r.Failed != 1 || r.Stamped != 0 || len(r.Warnings) == 0 || !strings.Contains(r.Warnings[0], "0001") {
 		t.Fatalf("%+v", r)
 	}
@@ -215,7 +217,7 @@ func TestQueuedWriterNeverIntoSwitchedArchive(t *testing.T) {
 		run  func(s *realService, ctx context.Context) error
 	}{
 		{"Archive", func(s *realService, ctx context.Context) error {
-			_, err := s.Archive(ctx, ArchiveOptions{Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7})
+			_, err := s.Archive(ctx, ArchiveOptions{Session: session(s), Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7})
 			return err
 		}},
 		{"SetSettings", func(s *realService, ctx context.Context) error {
@@ -246,14 +248,14 @@ func TestQueuedWriterNeverIntoSwitchedArchive(t *testing.T) {
 				if err := b.SetProvider(&e.Provider.ID); err != nil {
 					t.Fatal(err)
 				}
-				must(s.OpenArchive(ctx, e.Dir, false))
+				must(s.OpenArchive(ctx, e.Dir))
 				s.wait()
 
 				s.write.Lock() // another writer is busy
 				opened := make(chan error, 1)
 				openB := func() {
 					go func() {
-						_, err := s.OpenArchive(ctx, other, false)
+						_, err := s.OpenArchive(ctx, other)
 						opened <- err
 					}()
 					// Wait until the open has ended A's generation, i.e. it
@@ -380,7 +382,7 @@ func TestPredecessorNotLinkedWhenTagsBroken(t *testing.T) {
 	e.Add(testenv.Outgoing, archive.Options{})
 	s := newTestService(t, e)
 	ctx := t.Context()
-	must(s.OpenArchive(ctx, e.Dir, true))
+	must(s.OpenArchive(ctx, e.Dir))
 	s.wait()
 	if r := must(s.VerifyDeposit(ctx, 2)); !r.PredecessorLinked {
 		t.Fatalf("intact archive not linked: %+v", r)

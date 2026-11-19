@@ -11,15 +11,18 @@ import "context"
 //   - Errors carry a German, user-facing message (it is shown as is). A
 //     lock held by another writer is a *UIError with Code "gesperrt".
 //   - All state comes from verify.Report; the GUI only renders it.
-//   - Read-only mode never writes, locks or stamps (spec §9).
+//   - A view-only archive (a folder this PC cannot write to) never
+//     writes, locks or stamps (spec §9).
+//   - Opening an archive never stamps: Status.Due says what is pending,
+//     the GUI asks, StampPending fetches it.
 type Service interface {
 	// Status describes the open archive, or HasArchive=false (start screen).
 	Status(ctx context.Context) (Status, error)
 	// CreateArchive creates a new archive in an empty folder and opens it.
 	CreateArchive(ctx context.Context, req CreateArchiveRequest) (Status, error)
-	// OpenArchive opens an existing archive; readOnly = "Archiv nur kontrollieren".
-	// In normal mode the implementation retries pending timestamps (spec: on every start).
-	OpenArchive(ctx context.Context, dir string, readOnly bool) (Status, error)
+	// OpenArchive opens an existing archive. A folder this PC cannot write
+	// to opens view only (ArchiveInfo.ReadOnly, ReadOnlyReason).
+	OpenArchive(ctx context.Context, dir string) (Status, error)
 	// CloseArchive returns to the start screen (no archive open).
 	CloseArchive(ctx context.Context) error
 	// Preview scans a folder without writing anything ("--dry-run").
@@ -29,8 +32,9 @@ type Service interface {
 	RetentionUntil(ctx context.Context, belegjahr, years int) (string, error)
 	// Archive writes a new Ablage and tries to stamp it.
 	Archive(ctx context.Context, opts ArchiveOptions) (ArchiveResult, error)
-	// StampPending fetches missing timestamps ("Jetzt nachholen").
-	StampPending(ctx context.Context) (StampResult, error)
+	// StampPending fetches missing timestamps ("Jetzt nachholen", "Jetzt
+	// holen") of the archive opened in session (Status.Session).
+	StampPending(ctx context.Context, session int) (StampResult, error)
 	// Verify checks the whole archive ("Archiv kontrollieren").
 	Verify(ctx context.Context) (CheckSummary, error)
 	// VerifyDeposit checks one Ablage (detail screen).
@@ -55,7 +59,8 @@ type Service interface {
 	// TakeOver removes the lock of another writer that the user saw
 	// (Status.Lock or a "gesperrt" error) after the user confirmed it
 	// (spec §1). A writer that is still running is never taken over.
-	TakeOver(ctx context.Context) error
+	// TakeOver removes the lock of the archive opened in session (Status.Session).
+	TakeOver(ctx context.Context, session int) error
 }
 
 // UIError is an error the frontend handles specially; it reaches
@@ -141,20 +146,46 @@ type Status struct {
 	Findings  []Finding     `json:"findings"`
 	LastCheck *CheckSummary `json:"lastCheck"`
 	TrustList TrustListInfo `json:"trustList"`
-	// Busy names the background work in progress: "" | "stempeln"
-	// (pending timestamps are fetched) | "pruefen" (trusted lists are
-	// refreshed and the archive re-checked). The UI polls while it is set.
+	// Busy names the background work in progress: "" | "pruefen" (after
+	// opening: trusted lists are refreshed and the archive re-checked). The
+	// UI polls while it is set.
 	Busy string `json:"busy"`
 	// Lock is set when another writer holds the archive (seen by the last
 	// writing operation); the UI offers to take it over after confirmation.
 	Lock *LockInfo `json:"lock"`
+	// Recent are the other archives opened on this PC, newest first
+	// ("Zuletzt geöffnet"); the open one is not among them.
+	Recent []RecentArchive `json:"recent"`
+	// Session changes with every open, creation and close of an archive.
+	// A result requested in one session is not shown in another.
+	Session int `json:"session"`
+	// Rev grows with every Status: an older snapshot (a slow poll) never
+	// replaces a newer one in the UI.
+	Rev int `json:"rev"`
+	// Due: what "Jetzt holen" (StampPending) would do now. Opening an
+	// archive never stamps; the UI asks when this is not zero.
+	Due Due `json:"due"`
+}
+
+// Due counts the pending work of the timestamp service: Paid new requests,
+// Free completions of proof data for timestamps already paid for.
+type Due struct {
+	Paid int `json:"paid"`
+	Free int `json:"free"`
+}
+
+type RecentArchive struct {
+	Dir     string `json:"dir"`
+	Company string `json:"company"`
 }
 
 type ArchiveInfo struct {
-	Dir              string `json:"dir"`
-	Company          string `json:"company"`
-	ArchiveID        string `json:"archiveId"`
-	ReadOnly         bool   `json:"readOnly"`
+	Dir       string `json:"dir"`
+	Company   string `json:"company"`
+	ArchiveID string `json:"archiveId"`
+	ReadOnly  bool   `json:"readOnly"`
+	// ReadOnlyReason: why the folder could not be opened for writing.
+	ReadOnlyReason   string `json:"readOnlyReason"`
 	RetentionDefault int    `json:"retentionDefault"`
 }
 
@@ -259,6 +290,9 @@ type Preview struct {
 	RetentionDefault int               `json:"retentionDefault"`
 	RetentionOptions []RetentionOption `json:"retentionOptions"`
 	NextSeq          int               `json:"nextSeq"`
+	// Session is the opening of the archive this preview is for (Status.Session);
+	// Archive gets it back.
+	Session int `json:"session"`
 }
 
 type DuplicateHint struct {
@@ -291,6 +325,10 @@ type ArchiveOptions struct {
 	Name           string `json:"name"`
 	Belegjahr      int    `json:"belegjahr"`
 	RetentionYears int    `json:"retentionYears"`
+	// Session from the Preview: if the archive was closed or another one
+	// (also a copy of the same archive) opened meanwhile, Archive refuses
+	// instead of writing into it.
+	Session int `json:"session"`
 }
 
 type ArchiveResult struct {
@@ -407,6 +445,7 @@ type InheritedProof struct {
 }
 
 type ExportPlan struct {
+	Session         int    `json:"session"` // Status.Session of the planned archive
 	From            int    `json:"from"`
 	To              int    `json:"to"`
 	Years           []int  `json:"years"` // Belegjahre present in the archive
@@ -420,6 +459,9 @@ type ExportOptions struct {
 	From   int    `json:"from"`
 	To     int    `json:"to"`
 	Target string `json:"target"`
+	// Session from the ExportPlan: never export another archive than the
+	// one the dialog was opened for.
+	Session int `json:"session"`
 }
 
 type ExportResult struct {

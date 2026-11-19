@@ -61,13 +61,13 @@ Verträge und Urkunden in Papier, die zivilrechtlich im Original bleiben sollen,
 2. Das Programm sendet beim Stempeln den Prüfwert, den Kontonamen und die IP-Adresse. Dateinamen, Rechnungsinhalte und die Prüfsummen der einzelnen Dateien sendet es nicht.
 3. Die Preise stehen in der Tabelle der [README](../README.md), mit dem dort genannten Stand. Vor dem Kauf prüft [VERANTWORTLICH] den aktuellen Preis und ob der Anbieter an österreichische Unternehmen verkauft.
 4. Ohne eingerichteten Dienst bleiben neue Ablagen ausstehend. Einen kostenlosen Dienst richtet das Unternehmen nicht ein.
-5. Fällt der Anbieter aus, bleiben vorhandene Zeitstempel mit der gespeicherten Zertifikatskette und dem Sperrstatus prüfbar. Für neue Ablagen wählt [VERANTWORTLICH] einen anderen qualifizierten EU-Dienst in den Einstellungen. Das Programm wechselt nicht von selbst.
+5. Fällt der Anbieter aus, bleiben vorhandene Zeitstempel mit der gespeicherten Zertifikatskette und dem Sperrstatus prüfbar. Für neue Ablagen braucht es einen anderen qualifizierten EU-Dienst; angeboten werden nur im Echtbetrieb erprobte, weitere über die Projektseite anfragen. Das Programm wechselt nicht von selbst.
 
 ## 6. Sicherung und jährliche Wiederherstellungsprobe
 
 1. Unmittelbar nach dem Zeitstempel kopiert [VERANTWORTLICH] das Archiv auf den zweiten Datenträger [ZWEITER DATENTRÄGER, ORT, ART]. Eine Kopie davor ist keine Sicherung des Stempels.
 2. Einmal im Jahr, bis [MONAT], kopiert [VERANTWORTLICH] diese Sicherung in einen eigenen Ordner [ORDNER], der nicht das laufende Archiv ist.
-3. Diesen Ordner öffnet [VERANTWORTLICH] mit „Archiv nur kontrollieren“. Die Kontrolle schreibt nichts. Ergebnis und Datum trägt [VERANTWORTLICH] hier ein: [LISTE ODER PFAD ZUM PROTOKOLL].
+3. Diese Kopie prüft [VERANTWORTLICH] mit `rechnungsarchiv verify --archiv "[ORDNER]"`; das schreibt nichts. Alternativ im Fenster: Einstellungen → „Archiv wechseln“ → „Bestehendes Archiv öffnen …“, dann „Archiv kontrollieren“ und über „Zuletzt geöffnet“ zurück zum laufenden Archiv; ausstehende Zeitstempel der Kopie werden dabei nicht geholt („Später“). Ergebnis und Datum trägt [VERANTWORTLICH] hier ein: [LISTE ODER PFAD ZUM PROTOKOLL].
 4. Schlägt die Probe fehl, wird die Sicherung nicht weiterverwendet. Vorgehen: [WEN INFORMIEREN, WIE WIEDERHERSTELLEN].
 
 ## 7. Lesbarkeit

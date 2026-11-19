@@ -21,6 +21,11 @@ export interface ArchiveInfo {
     "company": string;
     "archiveId": string;
     "readOnly": boolean;
+
+    /**
+     * ReadOnlyReason: why the folder could not be opened for writing.
+     */
+    "readOnlyReason": string;
     "retentionDefault": number;
 }
 
@@ -29,6 +34,13 @@ export interface ArchiveOptions {
     "name": string;
     "belegjahr": number;
     "retentionYears": number;
+
+    /**
+     * Session from the Preview: if the archive was closed or another one
+     * (also a copy of the same archive) opened meanwhile, Archive refuses
+     * instead of writing into it.
+     */
+    "session": number;
 }
 
 export interface ArchiveResult {
@@ -241,6 +253,15 @@ export interface DisclaimerText {
     "consent": string;
 }
 
+/**
+ * Due counts the pending work of the timestamp service: Paid new requests,
+ * Free completions of proof data for timestamps already paid for.
+ */
+export interface Due {
+    "paid": number;
+    "free": number;
+}
+
 export interface DuplicateHint {
     "files": number;
 
@@ -255,9 +276,19 @@ export interface ExportOptions {
     "from": number;
     "to": number;
     "target": string;
+
+    /**
+     * Session from the ExportPlan: never export another archive than the
+     * one the dialog was opened for.
+     */
+    "session": number;
 }
 
 export interface ExportPlan {
+    /**
+     * Status.Session of the planned archive
+     */
+    "session": number;
     "from": number;
     "to": number;
 
@@ -417,6 +448,12 @@ export interface Preview {
     "retentionDefault": number;
     "retentionOptions": RetentionOption[] | null;
     "nextSeq": number;
+
+    /**
+     * Session is the opening of the archive this preview is for (Status.Session);
+     * Archive gets it back.
+     */
+    "session": number;
 }
 
 export interface PreviewProblem {
@@ -467,6 +504,11 @@ export interface ProviderRef {
      * ISO 3166-1 alpha-2
      */
     "country": string;
+}
+
+export interface RecentArchive {
+    "dir": string;
+    "company": string;
 }
 
 export interface RetentionOption {
@@ -578,9 +620,9 @@ export interface Status {
     "trustList": TrustListInfo;
 
     /**
-     * Busy names the background work in progress: "" | "stempeln"
-     * (pending timestamps are fetched) | "pruefen" (trusted lists are
-     * refreshed and the archive re-checked). The UI polls while it is set.
+     * Busy names the background work in progress: "" | "pruefen" (after
+     * opening: trusted lists are refreshed and the archive re-checked). The
+     * UI polls while it is set.
      */
     "busy": string;
 
@@ -589,6 +631,30 @@ export interface Status {
      * writing operation); the UI offers to take it over after confirmation.
      */
     "lock": LockInfo | null;
+
+    /**
+     * Recent are the other archives opened on this PC, newest first
+     * ("Zuletzt geöffnet"); the open one is not among them.
+     */
+    "recent": RecentArchive[] | null;
+
+    /**
+     * Session changes with every open, creation and close of an archive.
+     * A result requested in one session is not shown in another.
+     */
+    "session": number;
+
+    /**
+     * Rev grows with every Status: an older snapshot (a slow poll) never
+     * replaces a newer one in the UI.
+     */
+    "rev": number;
+
+    /**
+     * Due: what "Jetzt holen" (StampPending) would do now. Opening an
+     * archive never stamps; the UI asks when this is not zero.
+     */
+    "due": Due;
 }
 
 /**

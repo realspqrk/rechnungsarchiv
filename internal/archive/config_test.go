@@ -1,10 +1,13 @@
 package archive
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -120,8 +123,54 @@ func TestRememberDefault(t *testing.T) {
 	if data, _ := os.ReadFile(p); !strings.Contains(string(data), `"gui"`) || !strings.Contains(string(data), `"archive"`) {
 		t.Fatalf("other keys lost: %s", data)
 	}
+
 	os.Remove(filepath.Join(a.Dir, configFile))
 	if DefaultDir() != "" {
 		t.Fatal("default without rechnungsarchiv.json")
+	}
+
+	// Recent: newest first, no duplicates (case-insensitive), at most
+	// maxRecent, only folders that still hold an archive.
+	var dirs []string
+	for i := range maxRecent + 1 {
+		d := filepath.Join(t.TempDir(), "A")
+		if _, err := Init(d, "Firma "+string(rune('A'+i))); err != nil {
+			t.Fatal(err)
+		}
+		dirs = append(dirs, d)
+		if err := RememberDefault(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	again := dirs[3]
+	if runtime.GOOS == "windows" {
+		again = strings.ToUpper(again)
+	}
+	if err := RememberDefault(again); err != nil {
+		t.Fatal(err)
+	}
+	got := RecentArchives()
+	if len(got) != maxRecent || !samePath(got[0].Dir, dirs[3]) || got[0].Company != "Firma D" || got[1].Dir != dirs[maxRecent] {
+		t.Fatalf("recent %+v", got)
+	}
+	os.Remove(filepath.Join(dirs[maxRecent], configFile))
+	if got := RecentArchives(); len(got) != maxRecent-1 || slices.ContainsFunc(got, func(r Recent) bool { return r.Dir == dirs[maxRecent] }) {
+		t.Fatalf("recent after removing an archive %+v", got)
+	}
+}
+
+// Settings written by 1.0.1 have only "archive": it becomes the first
+// recent archive.
+func TestRecentFromOldSettings(t *testing.T) {
+	a, _ := setup(t)
+	cfg := t.TempDir()
+	t.Setenv("APPDATA", cfg)
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	p, _ := settingsPath()
+	os.MkdirAll(filepath.Dir(p), 0o755)
+	old, _ := json.Marshal(map[string]string{"archive": a.Dir})
+	os.WriteFile(p, old, 0o644)
+	if got := RecentArchives(); len(got) != 1 || got[0].Dir != a.Dir {
+		t.Fatalf("recent from old settings %+v", got)
 	}
 }

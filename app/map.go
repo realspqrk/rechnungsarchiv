@@ -460,6 +460,19 @@ func providerOf(p tsa.Provider) Provider {
 		URLFromContract: p.URLFromContract, Website: p.Website}
 }
 
+// offeredProviders is the provider choice of an archive whose provider is
+// current: the offered ones, and the current one even if no longer offered
+// (its credentials stay editable).
+func offeredProviders(current string) []Provider {
+	var out []Provider
+	for _, p := range tsa.Providers() {
+		if p.Offered(current) {
+			out = append(out, providerOf(p))
+		}
+	}
+	return out
+}
+
 func providerRef(id string) *ProviderRef {
 	if p, ok := tsa.ProviderByID(id); ok {
 		return &ProviderRef{ID: p.ID, Name: providerOf(p).Name, Country: p.Country}

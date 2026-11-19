@@ -3,7 +3,7 @@
 import { api, errMsg, list, type Deposit, type Preview } from "../api";
 import { clear, h, icon } from "../dom";
 import { bytes, date, dateTimeSeconds, n, plural, seq } from "../fmt";
-import { app, navigate } from "../state";
+import { acceptStatus, app, navigate } from "../state";
 import { PROBLEM_TEXT, QUAL, REASON_RESULT, REASON_SHORT, STATE } from "../text";
 import { button, openDialog, pathText, toast, type DialogHandle } from "../ui";
 import { refreshStatus, withLock } from "../actions";
@@ -17,6 +17,7 @@ export function archiveDialogOpen(): boolean {
 
 export async function openArchiveDialog(folder: string): Promise<void> {
   if (openNow) return;
+  const session = app.status?.session;
   let preview: Preview;
   try {
     preview = await api.Preview(folder);
@@ -24,6 +25,8 @@ export async function openArchiveDialog(folder: string): Promise<void> {
     toast(errMsg(e), "error");
     return;
   }
+  // Another archive was opened while the preview ran: not for this one.
+  if (preview.session !== session || app.status?.session !== session || app.opening) return;
   openNow = true;
   const dlg = openDialog("dlg-title", "narrow", () => {
     openNow = false;
@@ -115,7 +118,7 @@ function confirmStep(dlg: DialogHandle, p: Preview): void {
     cancelBtn.disabled = true;
     archiveBtn.textContent = "Wird archiviert …";
     try {
-      const r = await withLock(() => api.Archive({ folder: p.folder, name: p.suggestedName, belegjahr: Number(year.value), retentionYears }));
+      const r = await withLock(() => api.Archive({ folder: p.folder, name: p.suggestedName, belegjahr: Number(year.value), retentionYears, session: p.session }));
       dlg.lock(false);
       resultStep(dlg, r.deposit, r.warning);
     } catch (e) {
@@ -220,9 +223,12 @@ function resultStep(dlg: DialogHandle, d: Deposit, warning = ""): void {
       retry.disabled = true;
       retry.textContent = "Wird geholt …";
       try {
-        const r = await withLock(() => api.StampPending());
+        // The dialog belongs to the archive it archived into (Go refuses
+        // another one).
+        const session = app.status?.session ?? 0;
+        const r = await withLock(() => api.StampPending(session), session);
         const st = await api.Status();
-        app.status = st;
+        acceptStatus(st);
         const now = list(st.deposits).find((x) => x.seq === d.seq);
         if (now && now.state === STATE.stamped) {
           resultStep(dlg, now);

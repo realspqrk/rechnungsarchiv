@@ -49,7 +49,7 @@ func (a *app) gui(inv *invocation) error {
 		return fail(usageErr("gui öffnet das Fenster und gibt keine Daten aus; --json passt nicht dazu.", "rechnungsarchiv gui --help"))
 	}
 	if inv.str("archiv") != "" {
-		return fail(usageErr("gui öffnet das zuletzt verwendete Archiv; ein anderes wählen Sie im Fenster (Bestehendes Archiv öffnen).", "rechnungsarchiv gui --help"))
+		return fail(usageErr("gui öffnet das zuletzt verwendete Archiv; ein anderes wählen Sie im Fenster über den Firmennamen (Bestehendes Archiv öffnen).", "rechnungsarchiv gui --help"))
 	}
 	var opts gui.Options
 	if len(inv.args) == 1 {

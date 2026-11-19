@@ -207,8 +207,14 @@ func TestProvidersHaveNoPrices(t *testing.T) {
 		t.Fatalf("exit %d: %s", r.code, r.stderr)
 	}
 	var ps []map[string]any
-	if err := json.Unmarshal([]byte(r.stdout), &ps); err != nil || len(ps) < 5 {
+	if err := json.Unmarshal([]byte(r.stdout), &ps); err != nil || len(ps) < 1 || ps[0]["id"] != "mensatek" {
 		t.Fatalf("providers %v: %s", err, r.stdout)
+	}
+	// Only providers proven in real use are offered (README).
+	for _, hidden := range []string{"disig", "namirial", "aruba", "globaltrust"} {
+		if strings.Contains(r.stdout, `"`+hidden+`"`) {
+			t.Fatalf("%s offered: %s", hidden, r.stdout)
+		}
 	}
 	allowed := map[string]bool{"id": true, "name": true, "country": true, "auth": true, "url": true, "url_from_contract": true, "trusted_list": true}
 	for _, p := range ps {

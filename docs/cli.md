@@ -93,15 +93,15 @@ Global flags on every command: `--archiv <ordner>`, `--json`, `--help`/`-h`. Fla
 |---|---|---|
 | `status` | no | `{version, archive, provider, credentials, lock, deposits, pending, unreadable, last, trust_lists, trust_list_issued, next}`. See below. Exit 0 whatever the archive's state; 3 if there is no archive. |
 | `init <ordner> --firma <name>` | yes | Creates the archive (the folder may exist) and remembers it as the default. `{archive, default}`. An existing archive exits 1 `ARCHIVE_EXISTS`. |
-| `archive <ordner> [--name <n>] [--belegjahr <jahr>] [--aufbewahrung 7\|10\|12\|22] [--dry-run] [--yes] [--take-over]` | yes | Commits the folder as a new Ablage, then fetches every missing timestamp. Without a terminal it needs `--yes` (exit 8). See below. |
+| `archive <ordner> [--name <n>] [--belegjahr <jahr>] [--aufbewahrung 7\|10\|12\|22] [--dry-run] [--yes] [--take-over]` | yes | Commits the folder as a new Ablage, then fetches its timestamp (only this Ablage's; older pending ones: `stamp`). Without a terminal it needs `--yes` (exit 8). See below. |
 | `stamp [--take-over --yes]` | yes | Fetches every missing timestamp. `stamp.Result`: `{provider, outcomes[], warnings[]}`. No consent needed. |
 | `verify [<archiv>\|<ablage.zip>\|<export-ordner>] [--online]` | never | The full check (spec §6). Prints `verify.Report`. Exit 0, 5 or 6. Without a path: the archive. |
 | `export --von <jahr> --bis <jahr> <ziel> [--yes]` | new folder | Writes the export for a tax audit into a new or empty folder (spec §8). Without a terminal it needs `--yes` (exit 8). `{dir, exported, bridged, report, warnings}`. |
-| `providers` | no | `[{id, name, country, auth, url, url_from_contract, trusted_list}]`. Only qualified EU services. No prices: they are in the README, with a date. |
-| `provider set <id> [--user <name>] [--p12 <datei>] [--url <https-url>]` | yes | Stores the credentials in the Windows Credential Manager of this PC and the provider id in `rechnungsarchiv.json`. Secret from standard input only. `{archive, provider, credentials}`. |
+| `providers` | no | `[{id, name, country, auth, url, url_from_contract, trusted_list}]`. Only qualified EU services that are offered (proven in real use; today Mensatek). No prices: they are in the README, with a date. |
+| `provider set <id> [--user <name>] [--p12 <datei>] [--url <https-url>]` | yes | Stores the credentials in the Windows Credential Manager of this PC and the provider id in `rechnungsarchiv.json`. Secret from standard input only. `{archive, provider, credentials}`. A provider not listed by `providers` is refused (`USAGE`) unless it is already the archive's provider (then only its credentials are updated). |
 | `provider show` | no | `{archive, provider, credentials}`. `credentials` is `{stored, user, p12, url, password}`; `password` is only `true`/`false`. Never the secret. |
 | `protocol <ablage> [--out <datei.pdf>] [--online]` | new file | Saves the Archivprotokoll of one Ablage (spec §10). `<ablage>` is a number (`3`, `0003`) in the archive or the path of an Ablage ZIP. `{file, sequence, name, status, qualification, reason}`. |
-| `gui [<ordner>]` | via the window | Opens the window (see [CLI or window](#cli-or-window)) and returns when it closes. Writes only what the user does there; on start it fetches missing timestamps like `stamp`. No data output; exit 2 with `--json` or `--archiv`, or if `<ordner>` is not a folder (`NOT_FOUND`, `USAGE`). Agents open it only when the user wants to see the window. |
+| `gui [<ordner>]` | via the window | Opens the window (see [CLI or window](#cli-or-window)) and returns when it closes. Writes only what the user does there; opening never stamps: if timestamps are missing, the window asks (new paid ones and free completions counted) and fetches them like `stamp` only after "Jetzt holen". No data output; exit 2 with `--json` or `--archiv`, or if `<ordner>` is not a folder (`NOT_FOUND`, `USAGE`). Agents open it only when the user wants to see the window. |
 | `schema --json` | no | Machine-readable definitions: commands, flags, exit codes, error codes, agent rules. |
 
 ### status
@@ -211,7 +211,7 @@ rechnungsarchiv archive --dry-run "D:\Scans\2026-11 Eingangsrechnungen"
 rechnungsarchiv archive "D:\Scans\2026-11 Eingangsrechnungen" --yes
 ```
 
-With a client certificate (Disig): `rechnungsarchiv provider set disig --p12 "C:\Pfad\zertifikat.p12" --url "https://…"` (the certificate password on standard input).
+With a client certificate (Disig, only for an archive already set up with it): `rechnungsarchiv provider set disig --p12 "C:\Pfad\zertifikat.p12" --url "https://…"` (the certificate password on standard input).
 
 A script, with the password from a secret store instead of a prompt:
 

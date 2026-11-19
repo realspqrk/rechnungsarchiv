@@ -53,6 +53,13 @@ func TestProvidersShippedList(t *testing.T) {
 		if p.Recommended != (p.ID == "mensatek") {
 			t.Errorf("%s: only mensatek is recommended (README)", p.ID)
 		}
+		// Only providers proven in real use are offered (README).
+		if p.Hidden == (p.ID == "mensatek") {
+			t.Errorf("%s: hidden=%v; only mensatek is offered", p.ID, p.Hidden)
+		}
+		if p.Hidden && (p.Offered("") || !p.Offered(p.ID)) {
+			t.Errorf("%s: a hidden provider is offered only to an archive already using it", p.ID)
+		}
 	}
 	if len(Providers()) != len(ps) {
 		t.Error("test providers leak into a normal build")

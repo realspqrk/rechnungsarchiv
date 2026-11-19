@@ -22,7 +22,8 @@
     "url_from_contract": true,
     "accuracy": "1s",
     "trusted_list": "SK",
-    "website": "https://eidas.disig.sk/en/timestamp/"
+    "website": "https://eidas.disig.sk/en/timestamp/",
+    "hidden": true
   },
   {
     "id": "namirial",
@@ -33,7 +34,8 @@
     "auth": "basic",
     "accuracy": "1s",
     "trusted_list": "IT",
-    "website": "https://www.namirial.global/?p=372"
+    "website": "https://www.namirial.global/?p=372",
+    "hidden": true
   },
   {
     "id": "aruba",
@@ -45,7 +47,8 @@
     "expected_policies": ["0.4.0.2023.1.1"],
     "accuracy": "1s",
     "trusted_list": "IT",
-    "website": "https://www.aruba.it/en/time-stamping-price-list.aspx"
+    "website": "https://www.aruba.it/en/time-stamping-price-list.aspx",
+    "hidden": true
   },
   {
     "id": "globaltrust",
@@ -56,6 +59,7 @@
     "auth": "basic",
     "accuracy": "1s",
     "trusted_list": "AT",
-    "website": "https://globaltrust.eu/produkte/qualified-timestamp/"
+    "website": "https://globaltrust.eu/produkte/qualified-timestamp/",
+    "hidden": true
   }
 ]

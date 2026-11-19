@@ -280,3 +280,38 @@ func TestReadOnlyWritesNothing(t *testing.T) {
 		t.Fatalf("read-only mode changed the archive:\n%v\n%v", before, after)
 	}
 }
+
+// Holder reports another writer's lock without taking it or writing.
+func TestHolderObservesWithoutLocking(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Archiv")
+	a, err := Init(dir, "Muster GmbH")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if le, err := a.Holder(); le != nil || err != nil {
+		t.Fatalf("no lock: %v %v", le, err)
+	}
+	release, err := a.Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if le, err := a.Holder(); le != nil || err != nil {
+		t.Fatalf("own lock reported: %v %v", le, err)
+	}
+	release()
+	foreign := `{"host":"BUCHHALTUNG-PC","pid":4242,"since":"2026-11-18T08:00:00Z","user":"anna"}`
+	path := filepath.Join(dir, ".lock")
+	if err := os.WriteFile(path, []byte(foreign), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	le, err := a.Holder()
+	if err != nil || le == nil || le.Host != "BUCHHALTUNG-PC" || le.User != "anna" {
+		t.Fatalf("foreign lock: %+v %v", le, err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != foreign {
+		t.Fatalf("Holder changed the lock: %q", b)
+	}
+	if err := a.TakeOver(le); err != nil { // the observation is good for TakeOver
+		t.Fatal(err)
+	}
+}

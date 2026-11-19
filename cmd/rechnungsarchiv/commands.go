@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/realspqrk/rechnungsarchiv"
 	"io"
 	"os"
 	"path/filepath"
@@ -61,7 +62,7 @@ func init() {
 			run:     (*app).init},
 		{Name: "archive", Args: "<ordner>", MinArgs: 1, MaxArgs: 1, Writes: true, Consent: true,
 			Summary: "Ordner archivieren: neue Ablage anlegen und Zeitstempel holen. Endgültig, kostet einen Zeitstempel.",
-			Help: "Die Dateien werden unverändert in eine neue Ablage übernommen. Danach werden alle fehlenden Zeitstempel geholt.\n" +
+			Help: "Die Dateien werden unverändert in eine neue Ablage übernommen. Danach wird der Zeitstempel dieser Ablage geholt; ältere ausstehende holt rechnungsarchiv stamp.\n" +
 				"Exit 3, 6 oder 7 nach dem Speichern: die Ablage ist gespeichert (\"committed\": true). Nicht erneut archivieren; nach der Behebung rechnungsarchiv stamp.",
 			Flags: []flagSpec{
 				{Name: "name", Kind: stringFlag, Arg: "<name>", Help: "Name der Ablage (Standard: Ordnername)"},
@@ -85,12 +86,13 @@ func init() {
 				flagYes,
 			},
 			run: (*app).export},
-		{Name: "providers", Summary: "Unterstützte qualifizierte Zeitstempel-Dienste (ohne Preise, siehe README).", run: (*app).providers},
+		{Name: "providers", Summary: "Angebotene qualifizierte Zeitstempel-Dienste (im Echtbetrieb erprobt; ohne Preise, siehe README).", run: (*app).providers},
 		{Name: "provider set", Args: "<id>", MinArgs: 1, MaxArgs: 1, Writes: true,
 			Summary: "Zeitstempel-Dienst für dieses Archiv einrichten. Passwort nur über die Standardeingabe.",
 			Help: "Benutzer/Passwort (basic): --user; das Passwort kommt als erste Zeile über die Standardeingabe oder wird im Terminal verdeckt abgefragt.\n" +
 				"Client-Zertifikat (clientcert): --p12; das Zertifikatspasswort ebenso. Gespeichert wird im Anmeldeinformationsspeicher dieses PCs, nie im Archiv.\n" +
-				"Adresse laut Vertrag (url_from_contract, z. B. Disig): zusätzlich --url <https-Adresse>, etwa rechnungsarchiv provider set disig --p12 \"<datei.p12>\" --url \"https://…\".",
+				"Adresse laut Vertrag (url_from_contract, z. B. Disig): zusätzlich --url <https-Adresse>, etwa rechnungsarchiv provider set disig --p12 \"<datei.p12>\" --url \"https://…\".\n" +
+				"Angeboten werden nur die Dienste aus rechnungsarchiv providers; ein nicht mehr angebotener bleibt für ein Archiv, das ihn schon verwendet, einstellbar.",
 			Flags: []flagSpec{
 				{Name: "user", Kind: stringFlag, Arg: "<name>", Help: "Benutzername (Zugang basic)"},
 				{Name: "p12", Kind: stringFlag, Arg: "<datei>", Help: "PKCS#12-Datei (Zugang clientcert)"},
@@ -105,7 +107,7 @@ func init() {
 			run:     (*app).protocol},
 		{Name: "gui", Args: "[<ordner>]", MaxArgs: 1, Writes: true,
 			Summary: "Fenster öffnen; mit <ordner> gleich den Dialog „Ordner archivieren“ für diesen Ordner.",
-			Help: "Öffnet das zuletzt verwendete Archiv und endet, wenn das Fenster geschlossen wird. Archiviert wird nur nach Bestätigung im Fenster; beim Öffnen holt es fehlende Zeitstempel nach.\n" +
+			Help: "Öffnet das zuletzt verwendete Archiv und endet, wenn das Fenster geschlossen wird. Archiviert wird nur nach Bestätigung im Fenster; fehlen Zeitstempel, fragt es beim Öffnen, ob sie geholt werden sollen.\n" +
 				"Ohne Argumente aus dem Explorer oder Startmenü gestartet, öffnet rechnungsarchiv.exe ebenfalls das Fenster; im Terminal zeigt es die Hilfe. " +
 				"Verknüpfungen zeigen auf rechnungsarchiv-gui.exe: es startet rechnungsarchiv.exe gui ohne Konsolenfenster.\n" +
 				"gui gibt keine Daten aus (--json ist ein Aufruffehler). Agenten öffnen das Fenster nur, wenn der Benutzer es sehen will.",
@@ -432,7 +434,8 @@ func (a *app) archive(inv *invocation) error {
 	for _, f := range dep.Bag.Files {
 		out.Deposit.Bytes += f.Size
 	}
-	res, serr := a.runStamp(w, inv.flag("take-over"))
+	// Only the new Ablage: older pending ones are fetched by `stamp`.
+	res, serr := a.runStamp(w, inv.flag("take-over"), []string{dep.Bag.Root})
 	out.Stamp = res
 	a.emit(out, func(w io.Writer) { renderArchived(w, &out) })
 	if serr != nil {
@@ -495,9 +498,10 @@ func nonNil(s []string) []string {
 
 // ---------------------------------------------------------------- stamp
 
-// runStamp fetches the missing timestamps, holding the archive's writer
-// lock (taken over after confirmation if takeOver).
-func (a *app) runStamp(w *archive.Archive, takeOver bool) (*stamp.Result, error) {
+// runStamp fetches the missing timestamps (of roots only, if not nil),
+// holding the archive's writer lock (taken over after confirmation if
+// takeOver).
+func (a *app) runStamp(w *archive.Archive, takeOver bool, roots []string) (*stamp.Result, error) {
 	ts, err := sys.trust(w.Dir)
 	if err != nil {
 		return nil, err
@@ -513,7 +517,7 @@ func (a *app) runStamp(w *archive.Archive, takeOver bool) (*stamp.Result, error)
 		}
 		return release, err
 	}
-	return stamp.Run(a.ctx, w, stamp.Options{Trust: ts, Creds: sys.creds(), Lock: lock, RootCAs: sys.rootCAs})
+	return stamp.Run(a.ctx, w, stamp.Options{Trust: ts, Creds: sys.creds(), Lock: lock, RootCAs: sys.rootCAs, Roots: roots})
 }
 
 func (a *app) stamp(inv *invocation) error {
@@ -528,7 +532,7 @@ func (a *app) stamp(inv *invocation) error {
 	if err != nil {
 		return err
 	}
-	res, err := a.runStamp(w, inv.flag("take-over"))
+	res, err := a.runStamp(w, inv.flag("take-over"), nil)
 	if err != nil {
 		return err
 	}
@@ -704,7 +708,9 @@ func (a *app) export(inv *invocation) error {
 func (a *app) providers(inv *invocation) error {
 	out := []providerInfo{}
 	for _, p := range tsa.Providers() {
-		out = append(out, providerOf(p))
+		if p.Offered("") {
+			out = append(out, providerOf(p))
+		}
 	}
 	a.emit(out, func(w io.Writer) { renderProviders(w, out) })
 	return nil
@@ -729,6 +735,21 @@ func (a *app) providerSet(inv *invocation) error {
 	p, ok := tsa.ProviderByID(id)
 	if !ok {
 		return usageErr("unbekannter Zeitstempel-Dienst: "+safeWord(id), "rechnungsarchiv providers")
+	}
+	// Before anything provider-specific: a provider that is not offered is
+	// only accepted for an archive already using it (new credentials).
+	if p.Hidden {
+		ro, _, err := a.openRead()
+		if err != nil {
+			return err
+		}
+		cur := ""
+		if ro.Config.TSA != nil {
+			cur = *ro.Config.TSA
+		}
+		if !p.Offered(cur) {
+			return usageErr(safeWord(id)+" wird derzeit nicht angeboten (noch nicht im Echtbetrieb erprobt). Weitere Anbieter? Melden Sie sich: "+rechnungsarchiv.IssuesURL, "rechnungsarchiv providers")
+		}
 	}
 	user, p12, url := inv.str("user"), inv.str("p12"), inv.str("url")
 	switch p.Auth {

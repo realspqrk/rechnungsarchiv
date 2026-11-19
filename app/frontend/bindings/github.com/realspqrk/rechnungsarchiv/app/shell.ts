@@ -37,8 +37,8 @@ export function ExportPlan($from: number, to: number): $CancellablePromise<$mode
     return $Call.ByID(98515489, $from, to);
 }
 
-export function OpenArchive(dir: string, readOnly: boolean): $CancellablePromise<$models.Status> {
-    return $Call.ByID(792415602, dir, readOnly);
+export function OpenArchive(dir: string): $CancellablePromise<$models.Status> {
+    return $Call.ByID(792415602, dir);
 }
 
 /**
@@ -46,6 +46,13 @@ export function OpenArchive(dir: string, readOnly: boolean): $CancellablePromise
  */
 export function OpenFolder(path: string): $CancellablePromise<void> {
     return $Call.ByID(1943002040, path);
+}
+
+/**
+ * OpenIssues opens the project's issues ("Weitere Anbieter? Melden Sie sich").
+ */
+export function OpenIssues(): $CancellablePromise<void> {
+    return $Call.ByID(4190233540);
 }
 
 /**
@@ -131,8 +138,8 @@ export function Settings(): $CancellablePromise<$models.Settings> {
     return $Call.ByID(309036113);
 }
 
-export function StampPending(): $CancellablePromise<$models.StampResult> {
-    return $Call.ByID(3498016682);
+export function StampPending(session: number): $CancellablePromise<$models.StampResult> {
+    return $Call.ByID(3498016682, session);
 }
 
 export function Status(): $CancellablePromise<$models.Status> {
@@ -148,8 +155,8 @@ export function TakeFolders(): $CancellablePromise<$models.FolderDrop[] | null> 
     return $Call.ByID(3463377320);
 }
 
-export function TakeOver(): $CancellablePromise<void> {
-    return $Call.ByID(3249291429);
+export function TakeOver(session: number): $CancellablePromise<void> {
+    return $Call.ByID(3249291429, session);
 }
 
 export function Verify(): $CancellablePromise<$models.CheckSummary> {

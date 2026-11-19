@@ -45,31 +45,31 @@ export const REASON_RESULT: Record<string, { title: string; text: string }> = {
   // Committed, but not checked again (e.g. cancelled after the commit).
   "": {
     title: "Zeitstempel noch nicht geholt",
-    text: "Die Ablage ist gespeichert; archivieren Sie den Ordner nicht erneut. Der Zeitstempel wird beim nächsten Programmstart oder über „Jetzt nachholen“ geholt. Bis dahin ist der Zeitpunkt nicht belegt.",
+    text: "Die Ablage ist gespeichert; archivieren Sie den Ordner nicht erneut. Der Zeitstempel wird über „Jetzt nachholen“ geholt; beim nächsten Öffnen des Archivs fragt das Programm danach. Bis dahin ist der Zeitpunkt nicht belegt.",
   },
   "kein-dienst": {
     title: "Noch kein Zeitstempel-Dienst eingerichtet",
-    text: "Die Ablage ist gespeichert. Sie erhält ihren Zeitstempel, sobald ein Dienst eingerichtet ist. Bis dahin ist der Zeitpunkt nicht belegt.",
+    text: "Die Ablage ist gespeichert. Richten Sie einen Zeitstempel-Dienst ein und holen Sie den Zeitstempel dann mit „Jetzt nachholen“. Bis dahin ist der Zeitpunkt nicht belegt.",
   },
   offline: {
     title: "Keine Internetverbindung",
-    text: "Die Ablage ist gespeichert. Der Zeitstempel wird beim nächsten Programmstart oder über „Jetzt nachholen“ geholt. Bis dahin ist der Zeitpunkt nicht belegt.",
+    text: "Die Ablage ist gespeichert. Der Zeitstempel wird über „Jetzt nachholen“ geholt; beim nächsten Öffnen des Archivs fragt das Programm danach. Bis dahin ist der Zeitpunkt nicht belegt.",
   },
   zugang: {
     title: "Zugangsdaten fehlen oder sind falsch",
-    text: "Die Ablage ist gespeichert. Prüfen Sie die Zugangsdaten unter Einstellungen; der Zeitstempel wird dann beim nächsten Programmstart oder über „Jetzt nachholen“ geholt. Bis dahin ist der Zeitpunkt nicht belegt.",
+    text: "Die Ablage ist gespeichert. Prüfen Sie die Zugangsdaten unter Einstellungen; der Zeitstempel wird dann über „Jetzt nachholen“ geholt; beim nächsten Öffnen des Archivs fragt das Programm danach. Bis dahin ist der Zeitpunkt nicht belegt.",
   },
   guthaben: {
     title: "Guthaben beim Zeitstempel-Dienst aufgebraucht",
-    text: "Die Ablage ist gespeichert. Laden Sie beim Anbieter Guthaben auf; der Zeitstempel wird dann beim nächsten Programmstart oder über „Jetzt nachholen“ geholt. Bis dahin ist der Zeitpunkt nicht belegt.",
+    text: "Die Ablage ist gespeichert. Laden Sie beim Anbieter Guthaben auf; der Zeitstempel wird dann über „Jetzt nachholen“ geholt; beim nächsten Öffnen des Archivs fragt das Programm danach. Bis dahin ist der Zeitpunkt nicht belegt.",
   },
   pruefdaten: {
     title: "Prüfdaten zum Zeitstempel fehlen",
-    text: "Die Ablage ist gespeichert. Zertifikatskette oder Sperrstatus des Zeitstempels konnten nicht vollständig geladen werden; das Programm versucht es beim nächsten Programmstart oder über „Jetzt nachholen“ erneut. Bis dahin ist der Zeitpunkt nicht belegt.",
+    text: "Die Ablage ist gespeichert. Zertifikatskette oder Sperrstatus des Zeitstempels konnten nicht vollständig geladen werden; „Jetzt nachholen“ versucht es erneut; beim nächsten Öffnen des Archivs fragt das Programm danach. Bis dahin ist der Zeitpunkt nicht belegt.",
   },
   anbieter: {
     title: "Der Zeitstempel-Dienst hat einen Fehler gemeldet",
-    text: "Die Ablage ist gespeichert. Der Zeitstempel wird beim nächsten Programmstart oder über „Jetzt nachholen“ erneut angefordert. Bis dahin ist der Zeitpunkt nicht belegt.",
+    text: "Die Ablage ist gespeichert. Der Zeitstempel wird über „Jetzt nachholen“ erneut angefordert; beim nächsten Öffnen des Archivs fragt das Programm danach. Bis dahin ist der Zeitpunkt nicht belegt.",
   },
 };
 

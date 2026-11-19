@@ -173,7 +173,7 @@ export function describe(r: DepositReport): View {
       }
       const pending = { ...base, stampTime: "", tone: "amber" as const, icon: "clock" as const, meaning: "none" as const, title: "Zeitstempel ausstehend", stampTitle: "Noch kein eigener Zeitstempel" };
       if (r.readOnly) {
-        return { ...pending, lead: `Eigener Zeitstempel fehlt.${inh ? via : ""}`, stampDetail: "Im Modus „nur kontrollieren“ wird kein Zeitstempel geholt." };
+        return { ...pending, lead: `Eigener Zeitstempel fehlt.${inh ? via : ""}`, stampDetail: "In einem schreibgeschützten Ordner wird kein Zeitstempel geholt." };
       }
       const noService = d.reason === "kein-dienst";
       return {
@@ -181,8 +181,8 @@ export function describe(r: DepositReport): View {
         retry: noService ? "setup" : "stamp",
         lead: `Eigener Zeitstempel fehlt noch (${why}).${via}`,
         stampDetail: noService
-          ? "Wird geholt, sobald ein Zeitstempel-Dienst eingerichtet ist."
-          : "Wird beim nächsten Programmstart, nach dem nächsten erfolgreichen Zeitstempel oder über „Jetzt nachholen“ geholt.",
+          ? "Nach dem Einrichten eines Zeitstempel-Dienstes über „Jetzt nachholen“."
+          : "Wird über „Jetzt nachholen“ geholt; beim nächsten Öffnen des Archivs fragt das Programm danach.",
       };
     }
   }

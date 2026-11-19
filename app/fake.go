@@ -28,18 +28,20 @@ var fakeScenarios = map[string]string{
 	"normal":            "13 Ablagen, 1 ausstehend (offline), Anbieter Mensatek",
 	"kein-dienst":       "kein Zeitstempel-Dienst eingerichtet",
 	"guthaben":          "Guthaben aufgebraucht: Archivieren endet ausstehend",
-	"nur-kontrollieren": "Sicherung im Modus „nur kontrollieren“",
+	"schreibgeschuetzt": "Sicherung in einem schreibgeschützten Ordner: nur Ansicht",
 	"luecke":            "Ablage 0007 fehlt (Lücke)",
 	"zustaende":         "jede Ablage in einem anderen Zustand, Vertrauensliste veraltet",
 	"disig":             "Anbieter mit Client-Zertifikat und Adresse laut Vertrag",
 	"abgelehnt":         "Ordner mit Dateien, die nicht archiviert werden können",
 	"gesperrt":          "Archiv auf einem anderen PC in Verwendung (Sperre)",
-	"nachholen":         "beim Öffnen werden ausstehende Zeitstempel geholt",
+	"nachholen":         "beim Öffnen: Frage nach ausstehenden Zeitstempeln (1 neu, 1 kostenlos ergänzen)",
 }
 
 type fakeService struct {
 	mu        sync.Mutex
 	scenario  string
+	session   int // Status.Session: increments with every open, creation and close
+	rev       int // Status.Rev
 	delay     time.Duration
 	open      bool
 	archive   ArchiveInfo
@@ -51,7 +53,6 @@ type fakeService struct {
 	trust     TrustListInfo
 	variant   map[int]string // seq -> detail variant (zustaende)
 	lock      *LockInfo      // gesperrt
-	busyUntil time.Time      // nachholen
 }
 
 func newFakeService(scenario string) (*fakeService, error) {
@@ -61,7 +62,8 @@ func newFakeService(scenario string) (*fakeService, error) {
 	if _, ok := fakeScenarios[scenario]; !ok {
 		return nil, fmt.Errorf("unknown RA_FAKE scenario %q (known: %s)", scenario, strings.Join(fakeScenarioNames(), ", "))
 	}
-	f := &fakeService{scenario: scenario, delay: 300 * time.Millisecond, variant: map[int]string{}}
+	// session 1: the sample archive counts as opened (Archive checks it).
+	f := &fakeService{scenario: scenario, session: 1, delay: 300 * time.Millisecond, variant: map[int]string{}}
 	if d := os.Getenv("RA_FAKE_DELAY_MS"); d != "" {
 		if ms, err := strconv.Atoi(d); err == nil {
 			f.delay = time.Duration(ms) * time.Millisecond
@@ -92,9 +94,10 @@ func newFakeService(scenario string) (*fakeService, error) {
 		f.lastCheck = nil
 	case "guthaben":
 		f.deposits[0] = pendingDeposit(f.deposits[0], ReasonCredit)
-	case "nur-kontrollieren":
+	case "schreibgeschuetzt":
 		f.archive.Dir = `E:\Sicherung\Archiv`
 		f.archive.ReadOnly = true
+		f.archive.ReadOnlyReason = `Zugriff verweigert: E:\Sicherung\Archiv`
 		f.lastCheck = nil
 	case "luecke":
 		f.deposits = slices.DeleteFunc(f.deposits, func(d Deposit) bool { return d.Seq == 7 })
@@ -110,7 +113,7 @@ func newFakeService(scenario string) (*fakeService, error) {
 	case "gesperrt":
 		f.lock = &LockInfo{Host: "BUERO-PC2", User: "maria", Since: time.Now().Add(-26 * time.Hour).Truncate(time.Minute).Format(time.RFC3339)}
 	case "nachholen":
-		f.busyUntil = time.Now().Add(4 * time.Second)
+		f.deposits[1] = pendingDeposit(f.deposits[1], ReasonEvidence)
 	case "disig":
 		f.provider = "disig"
 		f.creds = CredentialState{P12Path: `C:\Zertifikate\disig-zugang.p12`, HasPassword: true, URL: "https://tsa.beispiel.invalid/musterfirma"}
@@ -255,6 +258,18 @@ func mustTime(s string) time.Time {
 	return t
 }
 
+// fakeRecent: "Zuletzt geöffnet" of the sample data (fictional).
+var fakeRecent = []RecentArchive{
+	{Dir: `D:\Buchhaltung\Archiv`, Company: "Musterfirma GmbH"},
+	{Dir: `D:\Buchhaltung\Vermietung\Archiv`, Company: "Musterfirma Vermietung OG"},
+}
+
+// nextRev numbers the Status snapshots (callers hold f.mu).
+func (f *fakeService) nextRev() int {
+	f.rev++
+	return f.rev
+}
+
 func (f *fakeService) Status(ctx context.Context) (Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -262,20 +277,19 @@ func (f *fakeService) Status(ctx context.Context) (Status, error) {
 }
 
 func (f *fakeService) statusLocked() Status {
-	s := Status{HasArchive: f.open, SuggestedDir: `D:\Buchhaltung\Rechnungsarchiv`, TrustList: f.trust}
+	s := Status{HasArchive: f.open, SuggestedDir: `D:\Buchhaltung\Rechnungsarchiv`, TrustList: f.trust, Session: f.session, Rev: f.nextRev()}
+	for _, r := range fakeRecent {
+		// First start: nothing opened on this PC yet.
+		if f.scenario != "start" && (!f.open || r.Dir != f.archive.Dir) {
+			s.Recent = append(s.Recent, r)
+		}
+	}
 	if !f.open {
 		return s
 	}
 	s.Archive = f.archive
 	s.Lock = f.lock
-	if !f.busyUntil.IsZero() {
-		if time.Now().Before(f.busyUntil) {
-			s.Busy = "stempeln"
-		} else {
-			f.busyUntil = time.Time{}
-			f.stampAllLocked()
-		}
-	}
+	s.Due = f.dueLocked()
 	if p, ok := fakeProvider(f.provider); ok {
 		s.Provider = &ProviderRef{ID: p.ID, Name: p.Name, Country: p.Country}
 	}
@@ -300,6 +314,7 @@ func (f *fakeService) CreateArchive(ctx context.Context, req CreateArchiveReques
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.open = true
+	f.session++
 	f.archive = ArchiveInfo{Dir: req.Dir, Company: strings.TrimSpace(req.Company), ArchiveID: "0b7e5d21-8c3f-4a96-b2e4-71f9a3c6d058", RetentionDefault: 7}
 	f.provider = ""
 	f.creds = CredentialState{}
@@ -309,7 +324,7 @@ func (f *fakeService) CreateArchive(ctx context.Context, req CreateArchiveReques
 	return f.statusLocked(), nil
 }
 
-func (f *fakeService) OpenArchive(ctx context.Context, dir string, readOnly bool) (Status, error) {
+func (f *fakeService) OpenArchive(ctx context.Context, dir string) (Status, error) {
 	if dir == "" {
 		return Status{}, errors.New("Bitte wählen Sie einen Archivordner.")
 	}
@@ -317,8 +332,14 @@ func (f *fakeService) OpenArchive(ctx context.Context, dir string, readOnly bool
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.open = true
+	f.session++
 	f.archive.Dir = dir
-	f.archive.ReadOnly = readOnly
+	f.archive.ReadOnly, f.archive.ReadOnlyReason = false, ""
+	for _, r := range fakeRecent {
+		if r.Dir == dir {
+			f.archive.Company = r.Company
+		}
+	}
 	if len(f.deposits) == 0 {
 		f.deposits = sampleDeposits()
 		f.provider = "mensatek"
@@ -331,6 +352,7 @@ func (f *fakeService) CloseArchive(ctx context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.open = false
+	f.session++
 	return nil
 }
 
@@ -348,6 +370,7 @@ func (f *fakeService) Preview(ctx context.Context, folder string) (Preview, erro
 		name = "Neue Ablage"
 	}
 	p := Preview{
+		Session:          f.session,
 		Folder:           folder,
 		Files:            53,
 		Bytes:            32925696,
@@ -396,6 +419,9 @@ func (f *fakeService) Archive(ctx context.Context, opts ArchiveOptions) (Archive
 	if f.archive.ReadOnly {
 		return ArchiveResult{}, errReadOnly
 	}
+	if opts.Session != f.session {
+		return ArchiveResult{}, errSwitched
+	}
 	if f.scenario == "abgelehnt" {
 		return ArchiveResult{}, errors.New("2 Dateien können nicht archiviert werden. Bitte beheben Sie das zuerst.")
 	}
@@ -425,12 +451,15 @@ func (f *fakeService) providerNameLocked() string {
 	return ""
 }
 
-func (f *fakeService) StampPending(ctx context.Context) (StampResult, error) {
+func (f *fakeService) StampPending(ctx context.Context, session int) (StampResult, error) {
 	f.sleep(ctx)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.archive.ReadOnly {
 		return StampResult{}, errReadOnly
+	}
+	if session != f.session {
+		return StampResult{}, errSwitched
 	}
 	if f.lock != nil {
 		return StampResult{}, f.lockedErr()
@@ -578,7 +607,7 @@ func (f *fakeService) SaveProtocol(ctx context.Context, seq int, path string) er
 func (f *fakeService) ExportPlan(ctx context.Context, from, to int) (ExportPlan, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	p := ExportPlan{From: from, To: to}
+	p := ExportPlan{Session: f.session, From: from, To: to}
 	for _, d := range f.deposits {
 		if !slices.Contains(p.Years, d.Belegjahr) {
 			p.Years = append(p.Years, d.Belegjahr)
@@ -617,6 +646,9 @@ func (f *fakeService) Export(ctx context.Context, opts ExportOptions) (ExportRes
 	plan, err := f.ExportPlan(ctx, opts.From, opts.To)
 	if err != nil {
 		return ExportResult{}, err
+	}
+	if opts.Session != plan.Session {
+		return ExportResult{}, errSwitched
 	}
 	if plan.Deposits == 0 {
 		return ExportResult{}, errors.New("In diesen Belegjahren gibt es keine Ablage.")
@@ -668,8 +700,10 @@ func (f *fakeService) SetSettings(ctx context.Context, u SettingsUpdate) (Settin
 	}
 	if u.ProviderID != nil && *u.ProviderID != f.provider {
 		if *u.ProviderID != "" {
-			if _, ok := fakeProvider(*u.ProviderID); !ok {
+			if p, ok := tsa.ProviderByID(*u.ProviderID); !ok {
 				return Settings{}, errors.New("Unbekannter Anbieter.")
+			} else if !p.Offered(f.provider) {
+				return Settings{}, errNotOffered
 			}
 		}
 		f.provider = *u.ProviderID
@@ -679,7 +713,9 @@ func (f *fakeService) SetSettings(ctx context.Context, u SettingsUpdate) (Settin
 }
 
 func (f *fakeService) Providers(ctx context.Context) ([]Provider, error) {
-	return slices.Clone(fakeProviders), nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return offeredProviders(f.provider), nil
 }
 
 func (f *fakeService) SetCredentials(ctx context.Context, c Credentials) (Settings, error) {
@@ -700,14 +736,23 @@ func (f *fakeService) SetCredentials(ctx context.Context, c Credentials) (Settin
 	return f.settingsLocked()
 }
 
-// stampAllLocked ends the simulated background run of "nachholen".
-func (f *fakeService) stampAllLocked() {
-	for i := range f.deposits {
-		if f.deposits[i].State == StatePending {
-			f.deposits[i] = stampedDeposit(f.deposits[i], time.Now().Truncate(time.Second), QualQualified)
+// dueLocked is Status.Due of the sample data. Only "nachholen" asks on
+// opening, so the other scenarios' screenshots show no question.
+func (f *fakeService) dueLocked() Due {
+	var d Due
+	if f.scenario != "nachholen" || f.provider == "" || !f.creds.HasPassword {
+		return d
+	}
+	for _, x := range f.deposits {
+		switch {
+		case x.State != StatePending:
+		case x.Reason == ReasonEvidence:
+			d.Free++
+		default:
+			d.Paid++
 		}
 	}
-	f.recount()
+	return d
 }
 
 func (f *fakeService) lockedErr() error {
@@ -715,10 +760,13 @@ func (f *fakeService) lockedErr() error {
 		Message: "Archiv wird gerade auf " + f.lock.Host + " von " + f.lock.User + " verwendet (seit " + mustTime(f.lock.Since).Local().Format("02.01.2006 15:04") + "). Läuft das Programm dort nicht mehr (z. B. nach einem Absturz), können Sie die Sperre übernehmen."}
 }
 
-func (f *fakeService) TakeOver(ctx context.Context) error {
+func (f *fakeService) TakeOver(ctx context.Context, session int) error {
 	f.sleep(ctx)
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if session != f.session {
+		return errSwitched
+	}
 	if f.lock == nil {
 		return errors.New("Es gibt keine Sperre, die übernommen werden könnte.")
 	}
@@ -731,20 +779,8 @@ func (f *fakeService) Disclaimer(ctx context.Context) (DisclaimerText, error) {
 	return DisclaimerText{Markdown: d.Markdown, Short: d.Short, Consent: d.Consent}, nil
 }
 
-// fakeProviders is internal/tsa/providers.json as the real service maps it
-// (no prices).
-var fakeProviders = func() []Provider {
-	var out []Provider
-	for _, p := range tsa.Providers() {
-		out = append(out, providerOf(p))
-	}
-	return out
-}()
-
+// fakeProvider is the provider as the real service maps it (no prices).
 func fakeProvider(id string) (Provider, bool) {
-	i := slices.IndexFunc(fakeProviders, func(p Provider) bool { return p.ID == id })
-	if i < 0 {
-		return Provider{}, false
-	}
-	return fakeProviders[i], true
+	p, ok := tsa.ProviderByID(id)
+	return providerOf(p), ok
 }

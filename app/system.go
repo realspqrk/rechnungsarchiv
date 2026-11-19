@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"os"
 
+	"github.com/realspqrk/rechnungsarchiv/internal/archive"
 	"github.com/realspqrk/rechnungsarchiv/internal/creds"
 	"github.com/realspqrk/rechnungsarchiv/internal/trust"
 )
@@ -14,6 +15,9 @@ import (
 // (testhook_testtsa.go), and tests inject their own.
 type system struct {
 	creds creds.Store
+	// openWrite opens an archive for writing; nil: archive.Open. Tests
+	// simulate a folder this PC cannot write to.
+	openWrite func(dir string) (*archive.Archive, error)
 	// trust opens an archive's trusted lists in normal mode (refreshed
 	// lists are stored in the archive).
 	trust func(archiveDir string) (*trust.Store, error)

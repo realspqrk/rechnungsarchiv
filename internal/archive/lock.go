@@ -150,6 +150,26 @@ func parseLock(raw []byte) *LockedError {
 	return le
 }
 
+// Holder returns the lock that a write would meet now, without taking it
+// and without writing anything: another writer's (running or crashed), as
+// *LockedError for TakeOver. nil if there is none, if it is this process's
+// own, or if it was left by a dead process on this PC (a write takes that
+// over silently).
+func (a *Archive) Holder() (*LockedError, error) {
+	raw, err := readLockFile(a.lockPath())
+	if errors.Is(err, os.ErrNotExist) || err == nil && len(raw) == 0 {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	held := parseLock(raw)
+	if held.Host == a.host && held.PID == a.pid || a.staleOnThisHost(held) {
+		return nil, nil
+	}
+	return held, nil
+}
+
 // readLock returns the current lock as *LockedError. An unreadable lock is
 // reported with host "unbekannt" so the UI can still offer a takeover.
 func (a *Archive) readLock() (*LockedError, error) {

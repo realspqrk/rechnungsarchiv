@@ -78,6 +78,18 @@ func TestRecipeEndToEnd(t *testing.T) {
 		}
 	}
 	w.run("", "provider", "set", id, "--user", testenv.User).errObj(t, "SECRET_MISSING")
+	// A provider not offered (not proven in real use) is refused before the
+	// secret is read; the archive keeps its provider.
+	if e := w.run("x\r\n", "provider", "set", "namirial", "--user", "u").errObj(t, "USAGE"); !strings.Contains(e["message"].(string), "nicht angeboten") {
+		t.Fatalf("hidden provider %v", e)
+	}
+	// Also before its own argument checks (Disig wants --p12).
+	if e := w.run("", "provider", "set", "disig", "--user", "u").errObj(t, "USAGE"); !strings.Contains(e["message"].(string), "nicht angeboten") {
+		t.Fatalf("hidden provider with its own flags %v", e)
+	}
+	if sh := w.run("", "provider", "show").want(t, 0); get(sh, "provider", "id") != id {
+		t.Fatalf("provider changed %v", sh)
+	}
 	w.run("x\n", "provider", "set", id, "--p12", "a.p12").errObj(t, "USAGE")
 
 	st := w.run("", "status", "--json").want(t, 0)

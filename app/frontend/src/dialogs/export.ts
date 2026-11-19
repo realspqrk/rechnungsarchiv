@@ -4,8 +4,10 @@ import { api, errMsg, list, type ExportPlan } from "../api";
 import { clear, h } from "../dom";
 import { bytes, plural } from "../fmt";
 import { button, openDialog, pathText, setPath, toast } from "../ui";
+import { app } from "../state";
 
 export async function openExportDialog(): Promise<void> {
+  const session = app.status?.session;
   let plan: ExportPlan;
   try {
     plan = await api.ExportPlan(0, 0);
@@ -13,6 +15,8 @@ export async function openExportDialog(): Promise<void> {
     toast(errMsg(e), "error");
     return;
   }
+  // Another archive was opened while the plan ran: not for this one.
+  if (plan.session !== session || app.status?.session !== session || app.opening) return;
   const years = list(plan.years);
   const dlg = openDialog("exp-title", "narrow");
   let target = plan.suggestedTarget;
@@ -31,7 +35,12 @@ export async function openExportDialog(): Promise<void> {
 
   const update = async () => {
     try {
-      plan = await api.ExportPlan(Number(from.value), Number(to.value));
+      const next = await api.ExportPlan(Number(from.value), Number(to.value));
+      if (next.session !== session) {
+        dlg.close(); // the archive was switched: this dialog is void
+        return;
+      }
+      plan = next;
       if (!pickedByUser) {
         target = plan.suggestedTarget;
         setPath(targetBox, target);
@@ -71,7 +80,8 @@ export async function openExportDialog(): Promise<void> {
     change.disabled = true;
     exportBtn.textContent = "Wird exportiert …";
     try {
-      const r = await api.Export({ from: Number(from.value), to: Number(to.value), target });
+      // Bound to the archive the plan was made for (Go refuses after a switch).
+      const r = await api.Export({ from: Number(from.value), to: Number(to.value), target, session: plan.session });
       dlg.lock(false);
       clear(doneBox);
       doneBox.append(

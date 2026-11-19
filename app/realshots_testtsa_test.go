@@ -102,7 +102,7 @@ func TestRealScreenshots(t *testing.T) {
 	id := e.Provider.ID
 	must(s.SetSettings(ctx, SettingsUpdate{ProviderID: &id}))
 	must(s.SetCredentials(ctx, Credentials{User: testenv.User, Password: testenv.Password}))
-	res := must(s.Archive(ctx, ArchiveOptions{Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7}))
+	res := must(s.Archive(ctx, ArchiveOptions{Session: session(s), Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7}))
 	if res.Deposit.State != StateStamped {
 		t.Fatalf("demo archive: %+v", res)
 	}

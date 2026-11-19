@@ -1,6 +1,6 @@
 # Rechnungsarchiv — format and verification spec, v1 (normative)
 
-MUST/SHOULD/MAY are used per RFC 2119. Rationale for decisions is in `adr/`. Format 1 is frozen since release 1.0.0 (2026-11-18): changing this file is a format change and needs a new `format` number. Revised after adversarial review rounds 1–2 (`research/reviews/`).
+MUST/SHOULD/MAY are used per RFC 2119. Rationale for decisions is in `adr/`. The byte format of format 1 (everything existing archives, Ablagen and evidence depend on) is frozen since release 1.0.0 (2026-11-18): changing it needs a new `format` number. Prose and app behaviour described here may evolve. Revised after adversarial review rounds 1–2 (`research/reviews/`).
 
 ## 1. Archive folder
 
@@ -243,7 +243,7 @@ The report is computed from the evidence included in the export. When the truste
 
 ## 9. Read-only mode
 
-`verify` and the GUI's "Archiv nur kontrollieren" never write, lock or stamp. They may refresh trusted lists into a temporary cache outside the archive.
+`verify` never writes, locks or stamps. Neither does the GUI when it cannot open an archive for writing (a write-protected folder): it opens it view only ("Nur Ansicht") and says why. Both may refresh trusted lists into a temporary cache outside the archive.
 
 ## 10. Archivprotokoll (PDF, one per Ablage)
 

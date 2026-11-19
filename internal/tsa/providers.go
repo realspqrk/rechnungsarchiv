@@ -34,6 +34,10 @@ type Provider struct {
 	ShortName   string `json:"short_name,omitempty"`  // e.g. "Mensatek"
 	Website     string `json:"website,omitempty"`     // official page where an account is opened
 	Recommended bool   `json:"recommended,omitempty"` // the README's recommendation
+	// Hidden providers are not offered for new setups (not proven in real
+	// use yet). They stay known: existing tokens verify, and an archive
+	// already set up for one keeps working and can update its credentials.
+	Hidden bool `json:"hidden,omitempty"`
 }
 
 //go:embed providers.json
@@ -50,6 +54,11 @@ func Providers() []Provider {
 	}
 	return append(ps, testProviders...)
 }
+
+// Offered reports whether p may be chosen for an archive whose provider is
+// current ("" if none): every provider that is not hidden, and the one
+// already set up.
+func (p Provider) Offered(current string) bool { return !p.Hidden || p.ID == current }
 
 // ProviderByID looks up a provider.
 func ProviderByID(id string) (Provider, bool) {

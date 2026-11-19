@@ -65,6 +65,7 @@ go test ./...                  # unit tests (offline)
 go test -tags testtsa ./...    # + end-to-end tests with the test PKI/TSA (run this before every commit)
 go test -tags online ./...     # also hits real timestamp services
 go vet ./... && gofmt -l .
+go run ./internal/tools/leakcheck   # release gate: no keys, tokens or private data in any commit or tag
 cd app && wails3 build         # bin/rechnungsarchiv.exe (CLI + GUI) + bin/rechnungsarchiv-gui.exe (app/README.md)
 .\scripts\release.ps1 -Version x.y.z -SignMetadata <metadata.json>   # signed Setup + ZIP (docs/dev/playbooks/release.md)
 ```

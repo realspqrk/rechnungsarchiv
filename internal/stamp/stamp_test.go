@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/realspqrk/rechnungsarchiv/internal/archive"
+	"github.com/realspqrk/rechnungsarchiv/internal/creds"
 	"github.com/realspqrk/rechnungsarchiv/internal/stamp"
 	"github.com/realspqrk/rechnungsarchiv/internal/testenv"
 	"github.com/realspqrk/rechnungsarchiv/internal/tsa"
@@ -198,7 +199,11 @@ func TestMissingMaterialIsRetried(t *testing.T) {
 		t.Fatalf("discarded attempt must be Ausstehend·prüfdaten, not Ungültig: %s", testenv.JSON(d))
 	}
 
-	// Within 24 h: the same token gets its material, no new stamp is bought.
+	// Within 24 h: the same token gets its material, no new stamp is bought;
+	// Plan says so before (free, not paid).
+	if due, err := stamp.Plan(context.Background(), e.Archive, e.Archive.Config, e.StampOptions(e.Trust())); err != nil || due != (stamp.Due{Free: 1}) {
+		t.Fatalf("plan %+v, %v", due, err)
+	}
 	e.PKI.OCSPHook, e.PKI.CRLHook = nil, nil
 	if o := one(t, e.Stamp()); !o.Stamped || o.Attempt != 1 || e.TSA.Requests() != 1 {
 		t.Fatalf("%+v requests=%d", o, e.TSA.Requests())
@@ -219,6 +224,9 @@ func TestMaterialWindowExpiredNewAttempt(t *testing.T) {
 	// More than 24 h after genTime the attempt is discarded for good.
 	opts := e.StampOptions(e.Trust())
 	opts.Now = func() time.Time { return time.Now().Add(25 * time.Hour) }
+	if due, err := stamp.Plan(context.Background(), e.Archive, e.Archive.Config, opts); err != nil || due != (stamp.Due{Paid: 1}) {
+		t.Fatalf("plan after the window %+v, %v", due, err)
+	}
 	res, err := stamp.Run(context.Background(), e.Archive, opts)
 	if err != nil {
 		t.Fatal(err)
@@ -343,4 +351,55 @@ func TestResendSafeguards(t *testing.T) {
 			t.Fatalf("%+v", o)
 		}
 	})
+}
+
+// Archiving stamps only its own Ablage (Options.Roots); a run over all
+// does the free completions before new, paid requests, so a failing paid
+// request does not cost them; Plan counts only what a run could send.
+func TestRunRootsFreeFirstAndPlanReadiness(t *testing.T) {
+	ctx := context.Background()
+	e := testenv.New(t)
+	e.Add(testenv.Outgoing, archive.Options{}) // 0001: never requested
+	free := e.Add(testenv.Incoming, archive.Options{})
+	e.PKI.OCSPHook = func(*ocsp.Request) []byte { return []byte("x") }
+	e.PKI.CRLHook = func(string) []byte { return []byte("x") }
+	opts := e.StampOptions(e.Trust())
+	opts.Roots = []string{free.Bag.Root}
+	res, err := stamp.Run(ctx, e.Archive, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o := one(t, res); o.Sequence != 2 || o.Stamped || o.Reason != verify.ReasonMaterial || e.TSA.Requests() != 1 {
+		t.Fatalf("only the new Ablage: %s requests=%d", testenv.JSON(res), e.TSA.Requests())
+	}
+	e.PKI.OCSPHook, e.PKI.CRLHook = nil, nil
+	if due, err := stamp.Plan(ctx, e.Archive, e.Archive.Config, e.StampOptions(e.Trust())); err != nil || due != (stamp.Due{Paid: 1, Free: 1}) {
+		t.Fatalf("plan %+v, %v", due, err)
+	}
+
+	e.SetMode(testenv.Offline)
+	res = e.Stamp()
+	if len(res.Outcomes) != 2 || res.Outcomes[0].Stamped || !res.Outcomes[1].Stamped || res.Outcomes[1].Attempt != 1 {
+		t.Fatalf("free completion first: %s", testenv.JSON(res))
+	}
+
+	// Incomplete or no credentials: a run could only fail, nothing is due,
+	// and a run writes no attempt.
+	requests := e.TSA.Requests()
+	e.SetMode(testenv.Normal)
+	if err := e.Creds.Set(e.Archive.Config.ArchiveID, e.Provider.ID, creds.Credential{Password: testenv.Password}); err != nil {
+		t.Fatal(err)
+	}
+	if due, err := stamp.Plan(ctx, e.Archive, e.Archive.Config, e.StampOptions(e.Trust())); err != nil || due != (stamp.Due{}) {
+		t.Fatalf("plan without user %+v, %v", due, err)
+	}
+	if res := e.Stamp(); e.TSA.Requests() != requests || len(res.Outcomes) == 0 || res.Outcomes[len(res.Outcomes)-1].Reason != verify.ReasonAccess || res.Outcomes[len(res.Outcomes)-1].Attempt != 0 {
+		t.Fatalf("run without user %s", testenv.JSON(res))
+	}
+	if err := e.Creds.Delete(e.Archive.Config.ArchiveID, e.Provider.ID); err != nil {
+		t.Fatal(err)
+	}
+	if due, err := stamp.Plan(ctx, e.Archive, e.Archive.Config, e.StampOptions(e.Trust())); err != nil || due != (stamp.Due{}) {
+		t.Fatalf("plan without credentials %+v, %v", due, err)
+	}
 }

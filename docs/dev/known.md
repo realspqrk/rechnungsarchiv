@@ -13,6 +13,7 @@
 10. [Verification, stamping, export (internal/verify, internal/stamp, internal/export)](#verification-stamping-export-internalverify-internalstamp-internalexport)
 
 ## Environment (Windows / Git Bash)
+- Git Bash has no `strings`, so an empty `strings | grep` over a binary proves nothing. Scan release files with `go run ./internal/tools/leakcheck -artifacts <files>`, which also reads the ZIPs inside the Setup, as text and UTF-16. Velopack's stubs contain `C:\Users\runneradmin\…` paths from Velopack's CI, not ours.
 - `gh api /path` in Git Bash: MSYS rewrites the leading `/` into `C:/Program Files/Git/...`. Use `MSYS_NO_PATHCONV=1 gh api licenses/apache-2.0` (no leading slash).
 - Long multi-file heredocs in one Bash call can fail with `unexpected EOF while looking for matching '` (quote chars in Markdown). Write docs with the Write tool, one file per call.
 - The Bash tool collapses `\\` to `\` even inside a quoted heredoc (`<<'EOF'`), so inline Python patches that contain backslashes silently write the wrong bytes. Write patch scripts with the Write tool and build backslashes with `chr(92)`.
@@ -45,6 +46,7 @@
 - Grok headless runs can stall on `permission required: Execute ...` (it tries to write a session-title file via shell). Add to the brief: "use only file tools, run no shell commands".
 - Python `Path.write_text` translates `\n` to CRLF on Windows. Use `write_bytes(text.encode())` or `open(..., newline='')` for repo files.
 - Python patch scripts containing quotes: write them to a .py file with the Write tool and run it; inline heredocs with `'` break bash.
+- A `\r\n` escape typed into a Bash heredoc (inline Python) arrives as real CR/LF bytes in the file: write such Go string literals with the Edit tool.
 - Artifact publishes are intermittently denied by the auto-mode classifier ("Unsanctioned Communication"). Retry once with `file_path` = `project/canvas.json` and the changed files in `files`; that form has always gone through.
 
 ## EU trusted lists (internal/trust)
@@ -139,6 +141,7 @@
   - Deduplicate a handover against the folder whose dialog is opening or open (`active`), and clear `active` in `add()` as soon as no dialog is busy, not only in `next()`: the close-triggered render is asynchronous, so a fresh request in between would otherwise be dropped as a duplicate.
 
 - `realService` caches `s.report` and `s.reasons` (the last stamping run's Ausstehend reasons). A setting that changes those reasons must drop them and re-check (`accessChanged`), bump `s.rev` so an older running check cannot publish them again, and `notify()`; otherwise the GUI shows the old state until a restart (bug in 1.0.0: "kein-dienst" hid "Jetzt nachholen" after setting up a provider).
+- Archive switch (1.0.2, six review rounds): anything begun in one archive and finished later must carry `Status.Session` (the service generation, not the archive ID: a backup copy has the same ID). Go checks it for Archive, Export, TakeOver and StampPending (the opening question can outlive a switch); the frontend drops previews, export plans, check results and route renders from another session, and `acceptStatus` drops snapshots with an older `Status.Rev`. New writing calls need the same.
 
 ## CLI (cmd/rechnungsarchiv)
 - The tests build the real binary in `TestMain` with `runtime.GOROOT()/bin/go` (the auto-downloaded toolchain) and run it as a child process. Under `-tags testtsa`, `e2e_test.go` sets `testTags`, so the binary is built with the tag too.

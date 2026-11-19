@@ -59,6 +59,9 @@ const ICONS: Record<string, string[]> = {
     "circle:12,12,3",
   ],
   back: ["M15 6l-6 6 6 6"],
+  chevronDown: ["M6 9l6 6 6-6"],
+  plus: ["M12 5v14M5 12h14"],
+  folder: ["M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"],
   lock: ["rect:5,11,14,9,2", "M8 11V8a4 4 0 0 1 8 0v3"],
 };
 

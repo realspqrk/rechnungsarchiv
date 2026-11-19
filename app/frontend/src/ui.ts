@@ -115,9 +115,9 @@ export function openDialog(labelledBy: string, width: "narrow" | "wide" = "narro
   };
 }
 
-/** Label of the read-only mode ("Archiv nur kontrollieren", spec §9). */
+/** Label of a view-only archive (write-protected folder, spec §9). */
 export function readOnlyBadge(): HTMLElement {
-  return h("span", { class: "badge badge--blue" }, icon("search", 14, 2.2), "Nur kontrollieren");
+  return h("span", { class: "badge badge--blue" }, icon("search", 14, 2.2), "Nur Ansicht");
 }
 
 /** Sub-page header: "‹ Übersicht / Title", with the read-only label if set. */

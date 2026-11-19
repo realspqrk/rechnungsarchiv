@@ -16,11 +16,12 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"github.com/realspqrk/rechnungsarchiv"
 	"github.com/realspqrk/rechnungsarchiv/internal/archive"
 )
 
 const (
-	projectURL = "https://github.com/realspqrk/rechnungsarchiv"
+	projectURL = rechnungsarchiv.ProjectURL
 	// pricesURL is the README price table; prices live only there (AGENTS.md).
 	pricesURL = projectURL + "#zeitstempel-dienste"
 	licenseID = "Apache-2.0"
@@ -148,8 +149,8 @@ func (s *Shell) Status(ctx context.Context) (Status, error) { return s.svc.Statu
 func (s *Shell) CreateArchive(ctx context.Context, req CreateArchiveRequest) (Status, error) {
 	return s.svc.CreateArchive(ctx, req)
 }
-func (s *Shell) OpenArchive(ctx context.Context, dir string, readOnly bool) (Status, error) {
-	return s.svc.OpenArchive(ctx, dir, readOnly)
+func (s *Shell) OpenArchive(ctx context.Context, dir string) (Status, error) {
+	return s.svc.OpenArchive(ctx, dir)
 }
 func (s *Shell) CloseArchive(ctx context.Context) error { return s.svc.CloseArchive(ctx) }
 func (s *Shell) Preview(ctx context.Context, folder string) (Preview, error) {
@@ -161,8 +162,8 @@ func (s *Shell) RetentionUntil(ctx context.Context, belegjahr, years int) (strin
 func (s *Shell) Archive(ctx context.Context, opts ArchiveOptions) (ArchiveResult, error) {
 	return s.svc.Archive(ctx, opts)
 }
-func (s *Shell) StampPending(ctx context.Context) (StampResult, error) {
-	return s.svc.StampPending(ctx)
+func (s *Shell) StampPending(ctx context.Context, session int) (StampResult, error) {
+	return s.svc.StampPending(ctx, session)
 }
 func (s *Shell) Verify(ctx context.Context) (CheckSummary, error) { return s.svc.Verify(ctx) }
 func (s *Shell) VerifyDeposit(ctx context.Context, seq int) (DepositReport, error) {
@@ -185,7 +186,9 @@ func (s *Shell) SetCredentials(ctx context.Context, c Credentials) (Settings, er
 func (s *Shell) Disclaimer(ctx context.Context) (DisclaimerText, error) {
 	return s.svc.Disclaimer(ctx)
 }
-func (s *Shell) TakeOver(ctx context.Context) error { return s.svc.TakeOver(ctx) }
+func (s *Shell) TakeOver(ctx context.Context, session int) error {
+	return s.svc.TakeOver(ctx, session)
+}
 
 // deposit finds an Ablage of the open archive in the status (no check).
 func (s *Shell) deposit(ctx context.Context, seq int) (Status, Deposit, error) {
@@ -309,6 +312,9 @@ func (s *Shell) OpenProviderWebsite(ctx context.Context, id string) error {
 
 // OpenPrices opens the price table in the README (prices are never in the app).
 func (s *Shell) OpenPrices() error { return s.app.Browser.OpenURL(pricesURL) }
+
+// OpenIssues opens the project's issues ("Weitere Anbieter? Melden Sie sich").
+func (s *Shell) OpenIssues() error { return s.app.Browser.OpenURL(rechnungsarchiv.IssuesURL) }
 
 // OpenProject opens the project page.
 func (s *Shell) OpenProject() error { return s.app.Browser.OpenURL(projectURL) }

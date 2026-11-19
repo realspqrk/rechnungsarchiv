@@ -32,7 +32,6 @@ import (
 
 // Busy states (Status.Busy).
 const (
-	busyStamp = "stempeln"
 	busyCheck = "pruefen"
 )
 
@@ -50,21 +49,29 @@ type realService struct {
 	// for before it waits and gives up if that changed (beginWriteFor).
 	write sync.Mutex
 
-	mu       sync.Mutex
-	autoOpen bool // the remembered default archive was tried
-	chosen   bool // the user opened, created or closed an archive: no auto-open
-	gen      int  // increments with every open and close
-	genStop  context.CancelFunc
-	genCtx   context.Context
-	ar       *archive.Archive
-	trust    *trust.Store
-	report   *verify.Report
-	check    *CheckSummary
-	reasons  map[string]verify.Reason // from the last stamping run
-	rev      int                      // increments whenever reasons change
-	locked   *archive.LockedError     // last lock of another writer seen
-	busy     string
-	trustErr error // last trusted-list refresh
+	mu        sync.Mutex
+	autoOpen  bool // the remembered default archive was tried
+	chosen    bool // the user opened, created or closed an archive: no auto-open
+	gen       int  // increments with every open and close
+	genStop   context.CancelFunc
+	genCtx    context.Context
+	ar        *archive.Archive
+	trust     *trust.Store
+	report    *verify.Report
+	check     *CheckSummary
+	reasons   map[string]verify.Reason // from the last stamping run
+	rev       int                      // increments whenever reasons change
+	recent    []archive.Recent         // "Zuletzt geöffnet", read on start, open and close
+	hasRecent bool
+	recentSeq int                  // the newest loadRecent wins
+	statusRev int                  // Status.Rev
+	due       stamp.Due            // Status.Due
+	dueRev    int                  // increments with every provider or credential change
+	roWhy     string               // why the open archive is view only
+	locked    *archive.LockedError // last lock of another writer seen
+	lockRev   int                  // increments whenever locked is set
+	busy      string
+	trustErr  error // last trusted-list refresh
 }
 
 func newRealService(sys system) *realService {
@@ -88,10 +95,13 @@ func (s *realService) Shutdown() {
 func (s *realService) wait() { s.bg.Wait() }
 
 var (
-	errReadOnly  = errors.New("Im Modus „nur kontrollieren“ wird nichts verändert.")
-	errNoArchive = errors.New("Kein Archiv geöffnet.")
-	errReopened  = errors.New("Abgebrochen: Das Archiv wurde inzwischen neu geöffnet oder geschlossen. Es wurde nichts geändert.")
-	errSwitched  = errors.New("Abgebrochen: Das Archiv wurde inzwischen gewechselt – bitte erneut ausführen. Es wurde nichts geändert.")
+	errReadOnly   = errors.New("Nur Ansicht: In diesen Ordner kann dieser PC nicht schreiben, es wird nichts verändert.")
+	errNotOffered = errors.New("Dieser Anbieter wird derzeit nicht angeboten (noch nicht im Echtbetrieb erprobt). Weitere Anbieter? Melden Sie sich über die Projektseite.")
+	errNoArchive  = errors.New("Kein Archiv geöffnet.")
+	errReopened   = errors.New("Abgebrochen: Das Archiv wurde inzwischen neu geöffnet oder geschlossen. Es wurde nichts geändert.")
+	// Typically the backup's parent folder was chosen instead of the archive.
+	errNotArchive = errors.New("In diesem Ordner liegt kein Archiv. Wählen Sie den Ordner, in dem die Datei rechnungsarchiv.json und die Ablagen liegen (bei einer Sicherung meist ein Unterordner).")
+	errSwitched   = errors.New("Abgebrochen: Das Archiv wurde inzwischen gewechselt – bitte erneut ausführen. Es wurde nichts geändert.")
 )
 
 // opCtx is ctx that also ends when the application shuts down.
@@ -106,6 +116,7 @@ type snapshot struct {
 	trust  *trust.Store
 	gen    int
 	genCtx context.Context // cancelled when this archive is closed or reopened
+	cfg    archive.Config  // copied under s.mu: setters replace ar.Config
 }
 
 func (s *realService) current() (snapshot, error) {
@@ -114,7 +125,7 @@ func (s *realService) current() (snapshot, error) {
 	if s.ar == nil {
 		return snapshot{}, errNoArchive
 	}
-	return snapshot{s.ar, s.trust, s.gen, s.genCtx}, nil
+	return snapshot{s.ar, s.trust, s.gen, s.genCtx, s.ar.Config}, nil
 }
 
 func (s *realService) writer() (snapshot, error) {
@@ -173,12 +184,20 @@ func (s *realService) uiErr(err error) error {
 	case errors.As(err, &le):
 		s.mu.Lock()
 		s.locked = le
+		s.lockRev++
 		s.mu.Unlock()
 		return lockedError(le)
 	case errors.Is(err, archive.ErrReadOnly):
 		return errReadOnly
 	case errors.Is(err, context.Canceled):
 		return errors.New("Abgebrochen.")
+	case errors.Is(err, archive.ErrNoArchive):
+		return errNotArchive
+	case errors.Is(err, fs.ErrPermission):
+		var pe *fs.PathError
+		if errors.As(err, &pe) {
+			return fmt.Errorf("Kein Schreibzugriff: %s", pe.Path)
+		}
 	case errors.Is(err, fs.ErrNotExist):
 		var pe *fs.PathError
 		if errors.As(err, &pe) {
@@ -214,10 +233,18 @@ func (s *realService) Status(ctx context.Context) (Status, error) {
 		// The GUI opens the remembered default archive on start, unless the
 		// user has opened, created or closed one already.
 		if dir := archive.DefaultDir(); dir != "" {
-			if err := s.open(ctx, dir, false, true); err != nil {
+			if err := s.open(ctx, dir, true); err != nil {
 				log.Printf("default archive %s: %v", dir, err)
 			}
 		}
+	}
+	// Start screen without an archive: the list is needed now. With an
+	// archive open, open() loads it in the background.
+	s.mu.Lock()
+	load := !s.hasRecent && s.ar == nil
+	s.mu.Unlock()
+	if load {
+		s.loadRecent()
 	}
 	return s.status(), nil
 }
@@ -226,13 +253,19 @@ func (s *realService) Status(ctx context.Context) (Status, error) {
 func (s *realService) status() Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := Status{SuggestedDir: s.suggestedDir()}
+	s.statusRev++
+	st := Status{SuggestedDir: s.suggestedDir(), Session: s.gen, Rev: s.statusRev}
+	for _, r := range s.recent {
+		if s.ar == nil || !strings.EqualFold(filepath.Clean(r.Dir), filepath.Clean(s.ar.Dir)) {
+			st.Recent = append(st.Recent, RecentArchive{Dir: r.Dir, Company: r.Company})
+		}
+	}
 	if s.ar == nil {
 		return st
 	}
 	st.HasArchive = true
 	st.Archive = ArchiveInfo{Dir: s.ar.Dir, Company: s.ar.Config.Company, ArchiveID: s.ar.Config.ArchiveID,
-		ReadOnly: s.ar.ReadOnly(), RetentionDefault: s.ar.Config.RetentionDefault}
+		ReadOnly: s.ar.ReadOnly(), ReadOnlyReason: s.roWhy, RetentionDefault: s.ar.Config.RetentionDefault}
 	if id := s.ar.Config.TSA; id != nil {
 		st.Provider = providerRef(*id)
 	}
@@ -249,6 +282,7 @@ func (s *realService) status() Status {
 	}
 	st.TrustList = trustInfo(s.trust, s.trustErr, time.Now())
 	st.Busy = s.busy
+	st.Due = Due{Paid: s.due.Paid, Free: s.due.Free}
 	if s.locked != nil {
 		st.Lock = lockInfo(s.locked.LockInfo)
 	}
@@ -310,12 +344,12 @@ func (s *realService) CreateArchive(ctx context.Context, req CreateArchiveReques
 	if _, err := archive.Init(dir, company); err != nil {
 		return Status{}, s.uiErr(err)
 	}
-	return s.OpenArchive(ctx, dir, false)
+	return s.OpenArchive(ctx, dir)
 }
 
-func (s *realService) OpenArchive(ctx context.Context, dir string, readOnly bool) (Status, error) {
+func (s *realService) OpenArchive(ctx context.Context, dir string) (Status, error) {
 	s.choose()
-	if err := s.open(ctx, dir, readOnly, false); err != nil {
+	if err := s.open(ctx, dir, false); err != nil {
 		return Status{}, err
 	}
 	return s.status(), nil
@@ -323,7 +357,9 @@ func (s *realService) OpenArchive(ctx context.Context, dir string, readOnly bool
 
 // open opens dir and makes it the current archive. auto: the remembered
 // default on start, which gives way to any choice the user made meanwhile.
-func (s *realService) open(ctx context.Context, dir string, readOnly, auto bool) error {
+// A folder this PC cannot write to (write-protected share, stick, DVD)
+// opens view only (spec §9), with the reason shown.
+func (s *realService) open(ctx context.Context, dir string, auto bool) error {
 	if strings.TrimSpace(dir) == "" {
 		return errors.New("Bitte wählen Sie einen Archivordner.")
 	}
@@ -333,30 +369,47 @@ func (s *realService) open(ctx context.Context, dir string, readOnly, auto bool)
 	if err != nil {
 		return err
 	}
-	if !isArchive(abs) {
-		return fmt.Errorf("Im Ordner %s liegt kein Archiv (rechnungsarchiv.json fehlt).", abs)
+	if fi, err := os.Stat(filepath.Join(abs, "rechnungsarchiv.json")); errors.Is(err, fs.ErrNotExist) {
+		return errNotArchive
+	} else if err != nil {
+		return err // e.g. no access: not a wrong folder
+	} else if !fi.Mode().IsRegular() {
+		return errNotArchive
+	}
+	openWrite := s.sys.openWrite
+	if openWrite == nil {
+		openWrite = archive.Open
 	}
 	var ar *archive.Archive
 	var ts *trust.Store
-	if readOnly {
-		// spec §9: no writing, no lock, no timestamp; refreshed trusted
-		// lists go to a cache outside the archive.
-		if ar, err = archive.OpenReadOnly(abs); err == nil {
-			ts, err = s.sys.trustRead(abs)
-		}
-	} else if ar, err = archive.Open(abs); err == nil {
+	why := ""
+	if ar, err = openWrite(abs); err == nil {
 		ts, err = s.sys.trust(abs)
+	} else if ro, rerr := archive.OpenReadOnly(abs); rerr == nil {
+		// Opening for writing failed (it takes the lock and tidies up), the
+		// configuration is fine: view only. No writing, no lock, no
+		// timestamp; refreshed trusted lists go to a cache outside.
+		log.Printf("open %s for writing: %v; view only", abs, err)
+		ar, why = ro, s.uiErr(err).Error()
+		ts, err = s.sys.trustRead(abs)
 	}
 	if err != nil {
 		return s.uiErr(err)
 	}
+	readOnly := ar.ReadOnly()
 	rep, err := verify.Archive(ctx, abs, verify.Options{Trust: ts})
 	if err != nil {
 		return s.uiErr(err)
 	}
-	busy := busyCheck
-	if !readOnly && ar.Config.TSA != nil && hasPending(rep) {
-		busy = busyStamp
+	// Nothing is stamped on open: the UI asks first (Status.Due).
+	due := s.dueOf(ctx, ar, ar.Config, ts)
+	// Another PC's lock is part of the first status: the GUI must not ask
+	// "Jetzt holen" for an archive it can only wait for.
+	var held *archive.LockedError
+	if !readOnly {
+		if held, err = ar.Holder(); err != nil {
+			log.Printf("lock check: %v", err)
+		}
 	}
 
 	// End the current generation first, so writers queued on the slot give
@@ -377,7 +430,7 @@ func (s *realService) open(ctx context.Context, dir string, readOnly, auto bool)
 	s.gen++
 	s.genCtx, s.genStop = context.WithCancel(s.root)
 	s.ar, s.trust, s.report, s.check = ar, ts, rep, checkOf(rep)
-	s.reasons, s.locked, s.busy, s.trustErr = nil, nil, busy, nil
+	s.reasons, s.locked, s.busy, s.trustErr, s.due, s.roWhy = nil, held, busyCheck, nil, due, why
 	gen, gctx := s.gen, s.genCtx
 	s.mu.Unlock()
 	s.write.Unlock()
@@ -386,6 +439,14 @@ func (s *realService) open(ctx context.Context, dir string, readOnly, auto bool)
 		if err := archive.RememberDefault(abs); err != nil {
 			log.Printf("remember default archive: %v", err)
 		}
+		// In the background: a remembered archive on a disconnected
+		// network drive must not hold up opening this one.
+		s.bg.Add(1)
+		go func() {
+			defer s.bg.Done()
+			s.loadRecent()
+			s.notify()
+		}()
 	}
 	s.bg.Add(1)
 	go s.background(gctx, gen)
@@ -406,9 +467,9 @@ func (s *realService) endGeneration(auto bool) bool {
 	return true
 }
 
-// background runs after opening (spec §7 and "pending Ablagen are retried
-// on every start"): refresh the trusted lists, fetch missing timestamps
-// (normal mode only), check again, tell the UI.
+// background runs after opening (spec §7): refresh the trusted lists,
+// check again (which also counts Status.Due), tell the UI. It never
+// stamps: the UI asks first.
 func (s *realService) background(ctx context.Context, gen int) {
 	defer s.bg.Done()
 	defer func() {
@@ -420,7 +481,7 @@ func (s *realService) background(ctx context.Context, gen int) {
 		s.notify()
 	}()
 	s.mu.Lock()
-	ar, ts, busy := s.ar, s.trust, s.busy
+	ar, ts := s.ar, s.trust
 	if s.gen != gen {
 		ar = nil
 	}
@@ -428,6 +489,7 @@ func (s *realService) background(ctx context.Context, gen int) {
 	if ar == nil {
 		return
 	}
+	s.observeLock(gen, true) // before the network: a change shows at once
 	provider := ""
 	if ar.Config.TSA != nil {
 		provider = *ar.Config.TSA
@@ -441,32 +503,72 @@ func (s *realService) background(ctx context.Context, gen int) {
 		s.trustErr = err
 	}
 	s.mu.Unlock()
-	if busy == busyStamp {
-		s.write.Lock()
-		s.mu.Lock()
-		current := s.gen == gen
-		s.mu.Unlock()
-		var res *stamp.Result
-		if current && ctx.Err() == nil {
-			res, err = s.runStamp(ctx, ar, ts)
-			if ctx.Err() == nil {
-				// Inside the writer slot: a provider or credential change
-				// waiting for it must see these reasons to drop them.
-				s.noteStamp(gen, res, err)
-			}
-		}
-		s.write.Unlock()
-		if !current || ctx.Err() != nil {
-			return
-		}
-	}
 	if _, err := s.reverify(ctx, gen, false); err != nil && ctx.Err() == nil {
 		log.Printf("background check: %v", err)
 	}
 }
 
-func hasPending(rep *verify.Report) bool {
-	return slices.ContainsFunc(rep.Deposits, func(d verify.Deposit) bool { return d.Status == verify.StatusPending })
+// observeLock looks whether another PC holds or left the writer lock
+// (spec §1), so the main screen shows it before the first write, and a
+// lock released meanwhile no longer blocks. It only reads .lock: no writer
+// slot, no lock taken (a CLI writing meanwhile is not disturbed). notify:
+// tell the UI now; otherwise the caller's status carries it together with
+// the counts checked after it.
+func (s *realService) observeLock(gen int, notify bool) {
+	c, err := s.writer()
+	if err != nil || c.gen != gen {
+		return
+	}
+	s.mu.Lock()
+	rev := s.lockRev
+	s.mu.Unlock()
+	le, err := c.ar.Holder()
+	if err != nil {
+		log.Printf("lock check: %v", err)
+		return
+	}
+	s.mu.Lock()
+	// A takeover or write that saw the lock meanwhile knows better.
+	changed := s.gen == gen && s.lockRev == rev && !sameLock(s.locked, le)
+	if changed {
+		s.locked = le
+		s.lockRev++
+	}
+	s.mu.Unlock()
+	if changed && notify {
+		s.notify()
+	}
+}
+
+func sameLock(a, b *archive.LockedError) bool {
+	return a == nil && b == nil || a != nil && b != nil && a.LockInfo == b.LockInfo
+}
+
+// dueOf counts what "Jetzt holen" would do (stamp.Plan: the same choice of
+// Ablagen and the same readiness as stamping). Zero when a run could only
+// fail (no provider, credentials or trusted list): the question would be
+// pointless. cfg is a copy taken under s.mu (setters replace ar.Config).
+func (s *realService) dueOf(ctx context.Context, ar *archive.Archive, cfg archive.Config, ts *trust.Store) stamp.Due {
+	d, err := stamp.Plan(ctx, ar, cfg, stamp.Options{Trust: ts, Creds: s.sys.creds, Lock: ar.Lock, RootCAs: s.sys.rootCAs})
+	if err != nil {
+		log.Printf("pending timestamps: %v", err)
+	}
+	return d
+}
+
+// loadRecent reads "Zuletzt geöffnet". Not on every Status: a remembered
+// archive on a disconnected network drive would stall each poll.
+func (s *realService) loadRecent() {
+	s.mu.Lock()
+	s.recentSeq++
+	seq := s.recentSeq
+	s.mu.Unlock()
+	r := archive.RecentArchives() // file reads, outside s.mu
+	s.mu.Lock()
+	if seq == s.recentSeq { // an older, slower load must not win
+		s.recent, s.hasRecent = r, true
+	}
+	s.mu.Unlock()
 }
 
 func (s *realService) CloseArchive(ctx context.Context) error {
@@ -480,7 +582,7 @@ func (s *realService) CloseArchive(ctx context.Context) error {
 		s.genStop()
 	}
 	s.gen++
-	s.ar, s.trust, s.report, s.check, s.reasons, s.locked, s.busy, s.trustErr = nil, nil, nil, nil, nil, nil, "", nil
+	s.ar, s.trust, s.report, s.check, s.reasons, s.locked, s.busy, s.trustErr, s.due, s.roWhy = nil, nil, nil, nil, nil, nil, "", nil, stamp.Due{}, ""
 	return nil
 }
 
@@ -495,7 +597,7 @@ func (s *realService) reverify(ctx context.Context, gen int, online bool) (*veri
 		s.mu.Unlock()
 		return nil, errNoArchive
 	}
-	dir, ts, rev := s.ar.Dir, s.trust, s.rev
+	ar, dir, ts, rev, cfg, dueRev := s.ar, s.ar.Dir, s.trust, s.rev, s.ar.Config, s.dueRev
 	reasons := make(map[string]verify.Reason, len(s.reasons))
 	for k, v := range s.reasons {
 		reasons[k] = v
@@ -505,11 +607,16 @@ func (s *realService) reverify(ctx context.Context, gen int, online bool) (*veri
 	if err != nil {
 		return nil, s.uiErr(err)
 	}
+	due := s.dueOf(ctx, ar, cfg, ts)
 	s.mu.Lock()
 	// A check that started with reasons dropped since then must not bring
-	// them back.
+	// them back, nor a count from before a provider or credential change.
 	if s.gen == gen && s.rev == rev {
 		s.report, s.check = rep, checkOf(rep)
+	}
+	// Also not one from before a stamping run (s.rev) finished meanwhile.
+	if s.gen == gen && s.rev == rev && s.dueRev == dueRev {
+		s.due = due
 	}
 	s.mu.Unlock()
 	return rep, nil
@@ -522,7 +629,9 @@ func (s *realService) Verify(ctx context.Context) (CheckSummary, error) {
 	}
 	ctx, cancel := s.opCtx(ctx)
 	defer cancel()
-	// "Archiv kontrollieren" also asks online (spec §6 step 7, §7).
+	// "Archiv kontrollieren" also looks at the lock again and asks online
+	// (spec §6 step 7, §7).
+	s.observeLock(c.gen, false) // the UI reads the status after the check
 	rep, err := s.reverify(ctx, c.gen, true)
 	if err != nil {
 		return CheckSummary{}, err
@@ -675,7 +784,7 @@ func (s *realService) Preview(ctx context.Context, folder string) (Preview, erro
 	if err != nil {
 		return Preview{}, err
 	}
-	out := Preview{Folder: abs, RetentionDefault: c.ar.Config.RetentionDefault, RetentionOptions: retentionOptions(),
+	out := Preview{Folder: abs, Session: c.gen, RetentionDefault: c.cfg.RetentionDefault, RetentionOptions: retentionOptions(),
 		SuggestedName: filepath.Base(abs), SuggestedYear: archive.BelegjahrFromName(filepath.Base(abs))}
 	if out.NextSeq, err = c.ar.NextSequence(); err != nil {
 		return Preview{}, s.uiErr(err)
@@ -708,10 +817,10 @@ func (s *realService) RetentionUntil(ctx context.Context, belegjahr, years int) 
 	return bag.RetentionUntil(belegjahr, years), nil
 }
 
-// runStamp fetches the missing timestamps under the archive's writer lock.
-// Callers hold s.write.
-func (s *realService) runStamp(ctx context.Context, ar *archive.Archive, ts *trust.Store) (*stamp.Result, error) {
-	return stamp.Run(ctx, ar, stamp.Options{Trust: ts, Creds: s.sys.creds, Lock: ar.Lock, RootCAs: s.sys.rootCAs})
+// runStamp fetches the missing timestamps (of roots only, if not nil)
+// under the archive's writer lock. Callers hold s.write.
+func (s *realService) runStamp(ctx context.Context, ar *archive.Archive, ts *trust.Store, roots []string) (*stamp.Result, error) {
+	return stamp.Run(ctx, ar, stamp.Options{Trust: ts, Creds: s.sys.creds, Lock: ar.Lock, RootCAs: s.sys.rootCAs, Roots: roots})
 }
 
 // noteStamp keeps the reasons of a stamping run (verify.Options.Reasons) and
@@ -726,10 +835,12 @@ func (s *realService) noteStamp(gen int, res *stamp.Result, err error) {
 	switch {
 	case errors.As(err, &le):
 		s.locked = le
+		s.lockRev++
 	case err == nil && res != nil:
 		s.reasons = res.Reasons()
 		s.rev++
 		s.locked = nil
+		s.lockRev++
 	}
 }
 
@@ -742,6 +853,10 @@ func (s *realService) Archive(ctx context.Context, opts ArchiveOptions) (Archive
 	want, err := s.writer()
 	if err != nil {
 		return ArchiveResult{}, err
+	}
+	// beginWriteFor checks under the lock that want is still current.
+	if opts.Session != want.gen {
+		return ArchiveResult{}, errSwitched
 	}
 	folder, err := filepath.Abs(opts.Folder)
 	if err != nil {
@@ -778,7 +893,9 @@ func (s *realService) Archive(ctx context.Context, opts ArchiveOptions) (Archive
 	// the user archive the same folder again (a second Ablage, a second
 	// paid timestamp).
 	again := fmt.Sprintf("Die Ablage %s ist gespeichert; bitte nicht erneut archivieren.", present.Number(dep.Sequence))
-	res, serr := s.runStamp(ctx, c.ar, c.trust)
+	// Only the new Ablage: older pending ones only on request (the
+	// question on opening, "Jetzt nachholen").
+	res, serr := s.runStamp(ctx, c.ar, c.trust, []string{dep.Bag.Root})
 	s.noteStamp(c.gen, res, serr)
 	if serr != nil {
 		warn = append(warn, again+" Der Zeitstempel konnte nicht angefordert werden: "+s.uiErr(serr).Error())
@@ -822,13 +939,20 @@ func committedDeposit(dep *archive.Deposit) Deposit {
 	return out
 }
 
-func (s *realService) StampPending(ctx context.Context) (StampResult, error) {
-	c, ctx, done, err := s.beginWrite(ctx)
+func (s *realService) StampPending(ctx context.Context, session int) (StampResult, error) {
+	want, err := s.writer()
+	if err != nil {
+		return StampResult{}, err
+	}
+	if session != want.gen {
+		return StampResult{}, errSwitched // asked for an archive no longer open
+	}
+	c, ctx, done, err := s.beginWriteFor(ctx, want)
 	if err != nil {
 		return StampResult{}, err
 	}
 	defer done()
-	res, err := s.runStamp(ctx, c.ar, c.trust)
+	res, err := s.runStamp(ctx, c.ar, c.trust, nil)
 	s.noteStamp(c.gen, res, err)
 	if err != nil {
 		return StampResult{}, s.uiErr(err)
@@ -840,12 +964,15 @@ func (s *realService) StampPending(ctx context.Context) (StampResult, error) {
 	return stampResultOf(res), nil
 }
 
-func (s *realService) TakeOver(ctx context.Context) error {
+func (s *realService) TakeOver(ctx context.Context, session int) error {
 	c, _, done, err := s.beginWrite(ctx)
 	if err != nil {
 		return err
 	}
 	defer done()
+	if session != c.gen {
+		return errSwitched // the prompt was for an archive no longer open
+	}
 	s.mu.Lock()
 	le := s.locked
 	s.mu.Unlock()
@@ -857,6 +984,7 @@ func (s *realService) TakeOver(ctx context.Context) error {
 		if errors.As(err, &still) {
 			s.mu.Lock()
 			s.locked = still
+			s.lockRev++
 			s.mu.Unlock()
 			return &UIError{Code: CodeLocked, Lock: lockInfo(still.LockInfo),
 				Message: still.Error() + ". Das Programm läuft dort noch; die Sperre wird erst frei, wenn es beendet ist."}
@@ -866,8 +994,12 @@ func (s *realService) TakeOver(ctx context.Context) error {
 	s.mu.Lock()
 	if s.locked == le {
 		s.locked = nil
+		s.lockRev++
 	}
 	s.mu.Unlock()
+	// The opening question may follow now: count with today's clock (a
+	// free completion's 24 h may have passed while the lock was shown).
+	s.refreshDue(ctx, c.gen)
 	s.notify()
 	return nil
 }
@@ -888,6 +1020,7 @@ func (s *realService) ExportPlan(ctx context.Context, from, to int) (ExportPlan,
 		}
 	}
 	p := exportPlanOf(rep, from, to)
+	p.Session = c.gen
 	if home, err := s.sys.home(); err == nil {
 		base := home
 		if fi, err := os.Stat(filepath.Join(home, "Downloads")); err == nil && fi.IsDir() {
@@ -915,6 +1048,9 @@ func (s *realService) Export(ctx context.Context, opts ExportOptions) (ExportRes
 	c, err := s.current()
 	if err != nil {
 		return ExportResult{}, err
+	}
+	if opts.Session != c.gen {
+		return ExportResult{}, errSwitched
 	}
 	dst, err := filepath.Abs(opts.Target)
 	if err != nil {
@@ -1000,8 +1136,10 @@ func (s *realService) SetSettings(ctx context.Context, u SettingsUpdate) (Settin
 		providerChanged = old != *u.ProviderID
 		var id *string
 		if *u.ProviderID != "" {
-			if _, ok := tsa.ProviderByID(*u.ProviderID); !ok {
+			if p, ok := tsa.ProviderByID(*u.ProviderID); !ok {
 				return Settings{}, errors.New("Unbekannter Anbieter.")
+			} else if !p.Offered(old) {
+				return Settings{}, errNotOffered
 			}
 			id = u.ProviderID
 		}
@@ -1011,6 +1149,7 @@ func (s *realService) SetSettings(ctx context.Context, u SettingsUpdate) (Settin
 	}
 	s.mu.Lock()
 	s.locked = nil
+	s.lockRev++
 	s.mu.Unlock()
 	if providerChanged {
 		s.accessChanged(ctx, c.gen, true)
@@ -1027,6 +1166,7 @@ func (s *realService) SetSettings(ctx context.Context, u SettingsUpdate) (Settin
 // when the last run left reasons to drop.
 func (s *realService) accessChanged(ctx context.Context, gen int, provider bool) {
 	s.mu.Lock()
+	s.dueRev++ // counts begun before this change are dropped
 	stale := s.gen == gen && (provider || s.report == nil || len(s.reasons) > 0)
 	if stale {
 		s.reasons = nil
@@ -1034,6 +1174,8 @@ func (s *realService) accessChanged(ctx context.Context, gen int, provider bool)
 	}
 	s.mu.Unlock()
 	if !stale {
+		// Credentials may be complete now: count Status.Due again.
+		s.refreshDue(ctx, gen)
 		return
 	}
 	if _, err := s.reverify(ctx, gen, false); err != nil && ctx.Err() == nil {
@@ -1042,12 +1184,31 @@ func (s *realService) accessChanged(ctx context.Context, gen int, provider bool)
 	s.notify()
 }
 
-func (s *realService) Providers(ctx context.Context) ([]Provider, error) {
-	var out []Provider
-	for _, p := range tsa.Providers() {
-		out = append(out, providerOf(p))
+// refreshDue counts Status.Due again without checking the archive.
+func (s *realService) refreshDue(ctx context.Context, gen int) {
+	s.mu.Lock()
+	ar, ts := s.ar, s.trust
+	if s.gen != gen || ar == nil {
+		s.mu.Unlock()
+		return
 	}
-	return out, nil
+	cfg, dueRev := ar.Config, s.dueRev
+	s.mu.Unlock()
+	due := s.dueOf(ctx, ar, cfg, ts)
+	s.mu.Lock()
+	if s.gen == gen && s.dueRev == dueRev {
+		s.due = due
+	}
+	s.mu.Unlock()
+	s.notify()
+}
+
+func (s *realService) Providers(ctx context.Context) ([]Provider, error) {
+	cur := ""
+	if c, err := s.current(); err == nil && c.cfg.TSA != nil {
+		cur = *c.cfg.TSA
+	}
+	return offeredProviders(cur), nil
 }
 
 // SetCredentials stores the provider's credentials in the OS credential

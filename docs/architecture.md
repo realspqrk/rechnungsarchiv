@@ -71,15 +71,13 @@ chain.json: each Ablage names its predecessor → gaps/forks detectable; proven 
 | ❌ **Verändert** / **Ungültig** | Hash differs / format or token invalid → "aus Sicherung wiederherstellen" (restore from backup) |
 | Archive level | **Lücke** (gap), **Nummer doppelt vergeben** (number assigned twice) |
 
-Pending Ablagen are retried automatically:
-- on every start;
-- after every successful timestamp.
+Pending Ablagen are never stamped by themselves. On opening, the GUI asks once when a run could fetch something (`stamp.Plan`: new, paid requests vs. free completions of tokens already paid for, spec §5); "Jetzt holen", "Jetzt nachholen" and `stamp` fetch them. Archiving stamps only the new Ablage.
 
 There is **never** a fallback to another provider, and there is no free provider: the built-in list only contains qualified EU services.
 
 ## Modes
 - **Normal:** the user's own archive, single writer.
-- **Read-only** ("Archiv öffnen (nur kontrollieren)" / `verify`): no writing, no lock, no timestamp. Used for backup copies and by auditors.
+- **Read-only** (`verify`, and the GUI's "Nur Ansicht" for a folder it cannot write to): no writing, no lock, no timestamp. Auditors and backup drills use `verify`.
 
 ## Known limitations (also stated in the README and `fuer-pruefer.md`)
 - If the provider's key is compromised later, backdated forgeries cannot be ruled out with only one TSA. The countermeasure, a renewal stamp from a second provider, is deferred.

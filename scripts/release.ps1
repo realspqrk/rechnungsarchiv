@@ -30,6 +30,14 @@ foreach ($v in $info.fixed.file_version, $info.fixed.product_version, $strings.F
     if ($v -ne $Version) { throw "app\build\windows\info.json nennt $v, nicht $Version" }
 }
 
+# 0. Leak gate: no key, token, personal path or private string in any
+# commit, tag or file to be committed (internal/tools/leakcheck).
+Push-Location $root
+try {
+    go run ./internal/tools/leakcheck
+    if ($LASTEXITCODE -ne 0) { throw "leakcheck: private oder geheime Daten im Repository, siehe oben" }
+} finally { Pop-Location }
+
 # 1. Build both executables for x64 with the version stamped in. The
 # Windows resources (icon, manifest, version) are generated for the host
 # architecture, so only an x64 host builds the x64 release.
@@ -96,8 +104,16 @@ $zip = Join-Path $out "Rechnungsarchiv-$Version-win-x64.zip"
 $files = 'rechnungsarchiv.exe', 'rechnungsarchiv-gui.exe', 'LICENSE.txt' | ForEach-Object { Join-Path $check "current\$_" }
 Compress-Archive -Path $files -DestinationPath $zip
 
-# 6. Checksums of the downloads, exactly these two files.
+# 6. Leak gate for the downloads: no trace of this PC (home folder, user
+# name, repository path) or private string, also inside the packages.
 $downloads = Get-Item (Join-Path $out 'Rechnungsarchiv-win-Setup.exe'), $zip
+Push-Location $root
+try {
+    go run ./internal/tools/leakcheck -artifacts $downloads.FullName
+    if ($LASTEXITCODE -ne 0) { throw "leakcheck: private Daten in den Downloads, siehe oben" }
+} finally { Pop-Location }
+
+# 7. Checksums of the downloads, exactly these two files.
 $downloads | ForEach-Object {
     "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
 } | Set-Content -Encoding ascii (Join-Path $out 'SHA256SUMS.txt')

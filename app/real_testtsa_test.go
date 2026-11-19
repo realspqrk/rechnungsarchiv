@@ -59,6 +59,11 @@ func newTestService(t *testing.T, e *testenv.Env) *realService {
 
 // must fails the test (by panicking) on err; Go cannot pass t next to a
 // multi-value call.
+// session is the current Status.Session, as a preview would carry it.
+func session(s *realService) int {
+	return must(s.Status(context.Background())).Session
+}
+
 func must[T any](v T, err error) T {
 	if err != nil {
 		panic(err)
@@ -103,7 +108,7 @@ func TestRealServiceEndToEnd(t *testing.T) {
 	if pv.Files != 9 || pv.SuggestedYear != 2026 || pv.NextSeq != 1 || pv.SuggestedName != testenv.Incoming || len(pv.Problems) != 0 {
 		t.Fatalf("preview %+v", pv)
 	}
-	res := must(s.Archive(ctx, ArchiveOptions{Folder: pv.Folder, Name: pv.SuggestedName, Belegjahr: pv.SuggestedYear, RetentionYears: 7}))
+	res := must(s.Archive(ctx, ArchiveOptions{Session: session(s), Folder: pv.Folder, Name: pv.SuggestedName, Belegjahr: pv.SuggestedYear, RetentionYears: 7}))
 	d := res.Deposit
 	if d.Seq != 1 || d.State != StateStamped || d.GenTime == "" || d.ProvenLatest == "" || d.Provider != e.Provider.Name || res.Warning != "" {
 		t.Fatalf("archived %+v", res)
@@ -133,12 +138,12 @@ func TestRealServiceEndToEnd(t *testing.T) {
 
 	// A provider error after the commit: the Ablage stays, pending · zugang.
 	e.SetMode(testenv.Denied)
-	res = must(s.Archive(ctx, ArchiveOptions{Folder: testenv.Demo(testenv.Outgoing), Name: testenv.Outgoing, Belegjahr: 2026, RetentionYears: 7}))
+	res = must(s.Archive(ctx, ArchiveOptions{Session: session(s), Folder: testenv.Demo(testenv.Outgoing), Name: testenv.Outgoing, Belegjahr: 2026, RetentionYears: 7}))
 	if res.Deposit.Seq != 2 || res.Deposit.State != StatePending || res.Deposit.Reason != ReasonAccess {
 		t.Fatalf("pending %+v", res)
 	}
 	e.SetMode(testenv.Normal)
-	if sr := must(s.StampPending(ctx)); sr.Stamped != 1 || sr.Pending != 0 {
+	if sr := must(s.StampPending(ctx, session(s))); sr.Stamped != 1 || sr.Pending != 0 {
 		t.Fatalf("stamp %+v", sr)
 	}
 
@@ -159,7 +164,7 @@ func TestRealServiceEndToEnd(t *testing.T) {
 	if !slices.Equal(plan.Years, []int{2026}) || plan.Deposits != 2 || plan.SuggestedTarget == "" {
 		t.Fatalf("plan %+v", plan)
 	}
-	ex := must(s.Export(ctx, ExportOptions{From: 2026, To: 2026, Target: filepath.Join(t.TempDir(), "Export")}))
+	ex := must(s.Export(ctx, ExportOptions{Session: session(s), From: 2026, To: 2026, Target: filepath.Join(t.TempDir(), "Export")}))
 	if ex.Deposits != 2 || len(ex.Warnings) != 0 {
 		t.Fatalf("export %+v", ex)
 	}
@@ -232,8 +237,9 @@ func tree(t *testing.T, dir string) map[string]string {
 	return m
 }
 
-// "Archiv nur kontrollieren" never writes, locks or stamps (spec §9).
-func TestRealServiceReadOnlyWritesNothing(t *testing.T) {
+// A folder this PC cannot write to opens view only and never writes,
+// locks or stamps (spec §9).
+func TestRealServiceViewOnlyWritesNothing(t *testing.T) {
 	e := testenv.New(t)
 	e.Add(testenv.Incoming, archive.Options{})
 	e.Stamp()
@@ -241,10 +247,11 @@ func TestRealServiceReadOnlyWritesNothing(t *testing.T) {
 	before := tree(t, e.Dir)
 
 	s := newTestService(t, e)
+	denyWrite(s, e.Dir)
 	ctx := t.Context()
-	st := must(s.OpenArchive(ctx, e.Dir, true))
+	st := must(s.OpenArchive(ctx, e.Dir))
 	s.wait()
-	if !st.Archive.ReadOnly || len(st.Deposits) != 2 {
+	if !st.Archive.ReadOnly || !strings.Contains(st.Archive.ReadOnlyReason, "Kein Schreibzugriff") || len(st.Deposits) != 2 || st.Due != (Due{}) {
 		t.Fatalf("status %+v", st)
 	}
 	must(s.Verify(ctx))
@@ -257,12 +264,12 @@ func TestRealServiceReadOnlyWritesNothing(t *testing.T) {
 	}
 	company := "x"
 	for name, err := range map[string]error{
-		"archive":     second(s.Archive(ctx, ArchiveOptions{Folder: testenv.Demo(testenv.Incoming), Name: "x", Belegjahr: 2026})),
+		"archive":     second(s.Archive(ctx, ArchiveOptions{Session: session(s), Folder: testenv.Demo(testenv.Incoming), Name: "x", Belegjahr: 2026})),
 		"preview":     second(s.Preview(ctx, testenv.Demo(testenv.Incoming))),
-		"stamp":       second(s.StampPending(ctx)),
+		"stamp":       second(s.StampPending(ctx, session(s))),
 		"settings":    second(s.SetSettings(ctx, SettingsUpdate{Company: &company})),
 		"credentials": second(s.SetCredentials(ctx, Credentials{User: "x", Password: "y"})),
-		"takeover":    s.TakeOver(ctx),
+		"takeover":    s.TakeOver(ctx, session(s)),
 	} {
 		if !errors.Is(err, errReadOnly) {
 			t.Errorf("%s in read-only mode: %v", name, err)
@@ -311,13 +318,13 @@ func TestRealServiceLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := t.Context()
-	must(s.OpenArchive(ctx, e.Dir, false))
+	must(s.OpenArchive(ctx, e.Dir))
 	s.wait()
 
 	// A running writer (another handle holds the OS lock).
 	other := must(archive.Open(e.Dir))
 	release := must(other.Lock())
-	ue := lockErr(t, second(s.Archive(ctx, ArchiveOptions{Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7})))
+	ue := lockErr(t, second(s.Archive(ctx, ArchiveOptions{Session: session(s), Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7})))
 	host, _ := os.Hostname()
 	if !strings.Contains(ue.Message, "verwendet (seit") || !strings.EqualFold(ue.Lock.Host, host) || !strings.Contains(ue.Message, "übernehmen") {
 		t.Fatalf("message %q / %+v", ue.Message, ue.Lock)
@@ -325,9 +332,9 @@ func TestRealServiceLock(t *testing.T) {
 	if st := must(s.Status(ctx)); st.Lock == nil || len(st.Deposits) != 0 {
 		t.Fatalf("status %+v", st)
 	}
-	lockErr(t, s.TakeOver(ctx)) // never from a writer that is still running
+	lockErr(t, s.TakeOver(ctx, session(s))) // never from a writer that is still running
 	release()
-	res := must(s.Archive(ctx, ArchiveOptions{Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7}))
+	res := must(s.Archive(ctx, ArchiveOptions{Session: session(s), Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7}))
 	if res.Deposit.State != StateStamped {
 		t.Fatalf("after release %+v", res)
 	}
@@ -341,21 +348,19 @@ func TestRealServiceLock(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(e.Dir, ".lock"), []byte(foreign), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ue = lockErr(t, second(s.StampPending(ctx)))
+	ue = lockErr(t, second(s.StampPending(ctx, session(s))))
 	if ue.Lock.Host != "BUCHHALTUNG-PC" || ue.Lock.User != "anna" || !strings.Contains(ue.Message, "BUCHHALTUNG-PC") {
 		t.Fatalf("foreign lock %+v", ue)
 	}
-	if err := s.TakeOver(ctx); err != nil {
+	if err := s.TakeOver(ctx, session(s)); err != nil {
 		t.Fatal(err)
 	}
-	must(s.StampPending(ctx))
+	must(s.StampPending(ctx, session(s)))
 	if _, err := os.Stat(filepath.Join(e.Dir, ".lock")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf(".lock left: %v", err)
 	}
 }
 
-// Opening in normal mode fetches missing timestamps in the background
-// (spec: pending Ablagen are retried on every start).
 // Setting up the provider after archiving without one updates the status at
 // once: no restart is needed to offer "Jetzt nachholen".
 func TestRealServiceProviderSetupAfterArchive(t *testing.T) {
@@ -364,7 +369,7 @@ func TestRealServiceProviderSetupAfterArchive(t *testing.T) {
 	ctx := t.Context()
 	must(s.CreateArchive(ctx, CreateArchiveRequest{Company: "Muster Tischlerei GmbH", Dir: filepath.Join(t.TempDir(), "Archiv")}))
 	s.wait()
-	res := must(s.Archive(ctx, ArchiveOptions{Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7}))
+	res := must(s.Archive(ctx, ArchiveOptions{Session: session(s), Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7}))
 	if res.Deposit.State != StatePending || res.Deposit.Reason != ReasonNoService {
 		t.Fatalf("archived without provider %+v", res.Deposit)
 	}
@@ -375,7 +380,7 @@ func TestRealServiceProviderSetupAfterArchive(t *testing.T) {
 		t.Fatalf("after choosing the provider %+v", d)
 	}
 	// Without credentials the next run says why; storing them drops that.
-	must(s.StampPending(ctx))
+	must(s.StampPending(ctx, session(s)))
 	if d := must(s.Status(ctx)).Deposits[0]; d.Reason != ReasonAccess {
 		t.Fatalf("without credentials %+v", d)
 	}
@@ -390,32 +395,193 @@ func TestRealServiceProviderSetupAfterArchive(t *testing.T) {
 		t.Fatalf("after removing the provider %+v", d)
 	}
 	must(s.SetSettings(ctx, SettingsUpdate{ProviderID: &id}))
-	must(s.StampPending(ctx))
+	must(s.StampPending(ctx, session(s)))
 	if d := must(s.Status(ctx)).Deposits[0]; d.State != StateStamped {
 		t.Fatalf("after Jetzt nachholen %+v", d)
 	}
 }
 
-func TestRealServiceStampsOnOpen(t *testing.T) {
+// A folder previewed in one archive is never archived into another one
+// opened meanwhile, not even into a copy of the same archive (same ID).
+func TestRealServiceArchiveBoundToPreview(t *testing.T) {
+	e := testenv.New(t)
+	s := newTestService(t, e)
+	ctx := t.Context()
+	a := filepath.Join(t.TempDir(), "A")
+	must(s.CreateArchive(ctx, CreateArchiveRequest{Company: "Firma A", Dir: a}))
+	s.wait()
+	copyOfA := filepath.Join(t.TempDir(), "Sicherung")
+	if err := os.CopyFS(copyOfA, os.DirFS(a)); err != nil {
+		t.Fatal(err)
+	}
+	pv := must(s.Preview(ctx, testenv.Demo(testenv.Incoming)))
+	st := must(s.OpenArchive(ctx, copyOfA))
+	s.wait()
+	if st.Session == pv.Session {
+		t.Fatalf("same session after opening the copy: %d", st.Session)
+	}
+	_, err := s.Archive(ctx, ArchiveOptions{Folder: pv.Folder, Name: pv.SuggestedName, Belegjahr: 2026, RetentionYears: 7, Session: pv.Session})
+	if !errors.Is(err, errSwitched) {
+		t.Fatalf("archive after switch: %v", err)
+	}
+	if st := must(s.Status(ctx)); len(st.Deposits) != 0 {
+		t.Fatalf("copy changed: %+v", st.Deposits)
+	}
+	// Export and lock takeover, too, only for the session they were asked in.
+	if _, err := s.Export(ctx, ExportOptions{Session: pv.Session, From: 2026, To: 2026, Target: filepath.Join(t.TempDir(), "Export")}); !errors.Is(err, errSwitched) {
+		t.Fatalf("export after switch: %v", err)
+	}
+	if err := s.TakeOver(ctx, pv.Session); !errors.Is(err, errSwitched) {
+		t.Fatalf("takeover after switch: %v", err)
+	}
+	if a, b := must(s.Status(ctx)), must(s.Status(ctx)); b.Rev <= a.Rev {
+		t.Fatalf("status revision %d then %d", a.Rev, b.Rev)
+	}
+	// Recent: the other folder, not the open one.
+	if st := must(s.Status(ctx)); len(st.Recent) != 1 || st.Recent[0].Dir != a {
+		t.Fatalf("recent %+v", st.Recent)
+	}
+	// A folder that is no archive (a backup's parent folder) gets the hint.
+	if _, err := s.OpenArchive(ctx, filepath.Dir(copyOfA)); !errors.Is(err, errNotArchive) {
+		t.Fatalf("open parent: %v", err)
+	}
+}
+
+// Opening never stamps: Status.Due says what a run would do, counted only
+// when it could work (credentials), and only "Jetzt holen" (StampPending)
+// fetches it. Archiving stamps only its own Ablage, never the backlog.
+func TestRealServiceAsksBeforeStamping(t *testing.T) {
 	e := testenv.New(t)
 	e.SetMode(testenv.Offline)
 	e.Add(testenv.Incoming, archive.Options{})
 	e.Stamp()
 	e.SetMode(testenv.Normal)
+	requests := e.TSA.Requests()
 
 	s := newTestService(t, e)
-	if err := s.sys.creds.Set(e.Archive.Config.ArchiveID, e.Provider.ID, creds.Credential{User: testenv.User, Password: testenv.Password}); err != nil {
+	ctx := t.Context()
+	st := must(s.OpenArchive(ctx, e.Dir))
+	s.wait()
+	if st := must(s.Status(ctx)); st.Busy != "" || st.Deposits[0].State != StatePending || st.Due != (Due{}) {
+		t.Fatalf("without credentials nothing is due: %s", testenv.JSON(st))
+	}
+	if st.Session == 0 {
+		t.Fatal("no session")
+	}
+	// Credentials saved: now a run could work.
+	must(s.SetCredentials(ctx, Credentials{User: testenv.User, Password: testenv.Password}))
+	if st := must(s.Status(ctx)); st.Due != (Due{Paid: 1}) {
+		t.Fatalf("due after credentials %+v", st.Due)
+	}
+	// Reopening (program start) asks again, and still stamps nothing.
+	st = must(s.OpenArchive(ctx, e.Dir))
+	s.wait()
+	if st := must(s.Status(ctx)); st.Due != (Due{Paid: 1}) || st.Deposits[0].State != StatePending || e.TSA.Requests() != requests {
+		t.Fatalf("on open %s requests %d", testenv.JSON(st), e.TSA.Requests()-requests)
+	}
+
+	// "Später", then archiving: exactly one request, for the new Ablage.
+	res := must(s.Archive(ctx, ArchiveOptions{Session: session(s), Folder: testenv.Demo(testenv.Outgoing), Name: testenv.Outgoing, Belegjahr: 2026, RetentionYears: 7}))
+	if res.Deposit.State != StateStamped || e.TSA.Requests() != requests+1 {
+		t.Fatalf("archive %+v requests %d", res.Deposit, e.TSA.Requests()-requests)
+	}
+	if st := must(s.Status(ctx)); st.Due != (Due{Paid: 1}) {
+		t.Fatalf("backlog after archiving %+v", st.Due)
+	}
+
+	// "Jetzt holen" for an archive no longer open is refused.
+	if _, err := s.StampPending(ctx, session(s)-1); !errors.Is(err, errSwitched) {
+		t.Fatalf("stale session: %v", err)
+	}
+	if r := must(s.StampPending(ctx, session(s))); r.Stamped != 1 {
+		t.Fatalf("stamp %+v", r)
+	}
+	if st := must(s.Status(ctx)); st.Due != (Due{}) || st.Counts.Pending != 0 {
+		t.Fatalf("after stamping %s", testenv.JSON(st))
+	}
+}
+
+// Only providers proven in real use are offered; an archive set up for a
+// hidden one keeps it, visible and with editable credentials.
+func TestRealServiceOffersOnlyProvenProviders(t *testing.T) {
+	e := testenv.New(t)
+	s := newTestService(t, e)
+	ctx := t.Context()
+	must(s.OpenArchive(ctx, e.Dir))
+	s.wait()
+	ids := func() []string {
+		var out []string
+		for _, p := range must(s.Providers(ctx)) {
+			out = append(out, p.ID)
+		}
+		return out
+	}
+	if got := ids(); !slices.Contains(got, "mensatek") || slices.Contains(got, "disig") || slices.Contains(got, "namirial") {
+		t.Fatalf("offered %v", got)
+	}
+	disig := "disig"
+	if _, err := s.SetSettings(ctx, SettingsUpdate{ProviderID: &disig}); !errors.Is(err, errNotOffered) {
+		t.Fatalf("hidden provider chosen: %v", err)
+	}
+	// Set up before it was hidden (e.g. with the CLI of 1.0.1).
+	if err := e.Archive.SetProvider(&disig); err != nil {
 		t.Fatal(err)
 	}
-	changed := make(chan struct{}, 4)
-	s.onChange = func() { changed <- struct{}{} }
-	st := must(s.OpenArchive(context.Background(), e.Dir, false))
-	if st.Busy != busyStamp || st.Deposits[0].State != StatePending {
-		t.Fatalf("on open %+v", st)
-	}
-	<-changed
+	must(s.OpenArchive(ctx, e.Dir))
 	s.wait()
-	if st := must(s.Status(t.Context())); st.Busy != "" || st.Deposits[0].State != StateStamped {
-		t.Fatalf("after background %s", testenv.JSON(st))
+	if got := ids(); !slices.Contains(got, "disig") || slices.Contains(got, "namirial") {
+		t.Fatalf("offered with disig set up %v", got)
+	}
+	if st := must(s.SetCredentials(ctx, Credentials{URL: "https://tsa.example.invalid/x"})); st.ProviderID != "disig" || st.Credentials.URL == "" {
+		t.Fatalf("credentials of the current provider: %+v", st)
+	}
+	if _, err := s.SetSettings(ctx, SettingsUpdate{ProviderID: &disig}); err != nil {
+		t.Fatalf("keeping the current provider: %v", err)
+	}
+}
+
+// Another PC's lock shows on the main screen right after opening, not only
+// at the first write; once released, "Archiv kontrollieren" clears it.
+func TestRealServiceShowsLockOnOpen(t *testing.T) {
+	e := testenv.New(t)
+	foreign := `{"host":"BUCHHALTUNG-PC","pid":4242,"since":"2026-11-18T08:00:00Z","user":"anna"}`
+	lock := filepath.Join(e.Dir, ".lock")
+	if err := os.WriteFile(lock, []byte(foreign), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := newTestService(t, e)
+	ctx := t.Context()
+	if st := must(s.OpenArchive(ctx, e.Dir)); st.Lock == nil || st.Lock.Host != "BUCHHALTUNG-PC" {
+		t.Fatalf("lock not in the first status: %+v", st.Lock)
+	}
+	s.wait()
+	if st := must(s.Status(ctx)); st.Lock == nil || st.Lock.Host != "BUCHHALTUNG-PC" {
+		t.Fatalf("lock not shown after opening: %+v", st.Lock)
+	}
+	if b, err := os.ReadFile(lock); err != nil || string(b) != foreign {
+		t.Fatalf("the check changed the lock: %q %v", b, err)
+	}
+	if err := os.Remove(lock); err != nil {
+		t.Fatal(err)
+	}
+	must(s.Verify(ctx))
+	if st := must(s.Status(ctx)); st.Lock != nil {
+		t.Fatalf("released lock still shown: %+v", st.Lock)
+	}
+	if _, err := os.Stat(lock); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the check left a lock: %v", err)
+	}
+}
+
+// denyWrite makes opening these folders for writing fail, like a
+// write-protected share or stick.
+func denyWrite(s *realService, dirs ...string) {
+	s.sys.openWrite = func(dir string) (*archive.Archive, error) {
+		for _, d := range dirs {
+			if strings.EqualFold(filepath.Clean(d), filepath.Clean(dir)) {
+				return nil, &fs.PathError{Op: "open", Path: filepath.Join(dir, ".lock"), Err: fs.ErrPermission}
+			}
+		}
+		return archive.Open(dir)
 	}
 }

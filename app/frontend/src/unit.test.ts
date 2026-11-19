@@ -176,7 +176,7 @@ check("never checked", lastCheckText(null, 3) === "Noch nicht kontrolliert");
   check("request after close, before render: kept", inbox.size === 1 && inbox.next(gateOf(st({}), false))?.folder === "A");
   inbox.next(gateOf(st({}), false));
 
-  // Read-only ("nur kontrollieren"): not offered, dropped with one short note.
+  // View only (write-protected folder): not offered, dropped with one short note.
   inbox.add([drop("A"), drop("B")]);
   const ro = inbox.next(gateOf(st({ readOnly: true }), false));
   check("read-only: note, no dialog", !!ro?.note && !ro.folder && has(ro.note, "nicht archiviert"), ro);

@@ -30,7 +30,7 @@ export interface Step {
   note?: string;
 }
 
-export const READ_ONLY_NOTE = "Nur kontrollieren: Der übergebene Ordner wird nicht archiviert.";
+export const READ_ONLY_NOTE = "Nur Ansicht (schreibgeschützter Ordner): Der übergebene Ordner wird nicht archiviert.";
 
 export class FolderInbox {
   private items: FolderDrop[] = [];
