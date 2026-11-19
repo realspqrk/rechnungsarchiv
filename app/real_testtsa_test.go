@@ -356,6 +356,46 @@ func TestRealServiceLock(t *testing.T) {
 
 // Opening in normal mode fetches missing timestamps in the background
 // (spec: pending Ablagen are retried on every start).
+// Setting up the provider after archiving without one updates the status at
+// once: no restart is needed to offer "Jetzt nachholen".
+func TestRealServiceProviderSetupAfterArchive(t *testing.T) {
+	e := testenv.New(t)
+	s := newTestService(t, e)
+	ctx := t.Context()
+	must(s.CreateArchive(ctx, CreateArchiveRequest{Company: "Muster Tischlerei GmbH", Dir: filepath.Join(t.TempDir(), "Archiv")}))
+	s.wait()
+	res := must(s.Archive(ctx, ArchiveOptions{Folder: testenv.Demo(testenv.Incoming), Name: testenv.Incoming, Belegjahr: 2026, RetentionYears: 7}))
+	if res.Deposit.State != StatePending || res.Deposit.Reason != ReasonNoService {
+		t.Fatalf("archived without provider %+v", res.Deposit)
+	}
+
+	id := e.Provider.ID
+	must(s.SetSettings(ctx, SettingsUpdate{ProviderID: &id}))
+	if d := must(s.Status(ctx)).Deposits[0]; d.State != StatePending || d.Reason == ReasonNoService {
+		t.Fatalf("after choosing the provider %+v", d)
+	}
+	// Without credentials the next run says why; storing them drops that.
+	must(s.StampPending(ctx))
+	if d := must(s.Status(ctx)).Deposits[0]; d.Reason != ReasonAccess {
+		t.Fatalf("without credentials %+v", d)
+	}
+	must(s.SetCredentials(ctx, Credentials{User: testenv.User, Password: testenv.Password}))
+	if d := must(s.Status(ctx)).Deposits[0]; d.State != StatePending || d.Reason != "" {
+		t.Fatalf("after storing credentials %+v", d)
+	}
+	// Removing the provider again says so at once.
+	none := ""
+	must(s.SetSettings(ctx, SettingsUpdate{ProviderID: &none}))
+	if d := must(s.Status(ctx)).Deposits[0]; d.Reason != ReasonNoService {
+		t.Fatalf("after removing the provider %+v", d)
+	}
+	must(s.SetSettings(ctx, SettingsUpdate{ProviderID: &id}))
+	must(s.StampPending(ctx))
+	if d := must(s.Status(ctx)).Deposits[0]; d.State != StateStamped {
+		t.Fatalf("after Jetzt nachholen %+v", d)
+	}
+}
+
 func TestRealServiceStampsOnOpen(t *testing.T) {
 	e := testenv.New(t)
 	e.SetMode(testenv.Offline)

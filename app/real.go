@@ -61,6 +61,7 @@ type realService struct {
 	report   *verify.Report
 	check    *CheckSummary
 	reasons  map[string]verify.Reason // from the last stamping run
+	rev      int                      // increments whenever reasons change
 	locked   *archive.LockedError     // last lock of another writer seen
 	busy     string
 	trustErr error // last trusted-list refresh
@@ -448,12 +449,16 @@ func (s *realService) background(ctx context.Context, gen int) {
 		var res *stamp.Result
 		if current && ctx.Err() == nil {
 			res, err = s.runStamp(ctx, ar, ts)
+			if ctx.Err() == nil {
+				// Inside the writer slot: a provider or credential change
+				// waiting for it must see these reasons to drop them.
+				s.noteStamp(gen, res, err)
+			}
 		}
 		s.write.Unlock()
 		if !current || ctx.Err() != nil {
 			return
 		}
-		s.noteStamp(gen, res, err)
 	}
 	if _, err := s.reverify(ctx, gen, false); err != nil && ctx.Err() == nil {
 		log.Printf("background check: %v", err)
@@ -490,7 +495,7 @@ func (s *realService) reverify(ctx context.Context, gen int, online bool) (*veri
 		s.mu.Unlock()
 		return nil, errNoArchive
 	}
-	dir, ts := s.ar.Dir, s.trust
+	dir, ts, rev := s.ar.Dir, s.trust, s.rev
 	reasons := make(map[string]verify.Reason, len(s.reasons))
 	for k, v := range s.reasons {
 		reasons[k] = v
@@ -501,7 +506,9 @@ func (s *realService) reverify(ctx context.Context, gen int, online bool) (*veri
 		return nil, s.uiErr(err)
 	}
 	s.mu.Lock()
-	if s.gen == gen {
+	// A check that started with reasons dropped since then must not bring
+	// them back.
+	if s.gen == gen && s.rev == rev {
 		s.report, s.check = rep, checkOf(rep)
 	}
 	s.mu.Unlock()
@@ -721,6 +728,7 @@ func (s *realService) noteStamp(gen int, res *stamp.Result, err error) {
 		s.locked = le
 	case err == nil && res != nil:
 		s.reasons = res.Reasons()
+		s.rev++
 		s.locked = nil
 	}
 }
@@ -956,7 +964,7 @@ func (s *realService) settingsOf(c snapshot) Settings {
 }
 
 func (s *realService) SetSettings(ctx context.Context, u SettingsUpdate) (Settings, error) {
-	c, _, done, err := s.beginWrite(ctx)
+	c, ctx, done, err := s.beginWrite(ctx)
 	if err != nil {
 		return Settings{}, err
 	}
@@ -982,7 +990,14 @@ func (s *realService) SetSettings(ctx context.Context, u SettingsUpdate) (Settin
 			return Settings{}, err
 		}
 	}
+	providerChanged := false
 	if u.ProviderID != nil {
+		// Only writers change the Config, and this one holds the slot.
+		old := ""
+		if c.ar.Config.TSA != nil {
+			old = *c.ar.Config.TSA
+		}
+		providerChanged = old != *u.ProviderID
 		var id *string
 		if *u.ProviderID != "" {
 			if _, ok := tsa.ProviderByID(*u.ProviderID); !ok {
@@ -997,7 +1012,34 @@ func (s *realService) SetSettings(ctx context.Context, u SettingsUpdate) (Settin
 	s.mu.Lock()
 	s.locked = nil
 	s.mu.Unlock()
+	if providerChanged {
+		s.accessChanged(ctx, c.gen, true)
+	}
 	return s.settingsOf(c), nil
+}
+
+// accessChanged runs after the provider or its credentials changed: the
+// reasons of the last stamping run ("kein-dienst", "zugang", …) belong to
+// the old setup. The archive is checked again without them, so the status
+// offers "Jetzt nachholen" at once instead of after a restart.
+// A provider change (rare) always checks again: it decides "kein-dienst",
+// also for a check still running. A saved credential field checks only
+// when the last run left reasons to drop.
+func (s *realService) accessChanged(ctx context.Context, gen int, provider bool) {
+	s.mu.Lock()
+	stale := s.gen == gen && (provider || s.report == nil || len(s.reasons) > 0)
+	if stale {
+		s.reasons = nil
+		s.rev++
+	}
+	s.mu.Unlock()
+	if !stale {
+		return
+	}
+	if _, err := s.reverify(ctx, gen, false); err != nil && ctx.Err() == nil {
+		log.Printf("check after provider change: %v", err)
+	}
+	s.notify()
 }
 
 func (s *realService) Providers(ctx context.Context) ([]Provider, error) {
@@ -1012,7 +1054,7 @@ func (s *realService) Providers(ctx context.Context) ([]Provider, error) {
 // store (creds.System), like `provider set`. Empty secret fields keep the
 // stored secret; a client certificate is checked with its password first.
 func (s *realService) SetCredentials(ctx context.Context, in Credentials) (Settings, error) {
-	c, _, done, err := s.beginWrite(ctx)
+	c, ctx, done, err := s.beginWrite(ctx)
 	if err != nil {
 		return Settings{}, err
 	}
@@ -1067,6 +1109,9 @@ func (s *realService) SetCredentials(ctx context.Context, in Credentials) (Setti
 	}
 	if err := s.sys.creds.Set(cfg.ArchiveID, p.ID, next); err != nil {
 		return Settings{}, err
+	}
+	if next != old {
+		s.accessChanged(ctx, c.gen, false)
 	}
 	return s.settingsOf(c), nil
 }

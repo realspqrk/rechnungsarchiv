@@ -3,6 +3,7 @@
 ## Contents
 1. [Owner tasks](#owner-tasks)
 2. [Deferred features (cut from v1, revisit on demand)](#deferred-features-cut-from-v1-revisit-on-demand)
+3. [Code health](#code-health)
 
 ## Owner tasks
 - **Provider recommendation stays Mensatek** (owner, 2026-11-18): DGN and GLOBALTRUST are not pursued. The README guides through the Spanish customer area (browser translation, DeepL). Real-world proof done 2026-11-18 (see Ablagen 0001/0002 in tmp/echttest-archiv); providers.json holds the confirmed policy OID 0.4.0.2023.1.1 and accuracy 1 s.
@@ -12,7 +13,6 @@
   - informal BMF/KSW enquiry;
   - quotes for a KFS/DV 1 Softwarebescheinigung;
   - a pilot user for a §118 BAO Auskunftsbescheid.
-- **Authenticode signing** for `rechnungsarchiv.exe` and the installer: Azure Artifact Signing or an OV certificate. SmartScreen blocks unsigned exes in Kanzlei/BMF IT. Until then, the export's Archivprotokoll PDFs let people read the result without running anything.
 
 ## Deferred features (cut from v1, revisit on demand)
 - **Second TSA / RFC 3161 renewal** (a new token over the old `.tsr`):
@@ -32,3 +32,6 @@
 - **macOS/Linux GUI builds.** The CLI builds everywhere.
 - **tsa evidence robustness:** keep every evidence file per certificate (`ReadAttempts` keeps one per CertKey, so a bad stored OCSP answer blocks completion until the 24 h window ends); add `Fetcher.Evidence(cert, issuer, genTime)` and `tsa.WriteProvider` instead of the local workarounds in internal/stamp.
 - **GUI performance on large archives:** every detail view, protocol and archive action re-verifies the whole archive (correct, slow for many GB). Cache the last `verify.Report` per archive generation.
+
+## Code health
+- **Config data race in `app/real.go`** (Codex review, 2026-11-19): `background` dereferences `ar.Config.TSA`, `settingsOf` copies `c.ar.Config` and `Preview` reads the retention default without `s.mu`, while `SetSettings` replaces the Config struct under `s.mu` (`internal/archive/config.go` setters). Copy the needed fields under `s.mu` first. Confirm with `go test -race` (needs gcc/cgo on this PC).

@@ -16,7 +16,7 @@
 
 Sie legen Rechnungen in einen Ordner. Rechnungsarchiv übernimmt die Dateien unverändert in eine Ablage und holt dafür einen qualifizierten Zeitstempel eines EU-Dienstes Ihrer Wahl. Belegt wird, dass dieser Stand spätestens zum genannten Zeitpunkt vorlag. Ein Programm, `rechnungsarchiv.exe`, öffnet das Fenster (`rechnungsarchiv gui`, aus dem Startmenü über `rechnungsarchiv-gui.exe`) und ist die Kommandozeile. Dieselbe Datei liegt im Export für die Betriebsprüfung.
 
-> **Version 1.0.0** für Windows 10 und 11: [Setup herunterladen](https://github.com/realspqrk/rechnungsarchiv/releases/latest/download/Rechnungsarchiv-win-Setup.exe) (signiert). Eine Frage oder ein Fehler: [Issue öffnen](https://github.com/realspqrk/rechnungsarchiv/issues).
+> **Version 1.0.1** für Windows 10 und 11: [Setup herunterladen](https://github.com/realspqrk/rechnungsarchiv/releases/latest/download/Rechnungsarchiv-win-Setup.exe) (signiert). Eine Frage oder ein Fehler: [Issue öffnen](https://github.com/realspqrk/rechnungsarchiv/issues).
 
 > [!IMPORTANT]
 > Rechnungsarchiv legt Dateien als unveränderliche Ablagen zur Langzeitaufbewahrung ab; spätere Veränderungen werden erkennbar. Die Software wird ohne Gewähr bereitgestellt, so wie sie ist. Die Haftung ist ausgeschlossen, soweit das Gesetz das zulässt. Ob die Software für die Aufbewahrung in Ihrem Unternehmen rechtlich genügt, liegt allein in Ihrer Verantwortung. Klären Sie das vor dem Einsatz mit Ihrer Steuerberatung oder Rechtsberatung.
@@ -26,6 +26,12 @@ Sie legen Rechnungen in einen Ordner. Rechnungsarchiv übernimmt die Dateien unv
 <picture>
   <img src="docs/images/gui-uebersicht.png" alt="Rechnungsarchiv: Ablagen im Archiv, mit Ordner archivieren, Archiv kontrollieren und Export für Betriebsprüfung">
 </picture>
+
+## Warum es das gibt
+
+Es ist fast 2027. Wer als kleines Unternehmen in Österreich seine Rechnungen ordentlich aufbewahren will, hat im Grunde zwei Möglichkeiten: alles ausdrucken und in Ordner sortieren, wie 1987. Oder Speicher kaufen, der sich nicht mehr beschreiben lässt (WORM), und dafür schnell ein paar tausend Euro ausgeben. Für einen Betrieb mit ein paar hundert Rechnungen im Jahr ist beides gleich absurd. Digital aufbewahren ist erlaubt, nur einfach gemacht hat es niemand.
+
+Verlangt ist, dass sich die Belege bis zum Ende der Frist inhaltsgleich wiedergeben lassen und spätere Änderungen nicht unbemerkt bleiben. Spezialhardware schreibt das Gesetz dafür nicht vor. Rechnungsarchiv löst es mit einem qualifizierten Zeitstempel nach eIDAS für jede Ablage. Er belegt, dass die Dateien seit dem Archivieren nicht verändert wurden; genau genommen, dass dieser Stand spätestens zum Zeitpunkt des Stempels vorlag. Das kostet wenige Cent pro Ablage. Ob es für Ihr Unternehmen genügt, klären Sie trotzdem mit Ihrer Steuerberatung.
 
 ## Hier beginnen
 

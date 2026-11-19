@@ -138,25 +138,32 @@ function credentialFields(p: Provider, s: Settings, save: (fn: () => Promise<Set
   let p12Path = c.p12Path;
   const p12Box = h("span", { class: "path-box mono" }, p12Path ? pathText(p12Path) : "Noch nicht gewählt");
 
-  const store = () =>
-    save(() =>
+  const edits = { pass: 0, p12: 0 };
+  pass.addEventListener("input", () => edits.pass++);
+  p12Pass.addEventListener("input", () => edits.p12++);
+  const store = () => {
+    // Clear only the secrets this request sent and nobody edited since: the
+    // user may type while the save runs.
+    const sent = { password: pass.value, p12Password: p12Pass.value, edits: { ...edits } };
+    return save(() =>
       api.SetCredentials({
         user: user.value,
-        password: pass.value,
+        password: sent.password,
         p12Path,
-        p12Password: p12Pass.value,
+        p12Password: sent.p12Password,
         url: url.value,
       }),
     ).then((next) => {
       if (next) {
-        pass.value = "";
-        p12Pass.value = "";
+        if (edits.pass === sent.edits.pass) pass.value = "";
+        if (edits.p12 === sent.edits.p12) p12Pass.value = "";
         if (next.credentials.hasPassword) {
           pass.placeholder = "gespeichert";
           p12Pass.placeholder = pass.placeholder;
         }
       }
     });
+  };
   for (const el of [user, pass, p12Pass, url]) el.addEventListener("change", () => void store());
 
   const rows: HTMLElement[] = [];
