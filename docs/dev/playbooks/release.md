@@ -31,6 +31,8 @@ The script builds with the version stamped in, stages `rechnungsarchiv.exe`, `re
    Start-Process "$t\Update.exe" -ArgumentList '--uninstall','--silent' -Wait
    ```
    The installer runs `rechnungsarchiv-gui.exe --veloapp-install …` and waits; the launcher exits at once for every `--veloapp-*` argument. An install that hangs means that check broke.
+
+   The scratch install reuses the shortcut names of a real installation on this PC, and its uninstall deletes them. Afterwards, if `%LOCALAPPDATA%\Rechnungsarchiv` exists, run `.\dist\release\Rechnungsarchiv-win-Setup.exe --silent` (updates the real install and restores the shortcuts).
 2. Do not smoke-test the window against the real `%APPDATA%` (known.md: it stamps the remembered default archive).
 
 ## Publish
