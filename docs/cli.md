@@ -9,7 +9,7 @@
 - Every other invocation is the CLI, unchanged.
 - `rechnungsarchiv-gui.exe`, next to `rechnungsarchiv.exe`, is a Windows-subsystem launcher without logic. It starts `rechnungsarchiv.exe gui <args…>` from its own folder without a console window and exits. Shortcuts point to it. It shows a message box if `rechnungsarchiv.exe` is missing. On other systems use `rechnungsarchiv gui`.
 
-The command writes only through the core: a new Ablage, its Nachweis, `rechnungsarchiv.json`, the trusted-list cache, an export folder, or an Archivprotokoll PDF. It never sends invoices, file names or per-file hashes anywhere. A timestamp request carries only the Prüfwert (plus the provider account name and the IP address).
+The command writes only through the core: a new Ablage, its Nachweis, `rechnungsarchiv.json`, the trusted-list cache, an export folder, or an Archivprotokoll PDF. It never sends invoices, file names or per-file hashes anywhere. A timestamp request carries only the Prüfwert (plus the login at the provider, i.e. account name and password or client certificate, and the IP address).
 
 ## Get it
 

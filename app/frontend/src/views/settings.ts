@@ -131,7 +131,7 @@ function build(s: Settings, providers: Provider[]): HTMLElement {
       "p",
       { class: "info-line" },
       icon("info", 16, 2),
-      h("span", null, "Zum Dienst gehen nur der Prüfwert, Ihr Kontoname und Ihre IP-Adresse – keine Rechnung, kein Dateiname. Die Zugangsdaten bleiben auf diesem PC (Windows-Anmeldeinformationen)."),
+      h("span", null, "Zum Dienst gehen nur der Prüfwert, Ihre Anmeldung (Benutzer und Passwort oder Zugangszertifikat) und Ihre IP-Adresse – keine Rechnung, kein Dateiname. Gespeichert sind die Zugangsdaten nur auf diesem PC (Windows-Anmeldeinformationen)."),
     ),
   );
 

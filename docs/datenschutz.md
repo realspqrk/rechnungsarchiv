@@ -18,7 +18,7 @@ Betroffene Personen: Lieferanten, Kunden und die in den Rechnungen genannten Per
 
 Kategorien: der Inhalt der Rechnungsdateien, Dateinamen, Prüfsummen der Dateien, Belegjahr, gewählte Frist. Diese Daten bleiben auf den Rechnern und Datenträgern des Unternehmens. Rechnungen können Daten nach Art. 9 enthalten, etwa Gesundheitsdaten; Grundlage ist dann Art. 9 Abs. 2 Buchst. f.
 
-An den Zeitstempel-Dienst gehen nur drei Angaben: der Prüfwert (32 Byte), der Kontoname beim Dienst und die IP-Adresse der Anfrage. Dateinamen, Rechnungsinhalte und die Prüfsummen der einzelnen Dateien sendet das Programm nicht. Welche Daten der Dienst danach speichert, richtet sich nach dessen eigenen Angaben.
+An den Zeitstempel-Dienst gehen nur drei Angaben: der Prüfwert (32 Byte), die Anmeldung beim Dienst (Kontoname und Passwort oder Zugangszertifikat) und die IP-Adresse der Anfrage. Gespeichert sind die Zugangsdaten nur auf diesem PC. Dateinamen, Rechnungsinhalte und die Prüfsummen der einzelnen Dateien sendet das Programm nicht. Welche Daten der Dienst danach speichert, richtet sich nach dessen eigenen Angaben.
 
 ## Empfänger und Drittland
 

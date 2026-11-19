@@ -7,7 +7,7 @@ import (
 
 func TestParseDisclaimer(t *testing.T) {
 	d := ParseDisclaimer(DisclaimerMarkdown)
-	if !strings.HasPrefix(d.Short, "Rechnungsarchiv legt Dateien als unveränderliche Ablagen") ||
+	if !strings.HasPrefix(d.Short, "Rechnungsarchiv speichert Kopien Ihrer Dateien als Ablagen") ||
 		!strings.HasSuffix(d.Short, "Rechtsberatung.") {
 		t.Fatalf("short disclaimer not found: %q", d.Short)
 	}

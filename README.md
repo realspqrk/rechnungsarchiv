@@ -16,10 +16,10 @@
 
 Sie legen Rechnungen in einen Ordner. Rechnungsarchiv übernimmt die Dateien unverändert in eine Ablage und holt dafür einen qualifizierten Zeitstempel eines EU-Dienstes Ihrer Wahl. Belegt wird, dass dieser Stand spätestens zum genannten Zeitpunkt vorlag. Ein Programm, `rechnungsarchiv.exe`, öffnet das Fenster (`rechnungsarchiv gui`, aus dem Startmenü über `rechnungsarchiv-gui.exe`) und ist die Kommandozeile. Dieselbe Datei liegt im Export für die Betriebsprüfung.
 
-> **Version 1.0.2** für Windows 10 und 11: [Setup herunterladen](https://github.com/realspqrk/rechnungsarchiv/releases/latest/download/Rechnungsarchiv-win-Setup.exe) (signiert). Eine Frage oder ein Fehler: [Issue öffnen](https://github.com/realspqrk/rechnungsarchiv/issues).
+> **Version 1.0.3** für Windows 10 und 11: [Setup herunterladen](https://github.com/realspqrk/rechnungsarchiv/releases/latest/download/Rechnungsarchiv-win-Setup.exe) (signiert). Eine Frage oder ein Fehler: [Issue öffnen](https://github.com/realspqrk/rechnungsarchiv/issues).
 
 > [!IMPORTANT]
-> Rechnungsarchiv legt Dateien als unveränderliche Ablagen zur Langzeitaufbewahrung ab; spätere Veränderungen werden erkennbar. Die Software wird ohne Gewähr bereitgestellt, so wie sie ist. Die Haftung ist ausgeschlossen, soweit das Gesetz das zulässt. Ob die Software für die Aufbewahrung in Ihrem Unternehmen rechtlich genügt, liegt allein in Ihrer Verantwortung. Klären Sie das vor dem Einsatz mit Ihrer Steuerberatung oder Rechtsberatung.
+> Rechnungsarchiv speichert Kopien Ihrer Dateien als Ablagen zur Langzeitaufbewahrung. Das Programm verändert sie nie; spätere Veränderungen werden bei einer Kontrolle erkennbar. Die Software wird ohne Gewähr bereitgestellt, so wie sie ist. Die Haftung ist ausgeschlossen, soweit das Gesetz das zulässt. Ob die Software für die Aufbewahrung in Ihrem Unternehmen rechtlich genügt, liegt allein in Ihrer Verantwortung. Klären Sie das vor dem Einsatz mit Ihrer Steuerberatung oder Rechtsberatung.
 >
 > Vollständiger Text: [docs/haftungsausschluss.md](docs/haftungsausschluss.md).
 
@@ -59,7 +59,7 @@ Für den Start brauchen Sie einen Windows-PC, einen Ordner für das Archiv und e
 
 1. **Archiv anlegen.** Starten Sie Rechnungsarchiv. Geben Sie Firma und Archivordner ein und wählen Sie „Archiv anlegen“. Nur ein PC darf in das Archiv schreiben. Ein synchronisierter Ordner ist kein zulässiges Schreibziel.
 2. **Zeitstempel-Dienst einrichten.** Legen Sie ein Konto bei einem Dienst aus der Tabelle an und tragen Sie die Zugangsdaten unter Einstellungen ein. Ohne eingerichteten Dienst bleiben neue Ablagen ausstehend. Einen kostenlosen Dienst bietet das Programm bewusst nicht an: Er hätte keine gesetzliche Vermutung, und bekannte kostenlose Dienste (z. B. DigiCert) stehen in den USA.
-3. **Ordner archivieren.** Ziehen Sie einen Ordner mit Rechnungen in das Fenster, für eine Woche, einen Monat oder ein Quartal. Das Programm übernimmt die Dateien unverändert in eine Ablage. Eine Ablage ist ein ZIP im lokalen Archiv. Nach dem Speichern wird dieses ZIP nicht mehr umgeschrieben. Danach holt es genau einen qualifizierten Zeitstempel nach RFC 3161 auf den Prüfwert von 32 Byte. Der Dienst erhält den Prüfwert, Ihren Kontonamen und Ihre IP-Adresse. Dateinamen, Rechnungsinhalte und die Prüfsummen der einzelnen Dateien bleiben auf dem Computer. Neben der Ablage liegen danach der Zeitstempel, die Zertifikatskette und der Sperrstatus.
+3. **Ordner archivieren.** Ziehen Sie einen Ordner mit Rechnungen in das Fenster, für eine Woche, einen Monat oder ein Quartal. Das Programm übernimmt die Dateien unverändert in eine Ablage. Eine Ablage ist ein ZIP im lokalen Archiv. Nach dem Speichern wird dieses ZIP nicht mehr umgeschrieben. Danach holt es genau einen qualifizierten Zeitstempel nach RFC 3161 auf den Prüfwert von 32 Byte. Der Dienst erhält den Prüfwert, Ihre Anmeldung (Kontoname und Passwort) und Ihre IP-Adresse. Dateinamen, Rechnungsinhalte und die Prüfsummen der einzelnen Dateien bleiben auf dem Computer. Neben der Ablage liegen danach der Zeitstempel, die Zertifikatskette und der Sperrstatus.
 
 Ein anderes Archiv öffnen oder ein neues anlegen Sie unter Einstellungen → „Archiv wechseln“; dort stehen auch die zuletzt geöffneten Archive. Mit „Archiv kontrollieren“ prüfen Sie die Ablagen. Die Prüfung braucht den Dienstanbieter nicht, wenn die Prüfdaten beim Stempeln gespeichert wurden. Mit „Export für Betriebsprüfung“ stellen Sie die Unterlagen für eine Prüfung zusammen. Fehlen Zeitstempel (etwa nach einem Abbruch ohne Internet), fragt das Programm beim Öffnen des Archivs, ob es sie holen soll, und sagt dazu, wie viele neu verrechnet werden und wie viele kostenlos ergänzt werden; von selbst holt es nichts. Später geht es jederzeit über „Jetzt nachholen“.
 
@@ -181,7 +181,7 @@ Keine Rechtsberatung. Die tragenden Normen, soweit sie dieses Programm betreffen
 - **§ 11 UStG und E-Rechnung-UStV.** Echtheit der Herkunft, Unversehrtheit des Inhalts und Lesbarkeit der Rechnung sind Pflichten des Unternehmens. Das Programm übernimmt sie nicht.
 - **§ 18 Abs. 10 UStG.** Aufzeichnungen über Grundstücke sind 22 Jahre aufzubewahren, bestimmte Fälle nach dem Wohnungsgemeinnützigkeitsgesetz 12 Jahre.
 - **Art. 41 eIDAS.** Nur der qualifizierte Zeitstempel trägt die Vermutung für Zeitpunkt und Unversehrtheit (Abs. 2). Die Vermutung gilt für den Prüfwert.
-- **DSGVO.** Rechtsgrundlage der gesetzlich gebotenen Aufbewahrung ist Art. 6 Abs. 1 lit. c. Art. 5 Abs. 1 lit. e verlangt die Löschung nach Fristende. Eine Löschfunktion ist in dieser Version nicht enthalten. Beim Stempeln erhält der Anbieter den Prüfwert, den Kontonamen und die IP-Adresse. Das Programm verwendet nur Anbieter in der EU.
+- **DSGVO.** Rechtsgrundlage der gesetzlich gebotenen Aufbewahrung ist Art. 6 Abs. 1 lit. c. Art. 5 Abs. 1 lit. e verlangt die Löschung nach Fristende. Eine Löschfunktion ist in dieser Version nicht enthalten. Beim Stempeln erhält der Anbieter den Prüfwert, die Anmeldung beim Dienst und die IP-Adresse. Das Programm verwendet nur Anbieter in der EU.
 - Das Bundesministerium für Finanzen zertifiziert keine Archivierungssoftware.
 
 Unterlagen dazu:

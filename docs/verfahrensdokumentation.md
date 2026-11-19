@@ -58,7 +58,7 @@ Verträge und Urkunden in Papier, die zivilrechtlich im Original bleiben sollen,
 ## 5. Zeitstempel-Anbieter
 
 1. Anbieter: [ZEITSTEMPEL-ANBIETER aus der Liste des Programms]. Konto: [KONTONAME]. Vertrag vom [DATUM], abgelegt unter [ORDNER].
-2. Das Programm sendet beim Stempeln den Prüfwert, den Kontonamen und die IP-Adresse. Dateinamen, Rechnungsinhalte und die Prüfsummen der einzelnen Dateien sendet es nicht.
+2. Das Programm sendet beim Stempeln den Prüfwert, die Anmeldung beim Dienst (Kontoname und Passwort oder Zugangszertifikat) und die IP-Adresse. Dateinamen, Rechnungsinhalte und die Prüfsummen der einzelnen Dateien sendet es nicht.
 3. Die Preise stehen in der Tabelle der [README](../README.md), mit dem dort genannten Stand. Vor dem Kauf prüft [VERANTWORTLICH] den aktuellen Preis und ob der Anbieter an österreichische Unternehmen verkauft.
 4. Ohne eingerichteten Dienst bleiben neue Ablagen ausstehend. Einen kostenlosen Dienst richtet das Unternehmen nicht ein.
 5. Fällt der Anbieter aus, bleiben vorhandene Zeitstempel mit der gespeicherten Zertifikatskette und dem Sperrstatus prüfbar. Für neue Ablagen braucht es einen anderen qualifizierten EU-Dienst; angeboten werden nur im Echtbetrieb erprobte, weitere über die Projektseite anfragen. Das Programm wechselt nicht von selbst.

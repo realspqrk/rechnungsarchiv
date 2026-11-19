@@ -1,6 +1,6 @@
 # AGENTS.md — Rechnungsarchiv
 
-Local, tamper-evident invoice archive for Austrian SMEs. A folder of invoices becomes a read-only BagIt ZIP (an "Ablage"). Only its 32-byte hash, the "Prüfwert" (plus the TSA account name and the IP address inherent to the request), goes to one qualified EU timestamp provider (RFC 3161; see ADR-0001). Invoices, file names and per-file hashes never leave the machine.
+Local, tamper-evident invoice archive for Austrian SMEs. A folder of invoices becomes a read-only BagIt ZIP (an "Ablage"). Only its 32-byte hash, the "Prüfwert" (plus the login at the TSA, i.e. account name and password or client certificate, and the IP address inherent to the request), goes to one qualified EU timestamp provider (RFC 3161; see ADR-0001). Invoices, file names and per-file hashes never leave the machine.
 
 ## Setup runbook
 
@@ -75,7 +75,7 @@ cd app && wails3 build         # bin/rechnungsarchiv.exe (CLI + GUI) + bin/rechn
 - **Never convert originals.** Store them byte-identical: no PDF/A, no re-encoding.
 - **The verifier is security-critical.** Every proof-verification change needs these tests: cert injection, tampered attributes, replay, malformed input. Missing validation material = `Unbestimmt` (indeterminate), never green.
 - **Append-only evidence.** Write to a temp file, then fsync and rename. Never rewrite an Ablage ZIP after commit.
-- **Only the Prüfwert (plus the TSA account name and the IP address, inherent to the request) leaves the machine.** Never send file names, per-file hashes, invoice bytes or sidecars.
+- **Only the Prüfwert (plus the TSA login and the IP address, inherent to the request) leaves the machine.** The login is sent to the provider, stored only in this PC's credential store. Never send file names, per-file hashes, invoice bytes or sidecars.
 - **Language.**
   - English: code, comments, identifiers, commit messages, `docs/spec.md`, `docs/adr/`, `docs/dev/`, `docs/cli.md`, `docs/agents/`.
   - German: UI text, CLI output, `README.md` and user docs in `docs/*.md`.

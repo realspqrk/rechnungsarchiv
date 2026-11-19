@@ -27,5 +27,5 @@ Austrian law requires none of these. Only a qualified timestamp carries a presum
 
 ## Consequences
 - One code path, one file set per Ablage, no cloud account.
-- The provider receives the Prüfwert, the account name and the IP address. Nothing about the invoices.
+- The provider receives the Prüfwert, the login (account name and password, or client certificate) and the IP address. Nothing about the invoices.
 - Online tests use free TSAs (DigiCert, FreeTSA) in tests only, never in the product.

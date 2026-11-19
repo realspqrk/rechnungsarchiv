@@ -4,7 +4,7 @@
 
 <!-- The app shows the next paragraph unchanged on first start and under "Über", with this consent sentence below it: „Mit dem Anlegen des Archivs bestätigen Sie, diesen Hinweis gelesen zu haben.“ -->
 
-Rechnungsarchiv legt Dateien als unveränderliche Ablagen zur Langzeitaufbewahrung ab; spätere Veränderungen werden erkennbar. Die Software wird ohne Gewähr bereitgestellt, so wie sie ist. Die Haftung ist ausgeschlossen, soweit das Gesetz das zulässt. Ob die Software für die Aufbewahrung in Ihrem Unternehmen rechtlich genügt, liegt allein in Ihrer Verantwortung. Klären Sie das vor dem Einsatz mit Ihrer Steuerberatung oder Rechtsberatung.
+Rechnungsarchiv speichert Kopien Ihrer Dateien als Ablagen zur Langzeitaufbewahrung. Das Programm verändert sie nie; spätere Veränderungen werden bei einer Kontrolle erkennbar. Die Software wird ohne Gewähr bereitgestellt, so wie sie ist. Die Haftung ist ausgeschlossen, soweit das Gesetz das zulässt. Ob die Software für die Aufbewahrung in Ihrem Unternehmen rechtlich genügt, liegt allein in Ihrer Verantwortung. Klären Sie das vor dem Einsatz mit Ihrer Steuerberatung oder Rechtsberatung.
 
 ## Gewährleistung und Haftung
 

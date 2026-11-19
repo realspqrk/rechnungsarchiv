@@ -1,6 +1,6 @@
 # Rechnungsarchiv
 
-> Local, tamper-evident invoice archive for Austrian SMEs. A folder of invoices becomes a read-only Ablage (BagIt ZIP). One Windows binary, `rechnungsarchiv.exe`, is the window (`rechnungsarchiv gui`; Start menu via `rechnungsarchiv-gui.exe`) and the command line, and the verifier shipped in an auditor export. Only the 32-byte Prüfwert, plus the TSA account name and the request IP, goes to one qualified EU timestamp provider (RFC 3161). Invoices, file names and per-file hashes never leave the machine.
+> Local, tamper-evident invoice archive for Austrian SMEs. A folder of invoices becomes a read-only Ablage (BagIt ZIP). One Windows binary, `rechnungsarchiv.exe`, is the window (`rechnungsarchiv gui`; Start menu via `rechnungsarchiv-gui.exe`) and the command line, and the verifier shipped in an auditor export. Only the 32-byte Prüfwert, plus the TSA login and the request IP, goes to one qualified EU timestamp provider (RFC 3161). Invoices, file names and per-file hashes never leave the machine.
 
 ## What a successful check proves
 

@@ -343,7 +343,7 @@ function footer(): HTMLElement {
     "footer",
     { class: "footer" },
     icon("lock", 16, 1.8),
-    h("span", { class: "footer__text" }, "Zum Zeitstempel-Dienst gehen der Prüfwert, Ihr Kontoname und Ihre IP-Adresse – keine Rechnung, kein Dateiname."),
+    h("span", { class: "footer__text" }, "Zum Zeitstempel-Dienst gehen der Prüfwert, Ihre Anmeldung und Ihre IP-Adresse – keine Rechnung, kein Dateiname."),
     h(
       "span",
       { class: "footer__links" },

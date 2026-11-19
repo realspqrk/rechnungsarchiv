@@ -33,8 +33,8 @@ RKSV pattern:
   - out of scope: cash receipts and DEP (RKSV), books and accounts (UGB §212).
 - `docs/datenschutz.md`: a note for the record of processing activities.
   - Legal basis: Art. 6(1)(c).
-  - Recipient: the timestamp provider (the Prüfwert, the account name and the IP address).
-  - The only recipient is the configured EU QTSP. It receives the Prüfwert, the account name and the IP address. There is no third-country transfer: no free or US provider is offered.
+  - Recipient: the timestamp provider (the Prüfwert, the login and the IP address).
+  - The only recipient is the configured EU QTSP. It receives the Prüfwert, the login (account name and password, or client certificate) and the IP address. There is no third-country transfer: no free or US provider is offered.
 - `docs/fuer-pruefer.md`: a guide for auditors (Betriebsprüfer) and Steuerberater.
 
 ### 3. Organisational (owner)
