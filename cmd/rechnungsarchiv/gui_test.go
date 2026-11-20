@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	gui "github.com/realspqrk/rechnungsarchiv/app"
+	"github.com/realspqrk/rechnungsarchiv/internal/archive"
 )
 
 // A run without arguments opens the window only when the process is alone
@@ -57,6 +58,7 @@ func stubGUI(t *testing.T, alone bool) (*[]gui.Options, *[]string, *int) {
 
 func TestGUICommand(t *testing.T) {
 	t.Setenv("APPDATA", t.TempDir())
+	t.Setenv(archive.ConfigDirEnv, t.TempDir())
 	dir := t.TempDir()
 	file := filepath.Join(dir, "rechnung.pdf")
 	os.WriteFile(file, []byte("%PDF"), 0o644)
@@ -119,6 +121,7 @@ func TestGUICommand(t *testing.T) {
 // the same absolute folder; nothing is matched on raw argv any more.
 func TestGUIFolderParity(t *testing.T) {
 	t.Setenv("APPDATA", t.TempDir())
+	t.Setenv(archive.ConfigDirEnv, t.TempDir())
 	dir := t.TempDir()
 	plain := filepath.Join(dir, "Belege 2026")
 	dash := filepath.Join(dir, "-belege")

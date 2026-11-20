@@ -14,13 +14,27 @@ import (
 // falls back to it when neither --archiv nor the current folder names an
 // archive; the GUI opens it on start and lists the archives under "recent"
 // ("Zuletzt geöffnet"). It is a convenience, never evidence.
+//
+// RECHNUNGSARCHIV_CONFIG_DIR, if set and not empty, moves settings.json
+// directly into that folder (no Rechnungsarchiv subfolder), so an agent can
+// create probe archives without replacing the user's default. It must be
+// absolute; a relative value is an error, never a fallback to the real
+// file. It moves nothing else (credentials, trusted-list cache, WebView).
 
 const (
 	settingsDir  = "Rechnungsarchiv"
 	settingsFile = "settings.json"
+	// ConfigDirEnv names the folder that holds settings.json instead.
+	ConfigDirEnv = "RECHNUNGSARCHIV_CONFIG_DIR"
 )
 
 func settingsPath() (string, error) {
+	if d := os.Getenv(ConfigDirEnv); d != "" {
+		if !filepath.IsAbs(d) {
+			return "", errors.New(ConfigDirEnv + " muss ein absoluter Pfad sein")
+		}
+		return filepath.Join(d, settingsFile), nil
+	}
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", err

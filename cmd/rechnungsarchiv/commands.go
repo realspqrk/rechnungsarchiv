@@ -34,6 +34,14 @@ type command struct {
 	Flags   []flagSpec
 	Writes  bool // changes the archive or writes files
 	Consent bool // needs --yes without a terminal (exit 8)
+	// Effects and Network say in German what the command writes and what
+	// it sends ("nichts", "keines" when nothing). Help and schema print
+	// them; every command sets both.
+	Effects string
+	Network string
+	// Output is the zero value of what the command prints as JSON on
+	// stdout (schema: commands[].output); nil: nothing (gui).
+	Output any
 	// NotGlobal are global flags this command refuses (gui: --archiv,
 	// --json). Its help leaves them out; the schema names them.
 	NotGlobal []string
@@ -54,16 +62,23 @@ var commands []*command
 func init() {
 	commands = []*command{
 		{Name: "status", Summary: "Zustand des Archivs: Anbieter, ausstehende Ablagen, Vertrauensliste, Sperre. Agenten rufen das zuerst auf.",
-			Help: "Liest nur. Ausstehend heißt hier: noch kein gültiger Zeitstempel gespeichert; die vollständige Kontrolle macht verify.",
-			run:  (*app).status},
+			Help:    "Liest nur. Ausstehend heißt hier: noch kein gültiger Zeitstempel gespeichert; die vollständige Kontrolle macht verify.",
+			Effects: "nichts", Network: "keines", Output: statusOut{},
+			run: (*app).status},
 		{Name: "init", Args: "<ordner>", MinArgs: 1, MaxArgs: 1, Writes: true,
 			Summary: "Neues Archiv anlegen und als Standardarchiv merken.",
 			Flags:   []flagSpec{{Name: "firma", Kind: stringFlag, Arg: "<name>", Help: "Firmenname (Pflicht)"}},
-			run:     (*app).init},
+			Effects: "den neuen Archivordner; merkt ihn in settings.json als Standardarchiv (ein bisheriges Archiv bleibt unverändert). Misslingt das Merken: Warnung und \"default\": false.",
+			Network: "keines", Output: initOut{},
+			run: (*app).init},
 		{Name: "archive", Args: "<ordner>", MinArgs: 1, MaxArgs: 1, Writes: true, Consent: true,
-			Summary: "Ordner archivieren: neue Ablage anlegen und Zeitstempel holen. Endgültig, kostet einen Zeitstempel.",
-			Help: "Die Dateien werden unverändert in eine neue Ablage übernommen. Danach wird der Zeitstempel dieser Ablage geholt; ältere ausstehende holt rechnungsarchiv stamp.\n" +
-				"Exit 3, 6 oder 7 nach dem Speichern: die Ablage ist gespeichert (\"committed\": true). Nicht erneut archivieren; nach der Behebung rechnungsarchiv stamp.",
+			Summary: "Ordner archivieren: neue Ablage anlegen, endgültig. Mit eingerichtetem Dienst wird ihr Zeitstempel geholt (kostet einen); ohne Dienst bleibt sie ausstehend, ohne Netz.",
+			Help: "Die Dateien werden unverändert in eine neue Ablage übernommen. Mit eingerichtetem Dienst wird danach der Zeitstempel dieser Ablage geholt (kostet einen); ohne Dienst bleibt sie ausstehend, und nichts geht ins Netz. Ältere ausstehende holt rechnungsarchiv stamp.\n" +
+				"Steht \"committed\": true in der Ausgabe, ist die Ablage gespeichert, auch wenn der Exit-Code nicht 0 ist (etwa 3, 6 oder 7). Nicht erneut archivieren; nach der Behebung rechnungsarchiv stamp --archiv <archiv>. " +
+				"Fehlt die Ausgabe (Abbruch, Zeitüberschreitung), vor einem neuen Versuch mit rechnungsarchiv verify --archiv <archiv> prüfen, ob die Ablage schon gespeichert ist.",
+			Effects: "mit --dry-run nichts. Sonst eine neue Ablage (ZIP und Nachweis) und, mit Dienst, die Vertrauenslisten im Archiv. Vorhandene Ablagen bleiben unverändert.",
+			Network: "mit --dry-run oder ohne Dienst keines. Sonst die Vertrauenslisten, dann ein Zeitstempel für diese Ablage (kostet), danach Aussteller-Zertifikat und Sperrstatus der Antwort.",
+			Output:  oneOf{planOut{DryRun: true}, archiveOut{}},
 			Flags: []flagSpec{
 				{Name: "name", Kind: stringFlag, Arg: "<name>", Help: "Name der Ablage (Standard: Ordnername)"},
 				{Name: "belegjahr", Kind: intFlag, Arg: "<jahr>", Help: "Belegjahr (Standard: Jahreszahl im Ordnernamen)"},
@@ -73,10 +88,16 @@ func init() {
 			},
 			run: (*app).archive},
 		{Name: "stamp", Writes: true, Summary: "Fehlende Zeitstempel holen.",
-			Flags: []flagSpec{flagYesTakeOver, flagTakeOver}, run: (*app).stamp},
+			Effects: "Nachweise ausstehender Ablagen; mit Dienst die Vertrauenslisten im Archiv, auch wenn nichts aussteht.",
+			Network: "ohne Dienst keines. Sonst immer die Vertrauenslisten; je ausstehender Ablage eine Anfrage (kostet je einen Zeitstempel, stamp fragt nicht nach). Ausnahme: einer schon angenommenen Antwort fehlt nur Prüfmaterial; sie wird binnen 24 Stunden ohne neue Anfrage vervollständigt (Aussteller-Zertifikat, Sperrstatus).",
+			Output:  stamp.Result{},
+			Flags:   []flagSpec{flagYesTakeOver, flagTakeOver}, run: (*app).stamp},
 		{Name: "verify", Args: "[<archiv>|<ablage.zip>|<export-ordner>]", MaxArgs: 1,
-			Summary: "Archiv, Export oder einzelne Ablage kontrollieren. Schreibt nie.",
+			Summary: "Archiv, Export oder einzelne Ablage kontrollieren. Schreibt nie ins Archiv.",
 			Help:    "Ohne Pfad: das Archiv (--archiv, aktueller Ordner oder Standardarchiv). Exit 0 in Ordnung, 5 Verändert/Ungültig oder Befund der Kette, 6 Ausstehend/Unbestimmt.",
+			Effects: "nichts im Archiv; mit --online neue Vertrauenslisten in den Cache %TEMP%\\rechnungsarchiv\\vertrauenslisten.",
+			Network: "ohne --online keines. Mit --online Vertrauenslisten und Sperrstatus, ohne Prüfwert.",
+			Output:  verify.Report{},
 			Flags:   []flagSpec{flagOnline}, run: (*app).verify},
 		{Name: "export", Args: "<ziel>", MinArgs: 1, MaxArgs: 1, Writes: true, Consent: true,
 			Summary: "Export für Betriebsprüfung in einen neuen, leeren Ordner schreiben.",
@@ -85,8 +106,14 @@ func init() {
 				{Name: "bis", Kind: intFlag, Arg: "<jahr>", Help: "letztes Belegjahr (Pflicht)"},
 				flagYes,
 			},
-			run: (*app).export},
-		{Name: "providers", Summary: "Angebotene qualifizierte Zeitstempel-Dienste (im Echtbetrieb erprobt; ohne Preise, siehe README).", run: (*app).providers},
+			Help: "Exit 0, sobald der Export geschrieben ist. Ob er in Ordnung ist, sagen report.status und report.findings in der Ausgabe (predecessor_not_in_export ist neutral); der Export prüft dabei online, wenn die Listen aktualisiert werden konnten. Eine spätere Kontrolle: rechnungsarchiv verify --online \"<ziel>\" (ohne --online nur mit den gespeicherten Nachweisen). " +
+				"Misslingt das Aktualisieren der Vertrauenslisten, nimmt der Export die gespeicherten (Hinweis auf der Fehlerausgabe).",
+			Effects: "den neuen Zielordner; das Archiv wird nur gelesen. Neue Vertrauenslisten in den Cache und in den Export.",
+			Network: "Vertrauenslisten; gelingt das, prüft der Export online (Sperrstatus). Kein Zeitstempel. Ohne --yes und ohne Terminal: Exit 8, nichts gesendet.",
+			Output:  export.Result{},
+			run:     (*app).export},
+		{Name: "providers", Summary: "Angebotene qualifizierte Zeitstempel-Dienste (im Echtbetrieb erprobt; ohne Preise, siehe README).",
+			Effects: "nichts", Network: "keines", Output: []providerInfo{}, run: (*app).providers},
 		{Name: "provider set", Args: "<id>", MinArgs: 1, MaxArgs: 1, Writes: true,
 			Summary: "Zeitstempel-Dienst für dieses Archiv einrichten. Passwort nur über die Standardeingabe.",
 			Help: "Benutzer/Passwort (basic): --user; das Passwort kommt als erste Zeile über die Standardeingabe oder wird im Terminal verdeckt abgefragt.\n" +
@@ -98,12 +125,20 @@ func init() {
 				{Name: "p12", Kind: stringFlag, Arg: "<datei>", Help: "PKCS#12-Datei (Zugang clientcert)"},
 				{Name: "url", Kind: stringFlag, Arg: "<https-url>", Help: "Adresse laut Vertrag (nur Anbieter mit url_from_contract)"},
 			},
-			run: (*app).providerSet},
-		{Name: "provider show", Summary: "Eingerichteten Dienst zeigen und ob Zugangsdaten auf diesem PC liegen (nie das Passwort).", run: (*app).providerShow},
+			Effects: "den Dienst in rechnungsarchiv.json, die Zugangsdaten in die Windows-Anmeldeinformationsverwaltung (bei --p12 den Pfad, nicht die Datei).",
+			Network: "keines; der Dienst wird nicht kontaktiert.",
+			Output:  providerOut{},
+			run:     (*app).providerSet},
+		{Name: "provider show", Summary: "Eingerichteten Dienst zeigen und ob Zugangsdaten auf diesem PC liegen (nie das Passwort).",
+			Effects: "nichts", Network: "keines", Output: providerOut{}, run: (*app).providerShow},
 		{Name: "protocol", Args: "<ablage>", MinArgs: 1, MaxArgs: 1, Writes: true,
 			Summary: "Archivprotokoll (PDF) für eine Ablage speichern.",
-			Help:    "<ablage> ist die Nummer im Archiv (z. B. 3 oder 0003) oder der Pfad einer Ablage-ZIP. Ohne --out: <NNNN>_<Name>.archivprotokoll.pdf im aktuellen Ordner. Nie in den Archivordner.",
-			Flags:   []flagSpec{{Name: "out", Kind: stringFlag, Arg: "<datei.pdf>", Help: "Zieldatei oder Zielordner"}, flagOnline},
+			Help: "<ablage> ist die Nummer im Archiv (z. B. 3 oder 0003) oder der Pfad einer Ablage-ZIP. Ohne --out: <NNNN>_<Name>.archivprotokoll.pdf im aktuellen Ordner; mit --out <ordner> (muss bestehen) darin unter diesem Namen. Nie in den Archivordner.\n" +
+				"Exit 0, sobald die PDF gespeichert ist; das Prüfergebnis steht in status und reason.",
+			Flags:   []flagSpec{{Name: "out", Kind: stringFlag, Arg: "<datei.pdf|ordner>", Help: "Zieldatei oder bestehender Zielordner"}, flagOnline},
+			Effects: "eine neue PDF außerhalb des Archivs, nie überschrieben; mit --online den Cache wie verify.",
+			Network: "ohne --online keines; mit --online wie verify.",
+			Output:  protocolOut{},
 			run:     (*app).protocol},
 		{Name: "gui", Args: "[<ordner>]", MaxArgs: 1, Writes: true,
 			Summary: "Fenster öffnen; mit <ordner> gleich den Dialog „Ordner archivieren“ für diesen Ordner.",
@@ -111,9 +146,12 @@ func init() {
 				"Ohne Argumente aus dem Explorer oder Startmenü gestartet, öffnet rechnungsarchiv.exe ebenfalls das Fenster; im Terminal zeigt es die Hilfe. " +
 				"Verknüpfungen zeigen auf rechnungsarchiv-gui.exe: es startet rechnungsarchiv.exe gui ohne Konsolenfenster.\n" +
 				"gui gibt keine Daten aus (--json ist ein Aufruffehler). Agenten öffnen das Fenster nur, wenn der Benutzer es sehen will.",
+			Effects:   "ein beschreibbares geöffnetes Archiv wird Standardarchiv (settings.json) und aufgeräumt (übrige .tmp-Dateien, Schreibschutz der Ablage-ZIPs); Vertrauenslisten im Archiv (Nur Ansicht: im Cache). Ablagen, Zeitstempel und Export nur nach Bestätigung im Fenster.",
+			Network:   "beim Öffnen Vertrauenslisten, ohne Prüfwert. „Archiv kontrollieren“ wie verify --online, „Export für Betriebsprüfung“ wie export. Zeitstempel erst nach Bestätigung im Fenster, dann wie archive oder stamp.",
 			NotGlobal: []string{"archiv", "json"},
 			run:       (*app).gui},
-		{Name: "schema", Summary: "Maschinenlesbare Beschreibung aller Befehle (JSON).", run: (*app).schema},
+		{Name: "schema", Summary: "Maschinenlesbare Beschreibung aller Befehle (JSON).",
+			Effects: "nichts", Network: "keines", Output: selfDoc{}, run: (*app).schema},
 	}
 }
 
@@ -170,12 +208,12 @@ type statusOut struct {
 	Credentials *bool              `json:"credentials"` // on this PC; null if unknown
 	Lock        *archive.LockInfo  `json:"lock"`
 	Counts      statusCounts       `json:"deposits"`
-	Pending     []statusDeposit    `json:"pending"`
-	Unreadable  []statusDeposit    `json:"unreadable"`
+	Pending     []statusDeposit    `json:"pending" schema:"nonnull"`
+	Unreadable  []statusDeposit    `json:"unreadable" schema:"nonnull"`
 	Last        *statusDeposit     `json:"last"`
-	TrustLists  []verify.TrustList `json:"trust_lists"`
-	TrustIssued *time.Time         `json:"trust_list_issued"` // newest national list
-	Next        []string           `json:"next"`              // German hints for the next step
+	TrustLists  []verify.TrustList `json:"trust_lists" schema:"nonnull"`
+	TrustIssued *time.Time         `json:"trust_list_issued"`     // newest national list
+	Next        []string           `json:"next" schema:"nonnull"` // German hints for the next step
 }
 
 type statusCounts struct {
@@ -301,6 +339,11 @@ func (a *app) status(inv *invocation) error {
 
 // ---------------------------------------------------------------- init
 
+type initOut struct {
+	Archive archiveInfo `json:"archive"`
+	Default bool        `json:"default"` // remembered as the default archive
+}
+
 func (a *app) init(inv *invocation) error {
 	company := inv.str("firma")
 	if company == "" {
@@ -319,10 +362,7 @@ func (a *app) init(inv *invocation) error {
 		remembered = false
 		a.warn("Archiv konnte nicht als Standardarchiv gemerkt werden: " + err.Error())
 	}
-	out := struct {
-		Archive archiveInfo `json:"archive"`
-		Default bool        `json:"default"`
-	}{infoOf(ar, "flag"), remembered}
+	out := initOut{infoOf(ar, "flag"), remembered}
 	a.emit(out, func(w io.Writer) {
 		fmt.Fprintf(w, "Archiv angelegt: %s\nFirma:          %s\n", ar.Dir, ar.Config.Company)
 		fmt.Fprintln(w, "Nächster Schritt: rechnungsarchiv providers, dann rechnungsarchiv provider set <id> …")
@@ -351,11 +391,11 @@ type planOut struct {
 	Provider       *string    `json:"provider"`
 	Count          int        `json:"count"`
 	Bytes          int64      `json:"bytes"`
-	Files          []planFile `json:"files"`
-	Skipped        []string   `json:"skipped"`
-	Known          []string   `json:"known"` // content already in an earlier Ablage (no deduplication)
-	Years          []int      `json:"years"` // distinct modification years
-	Notes          []string   `json:"notes"` // German
+	Files          []planFile `json:"files" schema:"nonnull"`
+	Skipped        []string   `json:"skipped" schema:"nonnull"`
+	Known          []string   `json:"known" schema:"nonnull"` // content already in an earlier Ablage (no deduplication)
+	Years          []int      `json:"years" schema:"nonnull"` // distinct modification years
+	Notes          []string   `json:"notes" schema:"nonnull"` // German
 }
 
 type depositOut struct {

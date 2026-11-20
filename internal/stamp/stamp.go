@@ -59,8 +59,8 @@ type Outcome struct {
 // Result of a run.
 type Result struct {
 	Provider string    `json:"provider,omitempty"`
-	Outcomes []Outcome `json:"outcomes"`
-	Warnings []string  `json:"warnings,omitempty"` // German
+	Outcomes []Outcome `json:"outcomes" schema:"nonnull"` // Run: never nil
+	Warnings []string  `json:"warnings,omitempty"`        // German
 }
 
 // Reasons maps the Prüfwert of each still pending Ablage to its reason, for

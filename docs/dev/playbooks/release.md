@@ -24,17 +24,34 @@ The script builds with the version stamped in, stages `rechnungsarchiv.exe`, `re
 
 ## Check
 
-1. Silent install into a scratch folder (Start menu and desktop shortcuts are created; uninstall removes them):
+1. Silent install into a scratch folder (Start menu and desktop shortcuts are created; uninstall removes them), smoke test, uninstall:
    ```powershell
    $t = "$env:TEMP\ra-install"
    Start-Process .\dist\release\Rechnungsarchiv-win-Setup.exe -ArgumentList '--silent', '--installto', "`"$t`"" -Wait
    & "$t\current\rechnungsarchiv.exe" --version          # {"version":"x.y.z"}
-   Start-Process "$t\Update.exe" -ArgumentList '--uninstall','--silent' -Wait
+   # Smoke in a child process with isolated settings: the variables never
+   # reach this shell (leakcheck reads %APPDATA% for its private rules).
+   # The child stops at the first failing call and exits with its code.
+   powershell -NoProfile -Command {
+     param($exe, $demo)
+     $s = "$env:TEMP\ra-smoke-$(Get-Random)"
+     $env:RECHNUNGSARCHIV_CONFIG_DIR = "$s\settings"; $env:APPDATA = "$s\appdata"; $env:XDG_CONFIG_HOME = "$s\appdata"
+     & $exe init "$s\archiv" --firma "Smoke" --json
+     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+     & $exe archive --dry-run $demo --archiv "$s\archiv" --json
+     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+     & $exe gui                               # opens $s\archiv; close the window again
+     exit $LASTEXITCODE
+   } -args "$t\current\rechnungsarchiv.exe", (Resolve-Path 'testdata\demo\2026-10 Eingangsrechnungen').Path
+   $smoke = $LASTEXITCODE
+   Start-Process "$t\Update.exe" -ArgumentList '--uninstall','--silent' -Wait   # always, also after a failed smoke
+   if ($smoke -ne 0) { throw "Smoke test failed (exit $smoke)" }
    ```
    The installer runs `rechnungsarchiv-gui.exe --veloapp-install …` and waits; the launcher exits at once for every `--veloapp-*` argument. An install that hangs means that check broke.
 
+   Never smoke-test the CLI or the window with the real settings (known.md: opening remembers the archive as the default, refreshes its trusted lists, and an older build stamped on open). `APPDATA` is isolated too: the WebView2 profile lives there, not in the settings folder. A window that is already open (single instance) takes the request over with its own settings: close every Rechnungsarchiv window first.
+
    The scratch install reuses the shortcut names of a real installation on this PC, and its uninstall deletes them. Afterwards, if `%LOCALAPPDATA%\Rechnungsarchiv` exists, run `.\dist\release\Rechnungsarchiv-win-Setup.exe --silent` (updates the real install and restores the shortcuts).
-2. Do not smoke-test the window against the real `%APPDATA%` (known.md: it stamps the remembered default archive).
 
 ## Publish
 

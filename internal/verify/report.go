@@ -86,12 +86,12 @@ type Report struct {
 	// It only selects which trusted lists are refreshed; facts about the
 	// issuer of a token come from the provider recorded with its attempt.
 	Provider string    `json:"provider,omitempty"`
-	Status   Status    `json:"status"` // worst Ablage status; Zeitgestempelt if there is none
-	Deposits []Deposit `json:"deposits"`
+	Status   Status    `json:"status"`                    // worst Ablage status; Zeitgestempelt if there is none
+	Deposits []Deposit `json:"deposits" schema:"nonnull"` // finish: never nil
 	// Bridged are excluded Ablagen of an export, known only by Brückendaten.
 	Bridged       []Bridge    `json:"bridged,omitempty"`
 	Findings      []Finding   `json:"findings,omitempty"`
-	TrustLists    []TrustList `json:"trust_lists"`
+	TrustLists    []TrustList `json:"trust_lists" schema:"nonnull"` // finish: never nil
 	TrustProblems []string    `json:"trust_problems,omitempty"`
 }
 
@@ -152,7 +152,7 @@ type Deposit struct {
 	ToolVersion    string `json:"tool_version,omitempty"`
 
 	Counts   Counts    `json:"counts"`
-	Files    []File    `json:"files"`
+	Files    []File    `json:"files" schema:"nonnull"` // deposit: never nil
 	Added    []string  `json:"added,omitempty"`
 	Ignored  []string  `json:"ignored,omitempty"`
 	Problems []Problem `json:"problems,omitempty"`
@@ -248,8 +248,8 @@ type Token struct {
 	TSP            string        `json:"tsp,omitempty"`
 	Service        string        `json:"service,omitempty"`
 	Qualification  Qualification `json:"qualification"`
-	TrustList      *TrustList    `json:"trust_list,omitempty"` // the list the qualification rests on
-	Revocation     []Revocation  `json:"revocation"`
+	TrustList      *TrustList    `json:"trust_list,omitempty"`        // the list the qualification rests on
+	Revocation     []Revocation  `json:"revocation" schema:"nonnull"` // token: never nil
 	Compromised    bool          `json:"compromised,omitempty"`
 }
 

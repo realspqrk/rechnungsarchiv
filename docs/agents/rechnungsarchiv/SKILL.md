@@ -20,11 +20,12 @@ This skill is for discovery only. The source of truth is `rechnungsarchiv --help
 
 ## How
 
-1. Start with `rechnungsarchiv status --json`. It shows which archive is used (`archive.path`, `archive.source`), the provider, pending Ablagen, the lock and `next` steps. Pass `--archiv "<ordner>"` if it is not the archive the user means.
-2. Before `archive`, run `rechnungsarchiv archive --dry-run "<ordner>" --json` and show the plan (file count, name, Belegjahr, retention, `notes`). Archiving is final and costs a timestamp.
-3. Pass `--yes` only after the user agreed to exactly that action. Without `--yes`, `archive` and `export` exit 8 and change nothing.
-4. Read the exit code. 0 OK, 2 fix the call, 3 configuration or no provider, 4 another PC is writing, 5 changed/invalid found, 6 pending/indeterminate, 7 provider error, 8 consent missing. After `archive`, exit 3, 6 or 7 means the Ablage **was saved** (`"committed": true`): never archive the folder again; run `rechnungsarchiv stamp` once the cause is fixed.
-5. Exit 4: tell the user which PC holds the lock (`details.host`, `details.since`). Use `--take-over --yes` only if the user confirms nothing runs there any more.
+1. To try things out (probe, test or demo archives): first set `RECHNUNGSARCHIV_CONFIG_DIR` to a new, empty folder (absolute path; PowerShell: `$env:RECHNUNGSARCHIV_CONFIG_DIR = "<folder>"`), then `rechnungsarchiv init "<probe-archive>" --firma "<name>"` with an absolute path. The first command after that is `rechnungsarchiv status --archiv "<probe-archive>" --json`; every command that works on an archive (all but `init`, `providers`, `schema`, `gui`) gets `--archiv "<probe-archive>"`. Before `archive --yes`, check that `archive.path` is the probe archive and `provider` is null. Otherwise `init` replaces the user's default archive, and `archive` or `stamp` can use the user's paid provider.
+2. For the user's real archive, start with `rechnungsarchiv status --json`. It shows which archive is used (`archive.path`, `archive.source`), the provider, pending Ablagen, the lock and `next` steps. Pass `--archiv "<ordner>"` if it is not the archive the user means.
+3. Before `archive`, run `rechnungsarchiv archive --dry-run "<ordner>" --json` and show the plan (file count, name, Belegjahr, retention, `notes`). Archiving is final and, with a provider set, costs a timestamp.
+4. Pass `--yes` only after the user agreed to exactly that action. Without `--yes` and without a terminal, a real `archive` (not `--dry-run`) or `export` whose call is otherwise valid exits 8 and changes nothing.
+5. Read the exit code. 0 OK, 2 fix the call, 3 configuration or no provider, 4 another PC is writing, 5 changed/invalid found, 6 pending/indeterminate, 7 provider error, 8 consent missing. After `archive`, read `committed`: `true` means the Ablage **was saved**, whatever the exit code. Never archive the folder again; run `rechnungsarchiv stamp --archiv <archive>` once the cause is fixed. If the output is missing (interrupted, timed out), check with `rechnungsarchiv verify --archiv <archive>` whether the Ablage was already saved before trying again.
+6. Exit 4: tell the user which PC holds the lock (`details.host`, `details.since`). Use `--take-over --yes` only if the user confirms nothing runs there any more.
 
 ## Never
 

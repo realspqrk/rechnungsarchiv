@@ -37,7 +37,7 @@ Without `wails3`: `npm run build` in `frontend/`, then `go build -o bin/rechnung
 
 ## Real service and sample data
 
-By default the GUI runs the real service (`real.go`, mapped to the DTOs in `map.go`): the same core and wiring as the CLI. On start it opens the remembered default archive (`%APPDATA%\Rechnungsarchiv\settings.json`, written by "Archiv anlegen" and "Bestehendes Archiv öffnen"). It then refreshes the trusted lists and re-checks in the background (`Status.busy`, event `status-geaendert`). Opening never stamps: when `Status.due` is not zero the window asks once ("Ausstehende Zeitstempel"). A folder it cannot write to opens view only ("Nur Ansicht"), which never writes, locks or stamps. Credentials go to the Windows Credential Manager.
+By default the GUI runs the real service (`real.go`, mapped to the DTOs in `map.go`): the same core and wiring as the CLI. On start it opens the remembered default archive (`%APPDATA%\Rechnungsarchiv\settings.json`, or `settings.json` in `RECHNUNGSARCHIV_CONFIG_DIR` when set; written by "Archiv anlegen" and "Bestehendes Archiv öffnen"). It then refreshes the trusted lists and re-checks in the background (`Status.busy`, event `status-geaendert`). Opening never stamps: when `Status.due` is not zero the window asks once ("Ausstehende Zeitstempel"). A folder it cannot write to opens view only ("Nur Ansicht"), which never writes, locks or stamps. Credentials go to the Windows Credential Manager.
 
 A lock held by another PC reaches the frontend as a `UIError` with code `gesperrt` (host, user, since). The UI then asks before `TakeOver`; a writer that is still running is never taken over.
 

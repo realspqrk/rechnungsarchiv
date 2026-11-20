@@ -58,17 +58,21 @@ func TestRecipeEndToEnd(t *testing.T) {
 	w, e := tsaWorld(t)
 	id := e.Provider.ID
 	dir := filepath.Join(t.TempDir(), "Rechnungsarchiv")
+	// Every stdout document below matches its command's published output
+	// schema, every stderr line error_document or warning_document.
+	check := schemaChecker(t, w, true)
+	check("providers", w.run("", "providers"), 0, true)
 
 	// rechnungsarchiv init "<dir>" --firma "Musterfirma GmbH"
-	w.run("", "init", dir, "--firma", "Musterfirma GmbH").want(t, 0)
+	check("init", w.run("", "init", dir, "--firma", "Musterfirma GmbH"), 0, true)
 
 	// rechnungsarchiv provider set <id> --user <name>, password on stdin.
-	r := w.run(testenv.Password+"\r\n", "provider", "set", id, "--user", testenv.User)
+	r := check("provider set", w.run(testenv.Password+"\r\n", "provider", "set", id, "--user", testenv.User), 0, true)
 	ps := r.want(t, 0)
 	if get(ps, "provider", "id") != id || get(ps, "credentials", "stored") != true {
 		t.Fatalf("provider set %v", ps)
 	}
-	show := w.run("", "provider", "show")
+	show := check("provider show", w.run("", "provider", "show"), 0, true)
 	if sh := show.want(t, 0); get(sh, "credentials", "user") != testenv.User || get(sh, "credentials", "password") != true {
 		t.Fatalf("provider show %v", sh)
 	}
@@ -92,69 +96,71 @@ func TestRecipeEndToEnd(t *testing.T) {
 	}
 	w.run("x\n", "provider", "set", id, "--p12", "a.p12").errObj(t, "USAGE")
 
-	st := w.run("", "status", "--json").want(t, 0)
+	st := check("status", w.run("", "status", "--json"), 0, true).want(t, 0)
 	if get(st, "provider", "id") != id || st["credentials"] != true {
 		t.Fatalf("status %v", st)
 	}
 
 	// archive --dry-run, then without --yes (exit 8), then with --yes.
-	plan := w.run("", "archive", "--dry-run", demo(testenv.Incoming)).want(t, 0)
+	plan := check("archive", w.run("", "archive", "--dry-run", demo(testenv.Incoming)), 0, true).want(t, 0)
 	if plan["provider"] != id || plan["count"] != 9.0 {
 		t.Fatalf("plan %v", plan)
 	}
-	w.run("", "archive", demo(testenv.Incoming)).want(t, 8)
+	// Consent refused: no document, only the error.
+	check("archive", w.run("", "archive", demo(testenv.Incoming)), 8, false)
 	if zips, _ := filepath.Glob(filepath.Join(dir, "*.zip")); len(zips) != 0 {
 		t.Fatalf("written without consent: %v", zips)
 	}
-	a := w.run("", "archive", demo(testenv.Incoming), "--yes").want(t, 0)
+	a := check("archive", w.run("", "archive", demo(testenv.Incoming), "--yes"), 0, true).want(t, 0)
 	outs := get(a, "stamp", "outcomes").([]any)
 	if a["committed"] != true || len(outs) != 1 || get(outs[0], "stamped") != true {
 		t.Fatalf("archive %v", a)
 	}
 
 	// stamp: nothing missing. verify: timestamped.
-	if s := w.run("", "stamp").want(t, 0); len(s["outcomes"].([]any)) != 0 {
+	if s := check("stamp", w.run("", "stamp"), 0, true).want(t, 0); len(s["outcomes"].([]any)) != 0 {
 		t.Fatalf("stamp %v", s)
 	}
-	rep := w.run("", "verify", "--json").want(t, 0)
+	rep := check("verify", w.run("", "verify", "--json"), 0, true).want(t, 0)
 	d0 := rep["deposits"].([]any)[0]
 	if rep["status"] != "timestamped" || get(d0, "proven", "at") == nil {
 		t.Fatalf("verify %v", rep)
 	}
 	// Online: the lists just fetched make the stamp qualified.
 	e.PublishLists(time.Now())
-	if rep := w.run("", "verify", dir, "--online").want(t, 0); get(rep["deposits"].([]any)[0], "qualification") != "qualified" {
+	if rep := check("verify", w.run("", "verify", dir, "--online"), 0, true).want(t, 0); get(rep["deposits"].([]any)[0], "qualification") != "qualified" {
 		t.Fatalf("verify --online %v", rep["deposits"])
 	}
 
 	// A provider error after the commit: exit 7, the Ablage is stored.
 	e.SetMode(testenv.Denied)
-	r = w.run("", "archive", demo(testenv.Outgoing), "--yes")
+	// After the commit the receipt is printed despite the error.
+	r = check("archive", w.run("", "archive", demo(testenv.Outgoing), "--yes"), 7, true)
 	if out := r.want(t, 7); out["committed"] != true || get(out, "deposit", "sequence") != 2.0 {
 		t.Fatalf("archive %v", out)
 	}
 	if d := r.errObj(t, "PROVIDER_ERROR")["details"]; get(d, "reason") != "zugang" {
 		t.Fatalf("details %v", d)
 	}
-	w.run("", "verify").want(t, 6)
+	check("verify", w.run("", "verify"), 6, true) // pending: still a report
 	e.SetMode(testenv.Normal)
-	if s := w.run("", "stamp").want(t, 0); len(s["outcomes"].([]any)) != 1 {
+	if s := check("stamp", w.run("", "stamp"), 0, true).want(t, 0); len(s["outcomes"].([]any)) != 1 {
 		t.Fatalf("stamp %v", s)
 	}
 	w.run("", "verify").want(t, 0)
 
 	// Export: consent, then the auditor command in the export folder.
 	dst := filepath.Join(t.TempDir(), "Export 2026")
-	w.run("", "export", "--von", "2026", "--bis", "2026", dst).want(t, 8)
+	check("export", w.run("", "export", "--von", "2026", "--bis", "2026", dst), 8, false)
 	if _, err := os.Stat(dst); !os.IsNotExist(err) {
 		t.Fatal("export written without consent")
 	}
-	ex := w.run("", "export", "--von", "2026", "--bis", "2026", dst, "--yes").want(t, 0)
+	ex := check("export", w.run("", "export", "--von", "2026", "--bis", "2026", dst, "--yes"), 0, true).want(t, 0)
 	if len(ex["exported"].([]any)) != 2 || get(ex, "report", "status") != "timestamped" {
 		t.Fatalf("export %v", ex)
 	}
 	// .\rechnungsarchiv.exe verify "<Export-Ordner>", run in the export folder.
-	audit := w.runIn(dst, filepath.Join(dst, export.ExeName), "", "verify", dst).want(t, 0)
+	audit := check("verify", w.runIn(dst, filepath.Join(dst, export.ExeName), "", "verify", dst), 0, true).want(t, 0)
 	if audit["mode"] != "export" || audit["status"] != "timestamped" {
 		t.Fatalf("audit %v", audit)
 	}
@@ -166,7 +172,7 @@ func TestRecipeEndToEnd(t *testing.T) {
 
 	// Archivprotokoll for one Ablage.
 	pdf := filepath.Join(t.TempDir(), "protokoll.pdf")
-	pr := w.run("", "protocol", "0001", "--out", pdf).want(t, 0)
+	pr := check("protocol", w.run("", "protocol", "0001", "--out", pdf), 0, true).want(t, 0)
 	if b, _ := os.ReadFile(pdf); !strings.HasPrefix(string(b), "%PDF") || pr["status"] != "timestamped" {
 		t.Fatalf("protocol %v", pr)
 	}
@@ -201,7 +207,7 @@ func TestRecipeEndToEnd(t *testing.T) {
 	b, _ := os.ReadFile(zip)
 	b[len(b)/2] ^= 0xff
 	os.WriteFile(zip, b, 0o644)
-	rep = w.run("", "verify").want(t, 5)
+	rep = check("verify", w.run("", "verify"), 5, true).want(t, 5)
 	if rep["status"] != "changed" && rep["status"] != "invalid" {
 		t.Fatalf("tampered %v", rep["status"])
 	}

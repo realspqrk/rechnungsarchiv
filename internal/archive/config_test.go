@@ -106,8 +106,7 @@ func TestResolveDefaults(t *testing.T) {
 func TestRememberDefault(t *testing.T) {
 	a, _ := setup(t)
 	cfg := t.TempDir()
-	t.Setenv("APPDATA", cfg)         // Windows
-	t.Setenv("XDG_CONFIG_HOME", cfg) // elsewhere
+	t.Setenv(ConfigDirEnv, cfg)
 	if DefaultDir() != "" {
 		t.Fatal("default without settings")
 	}
@@ -159,13 +158,83 @@ func TestRememberDefault(t *testing.T) {
 	}
 }
 
+// RECHNUNGSARCHIV_CONFIG_DIR moves settings.json into that folder and
+// leaves the user's real settings untouched; a relative value is refused
+// without falling back to the real file.
+func TestConfigDirOverride(t *testing.T) {
+	a, _ := setup(t)
+	// The OS location, isolated on every system (Windows APPDATA, Unix
+	// XDG_CONFIG_HOME, macOS HOME), then derived the way settingsPath does.
+	cfg := t.TempDir()
+	t.Setenv("APPDATA", cfg)
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	t.Setenv("HOME", cfg)
+	t.Setenv(ConfigDirEnv, "")
+	base, err := os.UserConfigDir()
+	if err != nil || !strings.HasPrefix(base, cfg) {
+		t.Fatalf("UserConfigDir %q not isolated: %v", base, err)
+	}
+	real := filepath.Join(base, settingsDir, settingsFile)
+	// The sentinel names a real archive, so reading it by mistake shows.
+	other, err := Init(filepath.Join(t.TempDir(), "Echt"), "Echte Firma")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RememberDefault(other.Dir); err != nil {
+		t.Fatal(err)
+	}
+	sentinel, err := os.ReadFile(real)
+	if err != nil || DefaultDir() != other.Dir {
+		t.Fatalf("sentinel %s %v", sentinel, err)
+	}
+
+	override := filepath.Join(t.TempDir(), "neu") // created on write
+	t.Setenv(ConfigDirEnv, override)
+	if DefaultDir() != "" {
+		t.Fatal("default read from the real settings despite the override")
+	}
+	if err := RememberDefault(a.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := DefaultDir(); got != a.Dir {
+		t.Fatalf("default %q, want %q", got, a.Dir)
+	}
+	var m map[string]any
+	if data, err := os.ReadFile(filepath.Join(override, settingsFile)); err != nil || json.Unmarshal(data, &m) != nil || m["archive"] != a.Dir {
+		t.Fatalf("override settings %s %v", data, err)
+	}
+	if data, _ := os.ReadFile(real); string(data) != string(sentinel) {
+		t.Fatalf("real settings changed: %s", data)
+	}
+
+	rel := "relativ"
+	t.Chdir(t.TempDir())
+	t.Setenv(ConfigDirEnv, rel)
+	if err := RememberDefault(a.Dir); err == nil {
+		t.Fatal("relative override accepted")
+	}
+	if DefaultDir() != "" {
+		t.Fatal("relative override fell back to a default")
+	}
+	if _, err := os.Stat(rel); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("relative override created %s: %v", rel, err)
+	}
+	if data, _ := os.ReadFile(real); string(data) != string(sentinel) {
+		t.Fatalf("real settings changed: %s", data)
+	}
+
+	t.Setenv(ConfigDirEnv, "") // empty: the real file again
+	if p, _ := settingsPath(); p != real || DefaultDir() != other.Dir {
+		t.Fatalf("empty override: %s, want %s", p, real)
+	}
+}
+
 // Settings written by 1.0.1 have only "archive": it becomes the first
 // recent archive.
 func TestRecentFromOldSettings(t *testing.T) {
 	a, _ := setup(t)
 	cfg := t.TempDir()
-	t.Setenv("APPDATA", cfg)
-	t.Setenv("XDG_CONFIG_HOME", cfg)
+	t.Setenv(ConfigDirEnv, cfg)
 	p, _ := settingsPath()
 	os.MkdirAll(filepath.Dir(p), 0o755)
 	old, _ := json.Marshal(map[string]string{"archive": a.Dir})

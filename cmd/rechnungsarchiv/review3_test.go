@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/realspqrk/rechnungsarchiv/internal/archive"
 )
 
 // link makes alias lead to target: a junction on Windows (no admin rights
@@ -119,6 +121,7 @@ func TestDryRunFollowUpCommand(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("APPDATA", cfg)
 	t.Setenv("XDG_CONFIG_HOME", cfg)
+	t.Setenv(archive.ConfigDirEnv, cfg)
 	chosen := filepath.Join(t.TempDir(), "O'Brien Archiv")
 	other := filepath.Join(t.TempDir(), "Standard")
 	for _, d := range []string{chosen, other} { // other becomes the default
@@ -186,6 +189,7 @@ func TestJSONBooleanSyntax(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("APPDATA", cfg)
 	t.Setenv("XDG_CONFIG_HOME", cfg)
+	t.Setenv(archive.ConfigDirEnv, cfg)
 	isJSON := func(s string) bool { return json.Valid([]byte(strings.TrimSpace(s))) }
 	for _, c := range []struct {
 		tty  bool

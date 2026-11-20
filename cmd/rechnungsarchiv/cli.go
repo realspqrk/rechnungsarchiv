@@ -384,7 +384,7 @@ type flagSpec struct {
 
 // globalFlags are accepted by every command.
 var globalFlags = []flagSpec{
-	{Name: "archiv", Kind: stringFlag, Arg: "<ordner>", Help: "Archivordner (Standard: aktueller Ordner, sonst das zuletzt angelegte Archiv)"},
+	{Name: "archiv", Kind: stringFlag, Arg: "<ordner>", Help: "Archivordner (Standard: aktueller Ordner, wenn er rechnungsarchiv.json enthält, sonst das Standardarchiv)"},
 	{Name: "json", Kind: boolFlag, Help: "nur JSON auf die Standardausgabe (automatisch, wenn die Ausgabe kein Terminal ist)"},
 	{Name: "help", Kind: boolFlag, Help: "Hilfe zu diesem Befehl (auch -h)"},
 }

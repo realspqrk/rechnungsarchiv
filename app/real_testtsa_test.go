@@ -33,6 +33,7 @@ func testSystem(t *testing.T, e *testenv.Env) system {
 	}
 	t.Setenv("APPDATA", t.TempDir()) // archive.RememberDefault
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(archive.ConfigDirEnv, t.TempDir())
 	return system{
 		creds: creds.NewMemory(),
 		trust: func(dir string) (*trust.Store, error) {

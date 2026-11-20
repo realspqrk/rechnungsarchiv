@@ -27,6 +27,7 @@ func TestRecoveryDryRun(t *testing.T) {
 	}
 	t.Setenv("APPDATA", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(archive.ConfigDirEnv, t.TempDir())
 	dir := filepath.Join(t.TempDir(), "Archiv")
 	if err := os.CopyFS(dir, os.DirFS(src)); err != nil {
 		t.Fatal(err)

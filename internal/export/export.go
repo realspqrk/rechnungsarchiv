@@ -41,7 +41,7 @@ type Options struct {
 	// to a cache outside the archive.
 	SourceTrust func(archiveDir string) (*trust.Store, error)
 	// ExportTrust opens the trusted lists inside the export for its own
-	// verification. Default trust.Open (it is never refreshed).
+	// verification. Default trust.Open; an online check refreshes it.
 	ExportTrust func(exportDir string) (*trust.Store, error)
 	// Executable returns the verifier to bundle as ExeName. Default
 	// os.Executable: the running rechnungsarchiv.exe, which is CLI and GUI

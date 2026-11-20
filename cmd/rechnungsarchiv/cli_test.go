@@ -61,7 +61,9 @@ func newWorld(t *testing.T) *world {
 	w := &world{t: t, cwd: filepath.Join(root, "work")}
 	os.MkdirAll(w.cwd, 0o755)
 	cfg := filepath.Join(root, "appdata")
-	w.env = append(os.Environ(), "APPDATA="+cfg, "XDG_CONFIG_HOME="+cfg)
+	// RECHNUNGSARCHIV_CONFIG_DIR is set explicitly so an inherited value
+	// cannot point the child at another settings.json.
+	w.env = append(os.Environ(), "APPDATA="+cfg, "XDG_CONFIG_HOME="+cfg, archive.ConfigDirEnv+"="+cfg)
 	return w
 }
 
@@ -197,6 +199,30 @@ func TestHelpSchemaVersion(t *testing.T) {
 	}
 	if !json.Valid([]byte(w.run("", "schema").stdout)) {
 		t.Fatal("schema without --json is not JSON")
+	}
+}
+
+// Every command says what it writes and what it sends, explicitly: an
+// empty field would silently read as "nothing". Help and schema print it.
+func TestEffectsAndNetworkDeclared(t *testing.T) {
+	sc := map[string]map[string]any{}
+	for _, c := range schemaDoc().(map[string]any)["commands"].([]schemaCommand) {
+		sc[c.Name] = c.Output
+	}
+	for _, c := range commands {
+		if c.Effects == "" || c.Network == "" {
+			t.Errorf("%s: Effects %q, Network %q", c.Name, c.Effects, c.Network)
+		}
+		h := helpText(c)
+		if !strings.Contains(h, "\nSchreibt: "+c.Effects+"\nNetz: "+c.Network+"\n") {
+			t.Errorf("%s --help lacks Schreibt/Netz:\n%s", c.Name, h)
+		}
+		if (c.Output == nil) != (c.Name == "gui") || (sc[c.Name] == nil) != (c.Name == "gui") {
+			t.Errorf("%s: output %v", c.Name, sc[c.Name])
+		}
+		if (c.Name == "gui") == strings.Contains(h, "\nAusgabe: ") {
+			t.Errorf("%s --help: Ausgabe line wrong:\n%s", c.Name, h)
+		}
 	}
 }
 
@@ -381,6 +407,7 @@ func TestHumanOutput(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("APPDATA", cfg)
 	t.Setenv("XDG_CONFIG_HOME", cfg)
+	t.Setenv(archive.ConfigDirEnv, cfg)
 	dir := filepath.Join(t.TempDir(), "Archiv")
 	human := func(code int, args ...string) string {
 		t.Helper()

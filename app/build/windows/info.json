@@ -1,12 +1,12 @@
 {
 	"fixed": {
-		"file_version": "1.0.3",
-		"product_version": "1.0.3"
+		"file_version": "1.1.0",
+		"product_version": "1.1.0"
 	},
 	"info": {
 		"0407": {
-			"FileVersion": "1.0.3",
-			"ProductVersion": "1.0.3",
+			"FileVersion": "1.1.0",
+			"ProductVersion": "1.1.0",
 			"CompanyName": "SPQRK IT-Dienstleistungen",
 			"FileDescription": "Rechnungsarchiv",
 			"LegalCopyright": "© 2026 Gerhard Petermeir, SPQRK IT-Dienstleistungen · Apache-2.0",

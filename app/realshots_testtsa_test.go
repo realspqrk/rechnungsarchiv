@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/realspqrk/rechnungsarchiv/internal/archive"
 	"github.com/realspqrk/rechnungsarchiv/internal/testenv"
 )
 
@@ -67,6 +68,7 @@ func TestRealScreenshots(t *testing.T) {
 		}
 	}
 	t.Setenv("APPDATA", filepath.Join(root, "appdata"))
+	t.Setenv(archive.ConfigDirEnv, filepath.Join(root, "settings"))
 	goBin := filepath.Join(runtime.GOROOT(), "bin", "go")
 	// The one binary (ADR-0008): its export bundles itself as the verifier.
 	exe := filepath.Join(root, "bin", "rechnungsarchiv.exe")
